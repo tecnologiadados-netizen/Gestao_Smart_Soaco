@@ -12,6 +12,7 @@ import {
   PERMISSOES_EDITAR_CRM_PENDENCIAS_DESTINATARIOS,
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
   PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
+  PERMISSOES_APROVAR_FINANCEIRO_DIARIO,
 } from '../utils/financeiroPermissoes.js';
 import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraController.js';
 import {
@@ -24,6 +25,14 @@ import {
   postReprogramarContasPagar,
   postSalvarAnotacaoDiario,
 } from '../controllers/diarioFinanceiroController.js';
+import {
+  getProcessosDiario,
+  patchDescricaoProcessoDiario,
+  postAprovarProcessoDiario,
+  postDevolverProcessoDiario,
+  postEnviarProcessoDiario,
+  postIniciarProcessoDiario,
+} from '../controllers/diarioProcessoController.js';
 import {
   getDfcAgendamentosEfetivos,
   getDfcAgendamentosDetalhe,
@@ -146,6 +155,7 @@ const editarCrmPendenciasDestinatarios = requirePermission(
 );
 const verFinanceiroCarteira = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA);
 const verFinanceiroDiario = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DIARIO);
+const aprovarFinanceiroDiario = requirePermission(...PERMISSOES_APROVAR_FINANCEIRO_DIARIO);
 /** Classificação compartilhada: a mesma prioridade vale na DFC e no Diário. */
 const verPrioridadeDfcDiario = requirePermission(
   ...PERMISSOES_ACESSO_FINANCEIRO_DFC,
@@ -161,6 +171,12 @@ router.post('/diario/contas-pagar/conta-bancaria', verFinanceiroDiario, postDefi
 router.post('/diario/contas-pagar/forma-pagamento', verFinanceiroDiario, postDefinirFormaPagamento);
 router.post('/diario/contas-pagar/anotacao', verFinanceiroDiario, postSalvarAnotacaoDiario);
 router.post('/diario/contas-pagar/anotacoes/importar', verFinanceiroDiario, postImportarAnotacoesDiario);
+router.get('/diario/processos', verFinanceiroDiario, getProcessosDiario);
+router.post('/diario/processos', verFinanceiroDiario, postIniciarProcessoDiario);
+router.patch('/diario/processos/:id', verFinanceiroDiario, patchDescricaoProcessoDiario);
+router.post('/diario/processos/:id/enviar', verFinanceiroDiario, postEnviarProcessoDiario);
+router.post('/diario/processos/:id/aprovar', aprovarFinanceiroDiario, postAprovarProcessoDiario);
+router.post('/diario/processos/:id/devolver', aprovarFinanceiroDiario, postDevolverProcessoDiario);
 
 router.get('/dfc/agendamentos-efetivos', verFinanceiroDfc, getDfcAgendamentosEfetivos);
 router.get('/dfc/projecao-receitas', verFinanceiroDfc, getDfcProjecaoReceitas);

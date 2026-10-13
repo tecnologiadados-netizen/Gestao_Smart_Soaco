@@ -246,9 +246,16 @@ function opcoesCampo(linhas: DiarioContaPagarLinha[], campo: 'fornecedor' | 'pla
   return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
-export default function DiarioFinanceiroPage() {
-  const inicial = periodoAtalho('hoje');
-  const [atalho, setAtalho] = useState<Atalho | null>('hoje');
+export type DiarioFinanceiroModo = {
+  dataFixa: string;
+  editavel: boolean;
+};
+
+export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiroModo } = {}) {
+  const inicial = modo ? { inicio: modo.dataFixa, fim: modo.dataFixa } : periodoAtalho('hoje');
+  const editavel = modo ? modo.editavel : true;
+  const periodoTravado = !!modo;
+  const [atalho, setAtalho] = useState<Atalho | null>(modo ? null : 'hoje');
   const [dataInicio, setDataInicio] = useState(inicial.inicio);
   const [dataFim, setDataFim] = useState(inicial.fim);
   const [faixaFiltrosVisivel, setFaixaFiltrosVisivel] = useState(true);
@@ -517,6 +524,7 @@ export default function DiarioFinanceiroPage() {
   };
 
   const abrirReprogramar = () => {
+    if (!editavel) return;
     const escolhidas = dedupeReprogramar(
       linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
     );
@@ -528,6 +536,7 @@ export default function DiarioFinanceiroPage() {
   };
 
   const abrirContaBancaria = () => {
+    if (!editavel) return;
     const escolhidas = dedupeReprogramar(
       linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
     );
@@ -565,7 +574,11 @@ export default function DiarioFinanceiroPage() {
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await definirContaBancariaDiario({ idContaBancaria: idConta, itens });
+      const res = await definirContaBancariaDiario({
+        idContaBancaria: idConta,
+        itens,
+        dataProcesso: modo?.dataFixa || dataInicio,
+      });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
@@ -596,6 +609,7 @@ export default function DiarioFinanceiroPage() {
   };
 
   const abrirFormaPagamento = () => {
+    if (!editavel) return;
     const escolhidas = dedupeReprogramar(
       linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
     );
@@ -633,7 +647,11 @@ export default function DiarioFinanceiroPage() {
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await definirFormaPagamentoDiario({ idFormaPagamento: idForma, itens });
+      const res = await definirFormaPagamentoDiario({
+        idFormaPagamento: idForma,
+        itens,
+        dataProcesso: modo?.dataFixa || dataInicio,
+      });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
@@ -673,7 +691,11 @@ export default function DiarioFinanceiroPage() {
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await reprogramarDiarioContasPagar({ dataVencimento: novaData, itens });
+      const res = await reprogramarDiarioContasPagar({
+        dataVencimento: novaData,
+        itens,
+        dataProcesso: modo?.dataFixa || dataInicio,
+      });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         partes.push(`${res.atualizados.toLocaleString('pt-BR')} vencimento(s) atualizado(s) para ${formatData(res.dataVencimento)}.`);
@@ -715,7 +737,7 @@ export default function DiarioFinanceiroPage() {
     setErro(null);
     try {
       const matriz = await lerPlanilhaAnotacoes(arquivo);
-      const res = await importarAnotacoesDiario(matriz);
+      const res = await importarAnotacoesDiario(matriz, modo?.dataFixa || dataInicio);
       const partes = [`${res.gravados} observação(ões) gravada(s).`];
       if (res.semCorrespondencia > 0) partes.push(`${res.semCorrespondencia} sem conta correspondente.`);
       if (res.ambiguos > 0) partes.push(`${res.ambiguos} com mais de uma conta possível.`);
@@ -762,7 +784,14 @@ export default function DiarioFinanceiroPage() {
     <div className="flex flex-col gap-3 min-h-0">
       <div className="card-panel shrink-0 overflow-visible">
         <div className="px-4 pt-3 flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Diário Financeiro</h1>
+          {modo ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Vencimento {modo.dataFixa.split('-').reverse().join('/')}
+              {editavel ? '' : ' · alterações bloqueadas'}
+            </p>
+          ) : (
+            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Diário Financeiro</h1>
+          )}
         </div>
         <div className="px-4 flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700">
           <button
@@ -782,7 +811,7 @@ export default function DiarioFinanceiroPage() {
             <button
               type="button"
               onClick={() => arquivoAnotacaoRef.current?.click()}
-              disabled={loading || importando}
+              disabled={loading || importando || !editavel}
               className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
               {importando ? 'Importando…' : 'Importar observações'}
@@ -806,7 +835,7 @@ export default function DiarioFinanceiroPage() {
             <button
               type="button"
               onClick={abrirReprogramar}
-              disabled={selecionadas.size === 0}
+              disabled={!editavel || selecionadas.size === 0}
               className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >
               Reprogramar
@@ -814,7 +843,7 @@ export default function DiarioFinanceiroPage() {
             <button
               type="button"
               onClick={abrirContaBancaria}
-              disabled={selecionadas.size === 0 || salvando}
+              disabled={!editavel || selecionadas.size === 0 || salvando}
               className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
             >
               Conta bancária
@@ -822,7 +851,7 @@ export default function DiarioFinanceiroPage() {
             <button
               type="button"
               onClick={abrirFormaPagamento}
-              disabled={selecionadas.size === 0 || salvando}
+              disabled={!editavel || selecionadas.size === 0 || salvando}
               className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
             >
               Forma de pagamento
@@ -870,7 +899,7 @@ export default function DiarioFinanceiroPage() {
                     key={a.id}
                     type="button"
                     onClick={() => aplicarAtalho(a.id)}
-                    disabled={loading}
+                    disabled={loading || periodoTravado}
                     className={`inline-flex h-8 items-center px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
                       i > 0 ? 'border-l border-slate-300 dark:border-slate-600' : ''
                     } ${
@@ -894,7 +923,7 @@ export default function DiarioFinanceiroPage() {
                   setDataInicio(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading}
+                disabled={loading || periodoTravado}
               />
             </div>
             <div className="w-[9.25rem]">
@@ -907,7 +936,7 @@ export default function DiarioFinanceiroPage() {
                   setDataFim(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading}
+                disabled={loading || periodoTravado}
               />
             </div>
             <FiltroMulti
@@ -1012,7 +1041,13 @@ export default function DiarioFinanceiroPage() {
       <div
         ref={grade.tableScrollRef}
         className={`card-panel min-h-0 overflow-auto !p-0 ${
-          faixaFiltrosVisivel ? 'max-h-[calc(100svh-18.5rem)]' : 'max-h-[calc(100svh-14rem)]'
+          modo
+            ? faixaFiltrosVisivel
+              ? 'max-h-[calc(92vh-22rem)]'
+              : 'max-h-[calc(92vh-16rem)]'
+            : faixaFiltrosVisivel
+              ? 'max-h-[calc(100svh-18.5rem)]'
+              : 'max-h-[calc(100svh-14rem)]'
         }`}
       >
         <table className="min-w-[1100px] w-full text-xs">
@@ -1113,6 +1148,8 @@ export default function DiarioFinanceiroPage() {
                 <td className="px-1 py-1">
                   <DiarioAnotacaoCelula
                     linha={l}
+                    dataProcesso={modo?.dataFixa || dataInicio}
+                    somenteLeitura={!editavel}
                     onGravada={(texto) => {
                       setLinhas((prev) =>
                         prev.map((item) =>

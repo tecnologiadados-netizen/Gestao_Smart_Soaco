@@ -75,6 +75,7 @@ export const PERMISSOES = {
   FINANCEIRO_CRM_PENDENCIAS_DESTINATARIOS_EDITAR: 'financeiro.crm.pendencias.destinatarios.editar',
   FINANCEIRO_CARTEIRA_FINANCEIRA_VER: 'financeiro.carteira_financeira.ver',
   FINANCEIRO_DIARIO_VER: 'financeiro.diario.ver',
+  FINANCEIRO_DIARIO_APROVAR: 'financeiro.diario.aprovar',
 
   // Logística / Cubagem
   LOGISTICA_VER: 'logistica.ver',

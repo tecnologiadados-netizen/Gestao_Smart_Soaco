@@ -92,6 +92,7 @@ export interface ReprogramarContasPagarResponse {
 
 export async function reprogramarDiarioContasPagar(params: {
   dataVencimento: string;
+  dataProcesso: string;
   itens: ReprogramarContasPagarItem[];
 }): Promise<ReprogramarContasPagarResponse> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/reprogramar', {
@@ -133,6 +134,7 @@ export interface DefinirContaBancariaResponse {
 
 export async function definirContaBancariaDiario(params: {
   idContaBancaria: number;
+  dataProcesso: string;
   itens: ReprogramarContasPagarItem[];
 }): Promise<DefinirContaBancariaResponse> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/conta-bancaria', {
@@ -172,6 +174,7 @@ export interface DefinirFormaPagamentoResponse {
 
 export async function definirFormaPagamentoDiario(params: {
   idFormaPagamento: string;
+  dataProcesso: string;
   itens: ReprogramarContasPagarItem[];
 }): Promise<DefinirFormaPagamentoResponse> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/forma-pagamento', {
@@ -191,6 +194,7 @@ export async function salvarAnotacaoDiario(params: {
   origem: 'Nomus' | 'Shop9';
   codigo: number;
   texto: string;
+  dataProcesso: string;
 }): Promise<string | null> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacao', {
     method: 'POST',
@@ -211,10 +215,13 @@ export interface ImportacaoAnotacaoResultado {
   error?: string;
 }
 
-export async function importarAnotacoesDiario(matriz: string[][]): Promise<ImportacaoAnotacaoResultado> {
+export async function importarAnotacoesDiario(
+  matriz: string[][],
+  dataProcesso: string,
+): Promise<ImportacaoAnotacaoResultado> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacoes/importar', {
     method: 'POST',
-    body: { matriz },
+    body: { matriz, dataProcesso },
   });
   const body = (await res.json().catch(() => ({}))) as ImportacaoAnotacaoResultado;
   if (!res.ok) throw new Error(body.error || `Erro ao importar observações (${res.status})`);
@@ -225,4 +232,78 @@ export async function importarAnotacoesDiario(matriz: string[][]): Promise<Impor
     ambiguos: Number(body.ambiguos) || 0,
     amostrasSem: Array.isArray(body.amostrasSem) ? body.amostrasSem : [],
   };
+}
+
+export type StatusProcessoDiario = 'rascunho' | 'em_aprovacao' | 'aprovado' | 'em_correcao';
+
+export interface DiarioProcesso {
+  id: number;
+  codigo: number;
+  dataVencimento: string;
+  descricao: string;
+  usuario: string;
+  status: StatusProcessoDiario;
+  motivoDevolucao: string | null;
+  aprovadoPor: string | null;
+  aprovadoEm: string | null;
+  enviadoEm: string | null;
+  editavel: boolean;
+}
+
+async function lerErro(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  return body.error || fallback;
+}
+
+export async function listarProcessosDiario(): Promise<DiarioProcesso[]> {
+  const res = await apiFetch('/api/financeiro/diario/processos');
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao listar processos (${res.status})`));
+  const body = (await res.json()) as { processos?: DiarioProcesso[] };
+  return Array.isArray(body.processos) ? body.processos : [];
+}
+
+export async function iniciarProcessoDiario(params: {
+  dataVencimento: string;
+  descricao: string;
+}): Promise<{ processo: DiarioProcesso; existente: boolean }> {
+  const res = await apiFetch('/api/financeiro/diario/processos', { method: 'POST', body: params });
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao iniciar o contas a pagar (${res.status})`));
+  return (await res.json()) as { processo: DiarioProcesso; existente: boolean };
+}
+
+export async function atualizarDescricaoProcessoDiario(id: number, descricao: string): Promise<DiarioProcesso> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}`, {
+    method: 'PATCH',
+    body: { descricao },
+  });
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao gravar a descrição (${res.status})`));
+  const body = (await res.json()) as { processo: DiarioProcesso };
+  return body.processo;
+}
+
+export async function enviarProcessoDiario(id: number): Promise<DiarioProcesso> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}/enviar`, { method: 'POST', body: {} });
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao enviar para aprovação (${res.status})`));
+  const body = (await res.json()) as { processo: DiarioProcesso };
+  return body.processo;
+}
+
+export async function aprovarProcessoDiario(id: number, senha: string): Promise<DiarioProcesso> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}/aprovar`, {
+    method: 'POST',
+    body: { senha },
+  });
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao aprovar (${res.status})`));
+  const body = (await res.json()) as { processo: DiarioProcesso };
+  return body.processo;
+}
+
+export async function devolverProcessoDiario(id: number, motivo: string): Promise<DiarioProcesso> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}/devolver`, {
+    method: 'POST',
+    body: { motivo },
+  });
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao devolver para correção (${res.status})`));
+  const body = (await res.json()) as { processo: DiarioProcesso };
+  return body.processo;
 }
