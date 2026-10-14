@@ -492,6 +492,9 @@ export async function cancelarConferencia(params: {
     where: { idDocumentoEstoque: params.idDocumentoEstoque },
   });
   const statusAtual = existente ? asStatus(existente.status) : null;
+  if (!existente?.conferenteUsuarioId || statusAtual === RECEBIMENTO_STATUS.AGUARDANDO_CONFERENTE) {
+    throw new Error('Cancele somente depois de deliberar um conferente.');
+  }
   if (statusAtual === RECEBIMENTO_STATUS.FINALIZADO || statusAtual === RECEBIMENTO_STATUS.CANCELADO) {
     throw new Error('Esta conferência não pode ser cancelada.');
   }

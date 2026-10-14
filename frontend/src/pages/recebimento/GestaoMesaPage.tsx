@@ -1153,7 +1153,7 @@ export default function GestaoMesaPage() {
                       {mesaAcaoOk}
                     </p>
                   )}
-                  {modalDoc.status !== 'FINALIZADO' && (
+                  {modalDoc.conferenteUsuarioId != null && modalDoc.status !== 'FINALIZADO' && (
                     <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-600">
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
                         Cancelar conferência

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Navigate } from 'react-router-dom';
-import { CheckCircle2, Eye, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, Printer, RefreshCw, XCircle } from 'lucide-react';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import LoaderCirculo from '../../components/LoaderCirculo';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
@@ -15,6 +15,7 @@ import {
   podeVerHistoricoDigitacaoConferencia,
 } from '../../utils/recebimentoPermissoes';
 import DigitacaoConferenciaHistorico from './DigitacaoConferenciaHistorico';
+import { imprimirItensConferencia } from './imprimirItensConferencia';
 import {
   fetchRecebimentoDigitacaoDocumento,
   fetchRecebimentoDigitacaoPendencias,
@@ -207,6 +208,27 @@ export default function DigitacaoConferenciaPage() {
     const ids = pendentesIds ? pendentesIds.split(',').map(Number) : [];
     if (!ids.includes(Number(idItem))) setIdItem(ids[0] ?? '');
   }, [pendentesIds, idItem]);
+
+  const imprimirItens = async () => {
+    if (!modalDoc || produtos.length === 0) return;
+    setDetalheErro(null);
+    try {
+      const resultado = await imprimirItensConferencia({
+        numeroDocumento: modalDoc.numeroDocumentoFiscal ?? String(modalDoc.idDocumento),
+        numeroNfe: modalDoc.numeroNfe,
+        fornecedor: modalDoc.nomeParceiro,
+        itens: produtos.map((item) => ({
+          codigo: item.codigoProduto ?? '',
+          descricao: item.descricaoProduto ?? '',
+        })),
+      });
+      if (resultado === 'baixado') {
+        setDetalheErro('O navegador bloqueou a janela. O PDF foi baixado para você imprimir.');
+      }
+    } catch (e) {
+      setDetalheErro(e instanceof Error ? e.message : 'Não foi possível imprimir os itens.');
+    }
+  };
 
   const abrirDetalhe = async (doc: RecebimentoPendenciaConferente) => {
     setModalDoc(doc);
@@ -550,9 +572,20 @@ export default function DigitacaoConferenciaPage() {
                   </p>
                   <div className="mt-2">{badgeStatus(modalDoc.status, modalDoc.statusLabel)}</div>
                 </div>
-                <button type="button" className={btnSecondary} onClick={() => setModalDoc(null)}>
-                  Fechar
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    disabled={!itensCarregados || produtos.length === 0}
+                    onClick={() => void imprimirItens()}
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimir itens
+                  </button>
+                  <button type="button" className={btnSecondary} onClick={() => setModalDoc(null)}>
+                    Fechar
+                  </button>
+                </div>
               </div>
 
               <div className="relative min-h-[10rem] flex-1 overflow-auto p-4">
