@@ -1,6 +1,7 @@
 ﻿import { memo, type ReactNode } from "react";
 import { Eye, MessageSquareMore, Pencil } from "lucide-react";
 import { cn } from "@rh/lib/utils";
+import { desligamentoPorFalecimento } from "@rh/lib/dashboard-from-organico";
 import { ORGANICO_IDX, organicoRowToColaborador, getStatusFromRow, parseCtpsToNumber } from "./organico-derive";
 import { useOrganicoCardFoto } from "./useOrganicoCardFoto";
 import { formatCurrencyBRLDisplay, formatDateBRDisplay } from "./organico-display";
@@ -48,8 +49,10 @@ export const OrganicoCard = memo(function OrganicoCard({
   motivoSecullum,
   complementoDesligamento,
   pendenciaSecullum = false,
+  motivoDetalhadoSensivel = false,
   fotoCadastrada = false,
   fotoApiHabilitada = false,
+  fotoImediata = false,
   hasComments = false,
   showCustoTotal = false,
   custoRevealed = false,
@@ -68,10 +71,14 @@ export const OrganicoCard = memo(function OrganicoCard({
   complementoDesligamento?: string;
   /** Pendência de justificativa Secullum (CTPS/cargo) — exibe indicador no card. */
   pendenciaSecullum?: boolean;
+  /** Motivo detalhado do desligamento marcado como sensível. Não revela o texto. */
+  motivoDetalhadoSensivel?: boolean;
   /** Há linha em `organico_fotos` para esta matrícula (resumo leve). */
   fotoCadastrada?: boolean;
   /** Pode chamar API de foto (permissão + URL configurada). */
   fotoApiHabilitada?: boolean;
+  /** Modal: busca a foto assim que o card aparece, sem esperar a rolagem. */
+  fotoImediata?: boolean;
   hasComments?: boolean;
   showCustoTotal?: boolean;
   custoRevealed?: boolean;
@@ -88,6 +95,7 @@ export const OrganicoCard = memo(function OrganicoCard({
     nome: nomeColaborador,
     fotoDisponivel: fotoCadastrada,
     podeBuscar: fotoApiHabilitada,
+    imediata: fotoImediata,
   });
   const emp = organicoRowToColaborador({
     id: matricula,
@@ -98,6 +106,25 @@ export const OrganicoCard = memo(function OrganicoCard({
   const isDesligado = status === "Desligado";
   const motivoSecullumLabel = motivoSecullum?.trim() || "—";
   const complementoLabel = complementoDesligamento?.trim() || "—";
+  const bolinhaMotivoSensivel = (
+    <span
+      className="relative flex h-2.5 w-2.5 shrink-0"
+      title="Motivo detalhado sensível"
+      role="status"
+      aria-label="Há um motivo detalhado sensível neste desligamento"
+    >
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+    </span>
+  );
+  const alertaMotivoSensivel = motivoDetalhadoSensivel ? (
+    <span className="absolute right-2 top-2 z-[2]">{bolinhaMotivoSensivel}</span>
+  ) : null;
+  const avisoFalecimento = desligamentoPorFalecimento(motivoSecullum) ? (
+    <p className="mt-2 rounded-md border border-amber-300/70 bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-950 dark:border-amber-400/30 dark:bg-amber-950/40 dark:text-amber-100">
+      Desligamento por falecimento. Não contabilizado no indicador de turnover.
+    </p>
+  ) : null;
 
   if (!emp) return null;
 
@@ -205,8 +232,9 @@ export const OrganicoCard = memo(function OrganicoCard({
     return (
       <div
         ref={rootRef}
-        className="border border-border bg-card rounded-md px-3 py-2.5 shadow-sm hover:shadow transition-shadow flex items-center gap-3"
+        className="relative border border-border bg-card rounded-md px-3 py-2.5 shadow-sm hover:shadow transition-shadow flex items-center gap-3"
       >
+        {alertaMotivoSensivel}
         {interactiveWrap(
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {renderAvatar("w-11 h-11 rounded-lg", "text-xs")}
@@ -225,6 +253,7 @@ export const OrganicoCard = memo(function OrganicoCard({
                   <span className="text-muted-foreground"> · Complemento:</span> {complementoLabel}
                 </p>
               ) : null}
+              {avisoFalecimento}
             </div>
           </div>,
           "flex-1"
@@ -239,8 +268,9 @@ export const OrganicoCard = memo(function OrganicoCard({
     return (
       <div
         ref={rootRef}
-        className="border border-border bg-card rounded-sm px-2 py-2 sm:px-3 shadow-sm hover:shadow transition-shadow flex items-start sm:items-center gap-2"
+        className="relative border border-border bg-card rounded-sm px-2 py-2 sm:px-3 shadow-sm hover:shadow transition-shadow flex items-start sm:items-center gap-2"
       >
+        {alertaMotivoSensivel}
         {interactiveWrap(
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1 min-w-0 w-full">
             <div className="flex items-center gap-2 shrink-0">
@@ -292,6 +322,7 @@ export const OrganicoCard = memo(function OrganicoCard({
                   </div>
                 </>
               ) : null}
+              {avisoFalecimento ? <div className="col-span-full">{avisoFalecimento}</div> : null}
               <div className="flex items-end lg:col-span-1">
                 <StatusBadge status={status} size="sm" />
               </div>
@@ -418,12 +449,16 @@ export const OrganicoCard = memo(function OrganicoCard({
               <span className={g.label}>Complemento</span>
               <span className={cn(g.value, "whitespace-normal")}>{complementoLabel}</span>
             </div>
+            {motivoDetalhadoSensivel ? (
+              <div className="flex items-end justify-end pb-1 sm:col-start-3">{bolinhaMotivoSensivel}</div>
+            ) : null}
           </>
         ) : null}
       </div>
       <div className="mt-2">
         <StatusBadge status={status} size={g.badgeSize} />
       </div>
+      {avisoFalecimento}
     </>
   );
 

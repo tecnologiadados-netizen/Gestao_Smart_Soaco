@@ -1,8 +1,10 @@
 /**
  * Deriva indicadores do Dashboard a partir das linhas do Orgânico (planilha/API).
  *
- * - Critério “ativo”: nome preenchido e status ≠ desligado (inclui Ativo, Férias, Afastado).
- * - Custo Folha Mensal: soma da coluna CTPS somente para ativos (folha em exercício).
+ * - Critério “ativo” no fechamento de hoje: nome preenchido e status ≠ desligado
+ *   (Ativo, Férias, Afastado), inclusive quem já está no cadastro com admissão futura.
+ * - Nos meses anteriores, admissão depois do fechamento daquele mês fica de fora.
+ * - Custo Folha Mensal: soma da CTPS dos ativos, ou do custo total geral do mês quando essa base está ligada.
  * - Total colaboradores / setores / gráficos: mesma base de ativos.
  * - Novas admissões: ativos admitidos no mês civil corrente.
  */
@@ -80,6 +82,8 @@ export interface DashboardExecutivoContexto {
   hoje?: Date;
   /** Salário vigente na data. Sem isso, usa a CTPS atual da linha. */
   salarioNaData?: (matricula: string, asOf: Date, ctpsAtual: number) => number;
+  /** CTPS é a base padrão. Custo total geral usa a coluna do mês no fechamento de hoje. */
+  baseCusto?: "ctps" | "custoTotal";
 }
 
 export interface DashboardFromOrganico {
@@ -104,8 +108,19 @@ export interface DashboardFromOrganico {
 export interface TurnoverPersonLike {
   admissao?: string;
   demissao?: string;
+  /** Motivo pai da Secullum. Falecimento fica fora do cálculo do turnover. */
+  motivoDemissao?: string;
   /** Setor atual (orgânico ou Secullum) — usado para filtrar a série de turnover. */
   setor?: string;
+}
+
+/** Rescisão por falecimento: o card permanece, o mês do indicador não usa essa saída. */
+export function desligamentoPorFalecimento(motivo: string | null | undefined): boolean {
+  const texto = String(motivo ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase();
+  return texto.includes("FALEC");
 }
 
 /** Mesma normalização do Top Setores (trim ou "Sem setor"). */
@@ -252,6 +267,7 @@ function buildTurnoverSeriesFromPeople(
       adm: parseDateBR(String(p.admissao ?? "").trim()),
       dem: parseDateBR(String(p.demissao ?? "").trim()),
       incluirDemissao: true,
+      foraDoIndicador: desligamentoPorFalecimento(p.motivoDemissao),
     }));
     for (let index = 0; index < cards.length; index += 1) {
       const demissao = cards[index].dem;
@@ -263,18 +279,27 @@ function buildTurnoverSeriesFromPeople(
     let admissoesMes = 0;
     let demissoesMes = 0;
 
-    for (const { adm, dem, incluirDemissao: considerarDemissao } of cards) {
+    for (const { adm, dem, incluirDemissao: considerarDemissao, foraDoIndicador } of cards) {
       if (adm && adm >= janela.start && adm <= janela.end) {
         admissoesMes += 1;
       }
-      if (considerarDemissao && dem && dem >= janela.start && dem <= janela.end) {
+      if (!foraDoIndicador && considerarDemissao && dem && dem >= janela.start && dem <= janela.end) {
         demissoesMes += 1;
       }
     }
 
+    const cardsMedia = cards.map((card) => {
+      if (!card.foraDoIndicador || !card.dem) return card;
+      if (card.dem < janela.start || card.dem > janela.end) return card;
+      return {
+        ...card,
+        dem: new Date(janela.end.getFullYear(), janela.end.getMonth(), janela.end.getDate() + 1),
+      };
+    });
+
     const mediaAtivos = range
-      ? computeMediaAtivosEntre(cards, janela.start, janela.end)
-      : computeMediaAtivosFromCards(cards, year, month);
+      ? computeMediaAtivosEntre(cardsMedia, janela.start, janela.end)
+      : computeMediaAtivosFromCards(cardsMedia, year, month);
 
     const picoInicio = janela.start.getDate();
     const picoFim = janela.end.getDate();
@@ -375,8 +400,10 @@ export function buildDashboardFromOrganico(
 
   const asOf = ctx ? ctx.fim : new Date();
   const salarioNaData = ctx?.salarioNaData;
+  const hojeRef = inicioDoDia(ctx?.hoje ?? new Date());
+  const quadroDoMomento = (data: Date) => inicioDoDia(data).getTime() === hojeRef.getTime();
 
-  const rowAtivo = (row: unknown[]): boolean => {
+  const rowAtivoNaData = (row: unknown[], data: Date): boolean => {
     if (!ctx) return !isDesligadoOrganico(row);
     const dem = demissaoDateFor(row, demissaoByMatricula);
     return colaboradorAtivoNaData(
@@ -385,12 +412,40 @@ export function buildDashboardFromOrganico(
         demissao: dem,
         statusDesligado: isDesligadoOrganico(row),
       },
-      asOf,
+      data,
+      { contarAdmissaoFutura: quadroDoMomento(data) },
     );
+  };
+
+  const rowAtivo = (row: unknown[]): boolean => rowAtivoNaData(row, asOf);
+
+  const custoTotalPorLinha = new Map<unknown[], number>();
+  const custoTotalDaLinha = (row: unknown[]): number => {
+    const guardado = custoTotalPorLinha.get(row);
+    if (guardado != null) return guardado;
+    const direto = parseCtpsToNumber(row[ORGANICO_IDX.CUSTO_TOTAL_GERAL_MES]);
+    if (direto > 0) {
+      custoTotalPorLinha.set(row, direto);
+      return direto;
+    }
+    const arr = [...row] as OrganicoSheetRow;
+    while (arr.length < ORGANICO_NUM_COLUNAS) arr.push("");
+    calcularFormulasRow(arr);
+    const calculado = parseCtpsToNumber(arr[ORGANICO_IDX.CUSTO_TOTAL_GERAL_MES]);
+    custoTotalPorLinha.set(row, calculado);
+    return calculado;
   };
 
   const salarioDaLinha = (row: unknown[], ref: Date): number => {
     const ctps = parseCtpsToNumber(row[ORGANICO_IDX.CTPS]);
+    if (ctx?.baseCusto === "custoTotal") {
+      const atual = custoTotalDaLinha(row);
+      if (!salarioNaData) return atual;
+      if (inicioDoDia(ref).getTime() >= hojeRef.getTime()) return atual;
+      const naData = salarioNaData(strCell(row, ORGANICO_IDX.MATRICULA), ref, ctps);
+      if (ctps > 0 && naData > 0) return Math.round(atual * (naData / ctps) * 100) / 100;
+      return atual;
+    }
     if (!salarioNaData) return ctps;
     return salarioNaData(strCell(row, ORGANICO_IDX.MATRICULA), ref, ctps);
   };
@@ -458,6 +513,7 @@ export function buildDashboardFromOrganico(
             statusDesligado: isDesligadoOrganico(row),
           },
           janela.end,
+          { contarAdmissaoFutura: quadroDoMomento(janela.end) },
         );
         if (!ativo) continue;
         ativos += 1;

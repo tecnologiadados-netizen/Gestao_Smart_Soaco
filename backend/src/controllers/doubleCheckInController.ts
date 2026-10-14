@@ -50,6 +50,8 @@ import {
 } from '../data/doubleCheckInLocalRepository.js';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
 import { registrarDivergenciasApontadas } from '../data/doubleCheckInDivergenciaApontada.js';
+import { carregarHistoricoDoubleCheck } from '../data/doubleCheckInHistorico.js';
+import { carregarRetratoPrimeiraLeitura } from '../data/doubleCheckInDivergenciaApontada.js';
 import {
   montarMensagemConferenciaWhatsApp,
   montarRelatoConferencia,
@@ -1157,4 +1159,43 @@ export async function postDoubleCheckInSincronizar(req: Request, res: Response):
     candidatosPendentes: Math.max(0, elegiveis.length - MAX_ANALISE),
     errosAlerta: errosAlerta.length > 0 ? errosAlerta.slice(0, 10) : undefined,
   });
+}
+
+/** GET /api/compras/double-checkin/notas/:idDocumento/historico */
+export async function getDoubleCheckInHistorico(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.idDocumento));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  const resultado = await carregarHistoricoDoubleCheck(idDocumento);
+  if (resultado.erro) {
+    res.status(503).json({ error: resultado.erro });
+    return;
+  }
+  if (!resultado.data) {
+    res.status(404).json({ error: 'Documento não encontrado.' });
+    return;
+  }
+  res.json(resultado.data);
+}
+
+/** GET /api/compras/double-checkin/notas/:idDocumento/historico/leitura */
+export async function getDoubleCheckInHistoricoLeitura(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.idDocumento));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  try {
+    const resultado = await carregarRetratoPrimeiraLeitura(idDocumento);
+    if (resultado.erro && resultado.linhas.length === 0) {
+      res.status(503).json({ error: resultado.erro });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
 }

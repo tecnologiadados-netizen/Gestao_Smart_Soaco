@@ -1,7 +1,17 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
-import { gerarCodigoPai, normalizarGrupo, normalizarPaiCadastro } from '../pcp/decomposicao/cadastro.js';
-import { vendaDoCodigo, somarCarteiraPorCodigo, type VendaCarteira } from '../pcp/decomposicao/carteiraNomus.js';
+import {
+  gerarCodigoPai,
+  normalizarGrupo,
+  normalizarPaiCadastro,
+  type PaiCadastro,
+} from '../pcp/decomposicao/cadastro.js';
+import {
+  listarAlocacoesCarteira,
+  somarCarteiraPorCodigo,
+  vendaDoCodigo,
+  type VendaCarteira,
+} from '../pcp/decomposicao/carteiraNomus.js';
 import { resumirSugestao } from '../pcp/decomposicao/sugestao.js';
 
 export type FilhoGrade = {
@@ -21,6 +31,7 @@ export type PaiGrade = {
   nome: string;
   observacao: string | null;
   qtdFilhos: number;
+  qtdPecas: number;
   qtdePedida: number | null;
   pendente: number | null;
   sugestao: number | null;
@@ -53,7 +64,32 @@ type PaiComFilhos = {
     materiaPrimaDescricao: string | null;
     sortOrder: number;
   }[];
+  pecas: {
+    id: number;
+    descricao: string;
+    quantidade: number;
+    medidaL: string;
+    medidaA: string;
+    materiaPrima: string;
+    sortOrder: number;
+  }[];
 };
+
+const includePai = {
+  filhos: { orderBy: { sortOrder: 'asc' as const } },
+  pecas: { orderBy: { sortOrder: 'asc' as const } },
+};
+
+function criarPecas(pecas: PaiCadastro['pecas']) {
+  return pecas.map((peca, index) => ({
+    descricao: peca.descricao,
+    quantidade: peca.quantidade,
+    medidaL: peca.medidaL,
+    medidaA: peca.medidaA,
+    materiaPrima: peca.materiaPrima,
+    sortOrder: index,
+  }));
+}
 
 function resumir(
   filhos: { quantidade: number; codigoNomus: string }[],
@@ -92,7 +128,10 @@ export async function listarGradeDecomposicao(): Promise<{
   pais: PaiGrade[];
 }> {
   const pais = await prisma.decomposicaoProdutoPai.findMany({
-    include: { filhos: { orderBy: { sortOrder: 'asc' } } },
+    include: {
+      filhos: { orderBy: { sortOrder: 'asc' } },
+      _count: { select: { pecas: true } },
+    },
     orderBy: { nome: 'asc' },
   });
   const codigos = pais.flatMap((pai) => pai.filhos.map((f) => f.codigoNomus));
@@ -110,6 +149,7 @@ export async function listarGradeDecomposicao(): Promise<{
         nome: pai.nome,
         observacao: pai.observacao,
         qtdFilhos: pai.filhos.length,
+        qtdPecas: pai._count.pecas,
         qtdePedida: resumo ? resumo.qtdePedida : null,
         pendente: resumo ? resumo.pendente : null,
         sugestao: resumo ? resumo.sugestao : null,
@@ -214,8 +254,9 @@ export async function criarProdutoPai(body: unknown, login: string | null): Prom
               sortOrder: index,
             })),
           },
+          pecas: { create: criarPecas(cadastro.pecas) },
         },
-        include: { filhos: { orderBy: { sortOrder: 'asc' } } },
+        include: includePai,
       });
       return pai;
     });
@@ -236,6 +277,7 @@ export async function atualizarProdutoPai(id: number, body: unknown): Promise<Pa
   }
   return prisma.$transaction(async (tx) => {
     await tx.decomposicaoProdutoFilho.deleteMany({ where: { paiId: id } });
+    await tx.decomposicaoPeca.deleteMany({ where: { paiId: id } });
     return tx.decomposicaoProdutoPai.update({
       where: { id },
       data: {
@@ -253,8 +295,9 @@ export async function atualizarProdutoPai(id: number, body: unknown): Promise<Pa
             sortOrder: index,
           })),
         },
+        pecas: { create: criarPecas(cadastro.pecas) },
       },
-      include: { filhos: { orderBy: { sortOrder: 'asc' } } },
+      include: includePai,
     });
   });
 }
@@ -269,18 +312,21 @@ export async function excluirProdutoPai(id: number): Promise<boolean> {
 export async function obterProdutoPai(id: number): Promise<PaiComFilhos | null> {
   return prisma.decomposicaoProdutoPai.findUnique({
     where: { id },
-    include: { filhos: { orderBy: { sortOrder: 'asc' } } },
+    include: includePai,
   });
 }
 
 export async function listarCadastrosDecomposicao(): Promise<PaiComFilhos[]> {
   return prisma.decomposicaoProdutoPai.findMany({
-    include: { filhos: { orderBy: { sortOrder: 'asc' } } },
+    include: includePai,
     orderBy: { nome: 'asc' },
   });
 }
 
-const includeOrdem = { itens: { orderBy: { sortOrder: 'asc' as const } } };
+const includeOrdem = {
+  itens: { orderBy: { sortOrder: 'asc' as const } },
+  pecas: { orderBy: { sortOrder: 'asc' as const } },
+};
 
 export async function listarOrdensDecomposicao() {
   return prisma.decomposicaoOrdem.findMany({
@@ -308,7 +354,9 @@ export async function emitirOrdemDecomposicao(body: unknown, login: string | nul
 
   const pai = await obterProdutoPai(paiId);
   if (!pai) throw new Error('Produto pai não encontrado.');
-  if (pai.filhos.length === 0) throw new Error('Vincule pelo menos um filho antes de gerar a ordem.');
+  if (pai.filhos.length === 0 && pai.pecas.length === 0) {
+    throw new Error('Cadastre ao menos uma peça ou um produto filho antes de gerar a ordem.');
+  }
 
   const carteira = await somarCarteiraPorCodigo(pai.filhos.map((filho) => filho.codigoNomus));
   const vendas = carteira.disponivel ? carteira.vendas : null;
@@ -339,7 +387,60 @@ export async function emitirOrdemDecomposicao(body: unknown, login: string | nul
           };
         }),
       },
+      pecas: {
+        create: pai.pecas.map((peca, index) => ({
+          descricao: peca.descricao,
+          quantidadeNoPai: peca.quantidade,
+          quantidadeTotal: peca.quantidade * quantidade,
+          medidaL: peca.medidaL,
+          medidaA: peca.medidaA,
+          materiaPrima: peca.materiaPrima,
+          sortOrder: index,
+        })),
+      },
     },
     include: includeOrdem,
   });
+}
+
+export async function listarAlocacoesDaOrdem(ordemId: number) {
+  const ordem = await prisma.decomposicaoOrdem.findUnique({
+    where: { id: ordemId },
+    include: { itens: true, pai: { include: { filhos: true } } },
+  });
+  if (!ordem) return null;
+  const codigos =
+    ordem.pai && ordem.pai.filhos.length > 0
+      ? ordem.pai.filhos.map((filho) => filho.codigoNomus)
+      : ordem.itens.map((item) => item.codigoNomus);
+  return listarAlocacoesCarteira(codigos);
+}
+
+export async function atualizarQuantidadeOrdem(ordemId: number, quantidade: number) {
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error('Informe a quantidade a produzir.');
+  }
+  const ordem = await obterOrdemDecomposicao(ordemId);
+  if (!ordem) throw new Error('Ordem não encontrada.');
+
+  await prisma.$transaction([
+    prisma.decomposicaoOrdem.update({
+      where: { id: ordemId },
+      data: { quantidade },
+    }),
+    ...ordem.pecas.map((peca) =>
+      prisma.decomposicaoOrdemPeca.update({
+        where: { id: peca.id },
+        data: { quantidadeTotal: peca.quantidadeNoPai * quantidade },
+      })
+    ),
+    ...ordem.itens.map((item) =>
+      prisma.decomposicaoOrdemItem.update({
+        where: { id: item.id },
+        data: { quantidadeTotal: item.quantidadeNoPai * quantidade },
+      })
+    ),
+  ]);
+
+  return obterOrdemDecomposicao(ordemId);
 }

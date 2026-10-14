@@ -12,11 +12,18 @@ import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../../
 import {
   detalharDecomposicao,
   emitirOrdemProducao,
+  listarCadastrosDecomposicao,
   listarDecomposicao,
   listarOrdensProducao,
   listarSetoresProducao,
+  obterDecomposicaoPai,
+  salvarDecomposicaoPai,
+  type DecomposicaoCadastroResumo,
   type DecomposicaoDetalhe,
+  type DecomposicaoFilhoCadastro,
+  type DecomposicaoPaiCadastro,
   type DecomposicaoPaiGrade,
+  type DecomposicaoPecaCadastro,
   type OrdemProducao,
   type SetorProducao,
 } from '../../../api/decomposicao';
@@ -24,6 +31,7 @@ import DecomposicaoAjudaModal from './DecomposicaoAjudaModal';
 import ModalCadastrosDecomposicao from './ModalCadastrosDecomposicao';
 import ModalDetalheDecomposicao from './ModalDetalheDecomposicao';
 import ModalGerarOrdem from './ModalGerarOrdem';
+import ModalProdutoPai from './ModalProdutoPai';
 import ModalVerOrdem from './ModalVerOrdem';
 import { imprimirOrdemProducao } from './imprimirOrdemProducao';
 
@@ -37,11 +45,12 @@ const COLUNAS_PAI = [
   { id: 'setor', label: 'Setor' },
   { id: 'nome', label: 'Produto pai' },
   { id: 'filhos', label: 'Filhos' },
+  { id: 'pecas', label: 'Peças' },
   { id: 'quantidade', label: 'Quantidade do pai' },
 ] as const;
 
 const COLUNAS_PAI_IDS = COLUNAS_PAI.map((coluna) => coluna.id);
-const COLUNAS_PAI_NUMERICAS = new Set<string>(['filhos', 'quantidade']);
+const COLUNAS_PAI_NUMERICAS = new Set<string>(['filhos', 'pecas', 'quantidade']);
 
 function textoCelulaPai(pai: DecomposicaoPaiGrade, columnId: string): string {
   switch (columnId) {
@@ -53,6 +62,8 @@ function textoCelulaPai(pai: DecomposicaoPaiGrade, columnId: string): string {
       return pai.nome;
     case 'filhos':
       return String(pai.qtdFilhos);
+    case 'pecas':
+      return String(pai.qtdPecas);
     case 'quantidade':
       return fmt(pai.sugestao);
     default:
@@ -62,6 +73,7 @@ function textoCelulaPai(pai: DecomposicaoPaiGrade, columnId: string): string {
 
 function valorOrdenacaoPai(pai: DecomposicaoPaiGrade, columnId: string): string | number {
   if (columnId === 'filhos') return pai.qtdFilhos;
+  if (columnId === 'pecas') return pai.qtdPecas;
   if (columnId === 'quantidade') return pai.sugestao ?? Number.NaN;
   return textoCelulaPai(pai, columnId);
 }
@@ -86,8 +98,14 @@ export default function DecomposicaoPage() {
   const [setorFiltro, setSetorFiltro] = useState('');
   const [filtro, setFiltro] = useState('');
   const [ajuda, setAjuda] = useState(false);
+  const [aba, setAba] = useState<'pais' | 'historico'>('pais');
 
   const [cadastrosAberto, setCadastrosAberto] = useState(false);
+  const [paiEdicao, setPaiEdicao] = useState<DecomposicaoPaiCadastro | null>(null);
+  const [outrosPais, setOutrosPais] = useState<DecomposicaoCadastroResumo[]>([]);
+  const [abrindoEdicao, setAbrindoEdicao] = useState<number | null>(null);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [erroEdicao, setErroEdicao] = useState<string | null>(null);
 
   const [detalheId, setDetalheId] = useState<number | null>(null);
   const [detalhe, setDetalhe] = useState<DecomposicaoDetalhe | null>(null);
@@ -153,6 +171,43 @@ export default function DecomposicaoPage() {
     [ordens, setorFiltro, match]
   );
 
+  const abrirEdicao = async (id: number) => {
+    setAbrindoEdicao(id);
+    setErro(null);
+    try {
+      const [pai, lista] = await Promise.all([obterDecomposicaoPai(id), listarCadastrosDecomposicao()]);
+      setOutrosPais(lista.filter((item) => item.id !== pai.id));
+      setErroEdicao(null);
+      setPaiEdicao(pai);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao abrir o produto pai.');
+    } finally {
+      setAbrindoEdicao(null);
+    }
+  };
+
+  const salvarEdicao = async (body: {
+    grupo: string;
+    codigo: string;
+    nome: string;
+    observacao: string;
+    filhos: DecomposicaoFilhoCadastro[];
+    pecas: DecomposicaoPecaCadastro[];
+  }) => {
+    if (!paiEdicao) return;
+    setSalvandoEdicao(true);
+    setErroEdicao(null);
+    try {
+      await salvarDecomposicaoPai(paiEdicao.id, body);
+      setPaiEdicao(null);
+      await carregar(true);
+    } catch (e) {
+      setErroEdicao(e instanceof Error ? e.message : 'Erro ao salvar.');
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  };
+
   const confirmarOrdem = async (body: { quantidade: number; observacao: string }) => {
     if (!paiOrdem) return;
     setGerando(true);
@@ -206,7 +261,7 @@ export default function DecomposicaoPage() {
             Ordem de produção
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
-            O catálogo não fica preso a um tipo de produto. Filtre pelo setor, gere a ordem em cada pai e abra o PDF nesta mesma tela.
+            O catálogo não fica preso a um tipo de produto. Filtre pelo setor, gere a ordem em cada pai e imprima o papel para a produção.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -235,6 +290,30 @@ export default function DecomposicaoPage() {
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{avisoCarteira}</p>
       )}
 
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700" role="tablist" aria-label="Ordem de produção">
+        {(
+          [
+            ['pais', 'Produtos pai'],
+            ['historico', 'Histórico'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={aba === id}
+            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              aba === id
+                ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+            onClick={() => setAba(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <label className="block max-w-xs text-sm">
         <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Setor</span>
         <select
@@ -258,8 +337,13 @@ export default function DecomposicaoPage() {
         placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
       />
 
+      {aba === 'pais' && (
+      <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Produtos pai</h2>
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Produtos pai</h2>
+          <p className="mt-1 text-xs text-slate-500">Verde: tem saldo para produzir.</p>
+        </div>
         {gradePais.temFiltrosOuOrdem && (
           <button
             type="button"
@@ -307,8 +391,17 @@ export default function DecomposicaoPage() {
                   </td>
                 </tr>
               ) : (
-              paisExibidos.map((pai) => (
-                <tr key={pai.id} className="border-t border-slate-100 dark:border-slate-700">
+              paisExibidos.map((pai) => {
+                const temSaldo = (pai.sugestao ?? 0) > 0;
+                return (
+                <tr
+                  key={pai.id}
+                  className={
+                    temSaldo
+                      ? 'border-t border-l-4 border-emerald-500/80 bg-emerald-500/10'
+                      : 'border-t border-slate-100 dark:border-slate-700'
+                  }
+                >
                   <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{pai.codigo}</td>
                   <td className="px-4 py-3">{pai.grupo}</td>
                   <td className="px-4 py-3">
@@ -316,17 +409,26 @@ export default function DecomposicaoPage() {
                     {pai.observacao && <div className="text-xs text-slate-500">{pai.observacao}</div>}
                   </td>
                   <td className="px-4 py-3">{pai.qtdFilhos}</td>
+                  <td className="px-4 py-3">{pai.qtdPecas}</td>
                   <td className="px-4 py-3">
                     <button
                       type="button"
-                      title="Total vendido dos filhos"
+                      title="Saldo em aberto dos filhos"
                       className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300"
                       onClick={() => void abrirDetalhe(pai.id)}
                     >
                       {fmt(pai.sugestao)}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="mr-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-500 dark:text-slate-100 dark:hover:bg-slate-700"
+                      disabled={abrindoEdicao === pai.id}
+                      onClick={() => void abrirEdicao(pai.id)}
+                    >
+                      {abrindoEdicao === pai.id ? 'Abrindo…' : 'Editar'}
+                    </button>
                     <button
                       type="button"
                       className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-primary-700"
@@ -339,7 +441,8 @@ export default function DecomposicaoPage() {
                     </button>
                   </td>
                 </tr>
-              ))
+                );
+              })
               )}
             </tbody>
           </table>
@@ -371,58 +474,78 @@ export default function DecomposicaoPage() {
           onCancelar={gradePais.fecharFiltroExcel}
         />
       )}
+      </>
+      )}
 
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ordens geradas</h2>
-      {ordensDoGrupo.length === 0 ? (
-        <p className="text-sm text-slate-500">Nenhuma ordem neste filtro.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="bg-primary-600 text-white">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Ordem</th>
-                <th className="px-4 py-3 font-semibold">Setor</th>
-                <th className="px-4 py-3 font-semibold">Produto pai</th>
-                <th className="px-4 py-3 font-semibold">Quantidade</th>
-                <th className="px-4 py-3 font-semibold">Emissão</th>
-                <th className="px-4 py-3 font-semibold" />
-              </tr>
-            </thead>
-            <tbody>
-              {ordensDoGrupo.map((ordem) => (
-                <tr key={ordem.id} className="border-t border-slate-100 dark:border-slate-700">
-                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{ordem.numero}</td>
-                  <td className="px-4 py-3">{ordem.grupo}</td>
-                  <td className="px-4 py-3">
-                    <div>{ordem.codigoPai}</div>
-                    <div className="text-xs text-slate-500">{ordem.nomePai}</div>
-                  </td>
-                  <td className="px-4 py-3">{fmt(ordem.quantidade)}</td>
-                  <td className="px-4 py-3">{new Date(ordem.createdAt).toLocaleString('pt-BR')}</td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      className="mr-3 text-sm font-medium text-slate-700 hover:underline dark:text-slate-200"
-                      onClick={() => setOrdemAberta(ordem)}
-                    >
-                      Ver
-                    </button>
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-primary-700 hover:underline dark:text-primary-300"
-                      onClick={() => imprimirOrdemProducao(ordem)}
-                    >
-                      PDF
-                    </button>
-                  </td>
+      {aba === 'historico' && (
+      <section className="space-y-2">
+        {ordensDoGrupo.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhuma ordem gerada neste filtro.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="bg-primary-600 text-white">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Data</th>
+                  <th className="px-4 py-3 font-semibold">Usuário</th>
+                  <th className="px-4 py-3 font-semibold">Ordem</th>
+                  <th className="px-4 py-3 font-semibold">Produto pai</th>
+                  <th className="px-4 py-3 font-semibold">Quantidade</th>
+                  <th className="px-4 py-3 font-semibold" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {ordensDoGrupo.map((ordem) => (
+                  <tr key={ordem.id} className="border-t border-slate-100 dark:border-slate-700">
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-800 dark:text-slate-100">
+                      {new Date(ordem.createdAt).toLocaleString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3">{ordem.criadoPorLogin || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{ordem.numero}</td>
+                    <td className="px-4 py-3">
+                      <div>{ordem.codigoPai}</div>
+                      <div className="text-xs text-slate-500">{ordem.nomePai}</div>
+                    </td>
+                    <td className="px-4 py-3">{fmt(ordem.quantidade)}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="mr-3 text-sm font-medium text-slate-700 hover:underline dark:text-slate-200"
+                        onClick={() => setOrdemAberta(ordem)}
+                      >
+                        Ver
+                      </button>
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-primary-700 hover:underline dark:text-primary-300"
+                        onClick={() => void imprimirOrdemProducao(ordem)}
+                      >
+                        PDF
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
       )}
 
       <DecomposicaoAjudaModal aberto={ajuda} onClose={() => setAjuda(false)} />
+
+      {paiEdicao && (
+        <ModalProdutoPai
+          pai={paiEdicao}
+          grupoInicial={paiEdicao.grupo}
+          setores={setores}
+          outrosPais={outrosPais}
+          salvando={salvandoEdicao}
+          erro={erroEdicao}
+          onClose={() => setPaiEdicao(null)}
+          onSalvar={(body) => void salvarEdicao(body)}
+        />
+      )}
 
       {paiOrdem && (
         <ModalGerarOrdem
@@ -434,7 +557,16 @@ export default function DecomposicaoPage() {
         />
       )}
 
-      {ordemAberta && <ModalVerOrdem ordem={ordemAberta} onClose={() => setOrdemAberta(null)} />}
+      {ordemAberta && (
+        <ModalVerOrdem
+          ordem={ordemAberta}
+          onClose={() => setOrdemAberta(null)}
+          onAtualizada={(ordem) => {
+            setOrdemAberta(ordem);
+            setOrdens((lista) => lista.map((item) => (item.id === ordem.id ? ordem : item)));
+          }}
+        />
+      )}
 
       {cadastrosAberto && (
         <ModalCadastrosDecomposicao

@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  buscarMateriasPrimasPp,
   buscarProdutosNomusDecomposicao,
   nomeGrupo,
   type DecomposicaoCadastroResumo,
   type DecomposicaoFilhoCadastro,
   type DecomposicaoPaiCadastro,
-  type MateriaPrimaPp,
+  type DecomposicaoPecaCadastro,
   type ProdutoNomusOpcao,
   type SetorProducao,
 } from '../../../api/decomposicao';
@@ -15,13 +14,19 @@ const INPUT =
   'w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 text-sm';
 const LABEL = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1';
 
+type LinhaPeca = {
+  key: string;
+  descricao: string;
+  quantidade: string;
+  medidaL: string;
+  medidaA: string;
+  materiaPrima: string;
+};
+
 type LinhaFilho = {
   key: string;
   codigoNomus: string;
   descricao: string;
-  quantidade: string;
-  materiaPrimaCodigo: string;
-  materiaPrimaDescricao: string;
 };
 
 function novaChave(): string {
@@ -40,15 +45,24 @@ function rotuloPai(pai: DecomposicaoCadastroResumo): string {
   return `${pai.codigo} · ${pai.nome} (${nomeGrupo(pai.grupo)})`;
 }
 
+function pecasDe(pai: DecomposicaoPaiCadastro | null): LinhaPeca[] {
+  if (!pai) return [];
+  return (pai.pecas ?? []).map((peca) => ({
+    key: novaChave(),
+    descricao: peca.descricao,
+    quantidade: String(peca.quantidade),
+    medidaL: peca.medidaL,
+    medidaA: peca.medidaA,
+    materiaPrima: peca.materiaPrima,
+  }));
+}
+
 function linhasDe(pai: DecomposicaoPaiCadastro | null): LinhaFilho[] {
   if (!pai) return [];
   return pai.filhos.map((filho) => ({
     key: novaChave(),
     codigoNomus: filho.codigoNomus,
     descricao: filho.descricao,
-    quantidade: String(filho.quantidade),
-    materiaPrimaCodigo: filho.materiaPrimaCodigo ?? '',
-    materiaPrimaDescricao: filho.materiaPrimaDescricao ?? '',
   }));
 }
 
@@ -75,6 +89,7 @@ export default function ModalProdutoPai({
     nome: string;
     observacao: string;
     filhos: DecomposicaoFilhoCadastro[];
+    pecas: DecomposicaoPecaCadastro[];
   }) => void;
 }) {
   const [grupo, setGrupo] = useState(pai?.grupo ?? grupoInicial);
@@ -82,15 +97,12 @@ export default function ModalProdutoPai({
   const [nome, setNome] = useState(pai?.nome ?? '');
   const [observacao, setObservacao] = useState(pai?.observacao ?? '');
   const [linhas, setLinhas] = useState<LinhaFilho[]>(() => linhasDe(pai));
+  const [pecas, setPecas] = useState<LinhaPeca[]>(() => pecasDe(pai));
   const [busca, setBusca] = useState('');
   const [opcoes, setOpcoes] = useState<ProdutoNomusOpcao[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [erroBusca, setErroBusca] = useState<string | null>(null);
   const [erroLocal, setErroLocal] = useState<string | null>(null);
-  const [materiaisPp, setMateriaisPp] = useState<MateriaPrimaPp[]>([]);
-  const [carregandoMateriais, setCarregandoMateriais] = useState(false);
-  const [erroMateriais, setErroMateriais] = useState<string | null>(null);
-  const codigosVinculados = linhas.map((linha) => linha.codigoNomus.trim().toUpperCase()).join('|');
 
   useEffect(() => {
     const termo = busca.trim();
@@ -113,33 +125,6 @@ export default function ModalProdutoPai({
     return () => window.clearTimeout(timer);
   }, [busca]);
 
-  useEffect(() => {
-    const codigos = codigosVinculados.split('|').filter(Boolean);
-    if (codigos.length === 0) {
-      setMateriaisPp([]);
-      setErroMateriais(null);
-      return;
-    }
-    let ativo = true;
-    setCarregandoMateriais(true);
-    setErroMateriais(null);
-    void buscarMateriasPrimasPp(codigos)
-      .then((lista) => {
-        if (ativo) setMateriaisPp(lista);
-      })
-      .catch((e: unknown) => {
-        if (!ativo) return;
-        setMateriaisPp([]);
-        setErroMateriais(e instanceof Error ? e.message : 'Falha ao ler os produtos em processo.');
-      })
-      .finally(() => {
-        if (ativo) setCarregandoMateriais(false);
-      });
-    return () => {
-      ativo = false;
-    };
-  }, [codigosVinculados]);
-
   const conflitos = linhas.flatMap((linha) =>
     paisComFilho(linha.codigoNomus, outrosPais).map((outro) => ({
       key: `${linha.codigoNomus}-${outro.id}`,
@@ -158,9 +143,6 @@ export default function ModalProdutoPai({
           key: novaChave(),
           codigoNomus: produto.codigo,
           descricao: produto.descricao || produto.codigo,
-          quantidade: '1',
-          materiaPrimaCodigo: '',
-          materiaPrimaDescricao: '',
         },
       ];
     });
@@ -180,17 +162,28 @@ export default function ModalProdutoPai({
     }
     const filhos: DecomposicaoFilhoCadastro[] = [];
     for (const linha of linhas) {
-      const quantidade = Math.floor(Number(linha.quantidade));
-      if (!Number.isFinite(quantidade) || quantidade < 1) {
-        setErroLocal(`Informe a quantidade no pai de ${linha.codigoNomus}.`);
-        return;
-      }
       filhos.push({
         codigoNomus: linha.codigoNomus,
         descricao: linha.descricao,
+        quantidade: 1,
+        materiaPrimaCodigo: null,
+        materiaPrimaDescricao: null,
+      });
+    }
+    const pecasSalvas: DecomposicaoPecaCadastro[] = [];
+    for (const peca of pecas) {
+      if (!peca.descricao.trim()) continue;
+      const quantidade = Math.floor(Number(peca.quantidade));
+      if (!Number.isFinite(quantidade) || quantidade < 1) {
+        setErroLocal(`Informe a quantidade da peça ${peca.descricao.trim()}.`);
+        return;
+      }
+      pecasSalvas.push({
+        descricao: peca.descricao.trim(),
         quantidade,
-        materiaPrimaCodigo: linha.materiaPrimaCodigo.trim() || null,
-        materiaPrimaDescricao: linha.materiaPrimaDescricao.trim() || null,
+        medidaL: peca.medidaL.trim(),
+        medidaA: peca.medidaA.trim(),
+        materiaPrima: peca.materiaPrima.trim(),
       });
     }
     onSalvar({
@@ -199,6 +192,7 @@ export default function ModalProdutoPai({
       nome: nome.trim(),
       observacao: observacao.trim(),
       filhos,
+      pecas: pecasSalvas,
     });
   };
 
@@ -213,8 +207,8 @@ export default function ModalProdutoPai({
             {pai ? 'Editar produto pai' : 'Cadastrar produto pai'}
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Busque o produto no NOMUS e vincule os filhos. Dá para gravar o pai sem filho e voltar depois. A
-            matéria-prima de cada filho sai da lista de materiais dele, só produto em processo (PP).
+            Vincule os produtos filhos do NOMUS e monte as peças de corte: quantidade, L, A e matéria-prima. Dá para
+            gravar e voltar depois.
           </p>
         </div>
 
@@ -272,6 +266,124 @@ export default function ModalProdutoPai({
           </div>
 
           <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Detalhamento técnico de peças</p>
+                <p className="text-xs text-slate-500">Componente, quantidade unitária, medidas em mm e matéria-prima.</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                onClick={() =>
+                  setPecas((atual) => [
+                    ...atual,
+                    { key: novaChave(), descricao: '', quantidade: '1', medidaL: '', medidaA: '', materiaPrima: '' },
+                  ])
+                }
+              >
+                Adicionar peça
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="bg-primary-600 text-white">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Componente / peça</th>
+                    <th className="px-3 py-2 font-semibold">Qtd</th>
+                    <th className="px-3 py-2 font-semibold">L (mm)</th>
+                    <th className="px-3 py-2 font-semibold">A (mm)</th>
+                    <th className="px-3 py-2 font-semibold">Matéria-prima</th>
+                    <th className="px-3 py-2 font-semibold" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {pecas.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                        Nenhuma peça. Use Adicionar peça para informar o detalhamento.
+                      </td>
+                    </tr>
+                  )}
+                  {pecas.map((peca) => (
+                    <tr key={peca.key} className="border-t border-slate-100 dark:border-slate-700">
+                      <td className="px-3 py-2">
+                        <input
+                          className={INPUT}
+                          value={peca.descricao}
+                          onChange={(e) =>
+                            setPecas((atual) =>
+                              atual.map((item) =>
+                                item.key === peca.key ? { ...item, descricao: e.target.value.toUpperCase() } : item
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          min={1}
+                          className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
+                          value={peca.quantidade}
+                          onChange={(e) =>
+                            setPecas((atual) =>
+                              atual.map((item) => (item.key === peca.key ? { ...item, quantidade: e.target.value } : item))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
+                          value={peca.medidaL}
+                          onChange={(e) =>
+                            setPecas((atual) =>
+                              atual.map((item) => (item.key === peca.key ? { ...item, medidaL: e.target.value } : item))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
+                          value={peca.medidaA}
+                          onChange={(e) =>
+                            setPecas((atual) =>
+                              atual.map((item) => (item.key === peca.key ? { ...item, medidaA: e.target.value } : item))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className={INPUT}
+                          value={peca.materiaPrima}
+                          onChange={(e) =>
+                            setPecas((atual) =>
+                              atual.map((item) =>
+                                item.key === peca.key ? { ...item, materiaPrima: e.target.value.toUpperCase() } : item
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-red-600 hover:underline"
+                          onClick={() => setPecas((atual) => atual.filter((item) => item.key !== peca.key))}
+                        >
+                          Remover
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
             <label className={LABEL}>Vincular produto filho do NOMUS</label>
             <input
               className={INPUT}
@@ -281,10 +393,6 @@ export default function ModalProdutoPai({
             />
             {buscando && <p className="mt-1 text-xs text-slate-500">Buscando no NOMUS…</p>}
             {erroBusca && <p className="mt-1 text-xs text-red-600">{erroBusca}</p>}
-            {carregandoMateriais && (
-              <p className="mt-1 text-xs text-slate-500">Lendo produtos em processo (PP) da lista de materiais…</p>
-            )}
-            {erroMateriais && <p className="mt-1 text-xs text-amber-700">{erroMateriais}</p>}
             {opcoes.length > 0 && (
               <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
                 {opcoes.map((opcao) => {
@@ -325,20 +433,18 @@ export default function ModalProdutoPai({
           )}
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="bg-primary-600 text-white">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Produto filho</th>
                   <th className="px-4 py-3 font-semibold">Descrição</th>
-                  <th className="px-4 py-3 font-semibold">Qtd no pai</th>
-                  <th className="px-4 py-3 font-semibold">Matéria-prima (PP)</th>
                   <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
                 {linhas.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
                       Nenhum filho ainda. Use a busca acima para vincular um produto do NOMUS.
                     </td>
                   </tr>
@@ -360,77 +466,6 @@ export default function ModalProdutoPai({
                           Já em {jaEm.map(rotuloPai).join('; ')}
                         </div>
                       )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="number"
-                        min={1}
-                        className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
-                        value={linha.quantidade}
-                        onChange={(e) =>
-                          setLinhas((atual) =>
-                            atual.map((item) =>
-                              item.key === linha.key ? { ...item, quantidade: e.target.value } : item
-                            )
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      {(() => {
-                        const opcoes = materiaisPp.filter((item) =>
-                          codigoIgual(item.codigoFilho, linha.codigoNomus)
-                        );
-                        const selecionadaFora =
-                          linha.materiaPrimaCodigo &&
-                          !opcoes.some((item) => codigoIgual(item.codigo, linha.materiaPrimaCodigo));
-                        return (
-                          <>
-                            <select
-                              className="w-full min-w-[220px] rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
-                              value={linha.materiaPrimaCodigo}
-                              onChange={(e) => {
-                                const codigo = e.target.value;
-                                const escolhida = opcoes.find((item) => codigoIgual(item.codigo, codigo));
-                                setLinhas((atual) =>
-                                  atual.map((item) =>
-                                    item.key === linha.key
-                                      ? {
-                                          ...item,
-                                          materiaPrimaCodigo: codigo,
-                                          materiaPrimaDescricao: escolhida
-                                            ? escolhida.descricao
-                                            : codigo
-                                              ? item.materiaPrimaDescricao
-                                              : '',
-                                        }
-                                      : item
-                                  )
-                                );
-                              }}
-                            >
-                              <option value="">Selecione o PP</option>
-                              {selecionadaFora && (
-                                <option value={linha.materiaPrimaCodigo}>
-                                  {linha.materiaPrimaCodigo}
-                                  {linha.materiaPrimaDescricao ? ` — ${linha.materiaPrimaDescricao}` : ''}
-                                </option>
-                              )}
-                              {opcoes.map((item) => (
-                                <option key={item.codigo} value={item.codigo}>
-                                  {item.codigo}
-                                  {item.descricao ? ` — ${item.descricao}` : ''}
-                                </option>
-                              ))}
-                            </select>
-                            {!carregandoMateriais && opcoes.length === 0 && (
-                              <p className="mt-1 text-xs text-slate-500">
-                                Nenhum produto em processo (PP) na lista deste filho.
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()}
                     </td>
                     <td className="px-4 py-2 text-right">
                       <button

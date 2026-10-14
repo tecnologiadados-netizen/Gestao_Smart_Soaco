@@ -33,6 +33,8 @@ export const ORGANICO_IDX = {
   SALARIO_MAIS_POR_FORA: 73,
   /** Fórmula: SALÁRIO + ADENDO + ADICIONAIS (coluna BV) — remuneração total usada em Cargos & Salários. */
   SALARIO_POR_FORA_ADICIONAIS: 74,
+  /** CUSTO TOTAL - GERAL - CR MÊS. */
+  CUSTO_TOTAL_GERAL_MES: 75,
   /** "DIRETORIA" — também usado para empresa de histórico local (sem Secullum). */
   DIRETORIA: 17,
   /** "Vínculo" — marca `HISTÓRICO LOCAL` = cadastro só para trajetória/ficha. */

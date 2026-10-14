@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, GeoJSON, MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@rh/components/ui/dialog";
 import { rhFetchJson } from "@rh/lib/rh-fetch";
 import { rhFieldInput } from "@rh/lib/form-field-styles";
 import { pontoBairroOsmConhecido } from "@rh/lib/bairros-osm";
@@ -126,6 +127,185 @@ function bairroGenerico(bairro: string): boolean {
   return BAIRRO_GENERICO.test(nome);
 }
 
+/** Faixas nacionais de CEP (5 primeiros dígitos) → UF. */
+const FAIXAS_CEP: Array<[string, number, number]> = [
+  ["SP", 1000, 19999],
+  ["RJ", 20000, 28999],
+  ["ES", 29000, 29999],
+  ["MG", 30000, 39999],
+  ["BA", 40000, 48999],
+  ["SE", 49000, 49999],
+  ["PE", 50000, 56999],
+  ["AL", 57000, 57999],
+  ["PB", 58000, 58999],
+  ["RN", 59000, 59999],
+  ["CE", 60000, 63999],
+  ["PI", 64000, 64999],
+  ["MA", 65000, 65999],
+  ["PA", 66000, 68899],
+  ["AP", 68900, 68999],
+  ["AM", 69000, 69299],
+  ["RR", 69300, 69399],
+  ["AM", 69400, 69899],
+  ["AC", 69900, 69999],
+  ["DF", 70000, 72799],
+  ["GO", 72800, 72999],
+  ["DF", 73000, 73699],
+  ["GO", 73700, 76799],
+  ["RO", 76800, 76999],
+  ["TO", 77000, 77999],
+  ["MT", 78000, 78899],
+  ["MS", 79000, 79999],
+  ["PR", 80000, 87999],
+  ["SC", 88000, 89999],
+  ["RS", 90000, 99999],
+];
+
+const CIDADES_VIZINHAS: Array<{ nome: string; chave: string; uf: string }> = [
+  { nome: "Teresina", chave: "TERESINA", uf: "PI" },
+  { nome: "Timon", chave: "TIMON", uf: "MA" },
+  { nome: "Demerval Lobão", chave: "DEMERVAL LOBAO", uf: "PI" },
+  { nome: "Nazária", chave: "NAZARIA", uf: "PI" },
+  { nome: "Curralinhos", chave: "CURRALINHOS", uf: "PI" },
+  { nome: "Altos", chave: "ALTOS", uf: "PI" },
+  { nome: "José de Freitas", chave: "JOSE DE FREITAS", uf: "PI" },
+  { nome: "Monsenhor Gil", chave: "MONSENHOR GIL", uf: "PI" },
+  { nome: "Coivaras", chave: "COIVARAS", uf: "PI" },
+  { nome: "Lagoa Alegre", chave: "LAGOA ALEGRE", uf: "PI" },
+  { nome: "União", chave: "UNIAO", uf: "PI" },
+];
+
+function ufDoCep(cep: string): string {
+  const digitos = cep.replace(/\D/g, "");
+  if (digitos.length !== 8) return "";
+  const faixa = Number(digitos.slice(0, 5));
+  if (!Number.isFinite(faixa)) return "";
+  for (const [uf, inicio, fim] of FAIXAS_CEP) {
+    if (faixa >= inicio && faixa <= fim) return uf;
+  }
+  return "";
+}
+
+function ufCitadaNoEndereco(texto: string): string {
+  const normalizado = normalizarLocalidade(texto);
+  const sigla = normalizado.match(/(?:^| )(?:- )?([A-Z]{2})$/);
+  if (sigla?.[1] && FAIXAS_CEP.some(([uf]) => uf === sigla[1])) return sigla[1];
+  const comTraco = texto.toUpperCase().match(/-\s*(AC|AL|AM|AP|BA|CE|DF|ES|GO|MA|MG|MS|MT|PA|PB|PE|PI|PR|RJ|RN|RO|RR|RS|SC|SE|SP|TO)\b/);
+  if (comTraco?.[1]) return comTraco[1];
+  if (/\bMARANHAO\b/.test(normalizado)) return "MA";
+  if (/\bPIAUI\b/.test(normalizado)) return "PI";
+  if (/\bCEARA\b/.test(normalizado)) return "CE";
+  return "";
+}
+
+function cidadeCitadaNoTexto(
+  texto: string,
+  cidadeAtual: string,
+  catalogo: Array<{ nome: string; chave: string; uf: string }>,
+): { nome: string; chave: string; uf: string } | null {
+  const norm = normalizarLocalidade(texto);
+  const atual = normalizarLocalidade(cidadeAtual);
+  if (!norm) return null;
+  const unicos = new Map<string, { nome: string; chave: string; uf: string }>();
+  for (const cidade of [...CIDADES_VIZINHAS, ...catalogo]) {
+    if (cidade.chave.length < 5) continue;
+    unicos.set(`${cidade.uf}|${cidade.chave}`, cidade);
+  }
+  let melhor: { nome: string; chave: string; uf: string } | null = null;
+  for (const cidade of unicos.values()) {
+    if (cidade.chave === atual) continue;
+    if (atual.startsWith(`${cidade.chave} `) || cidade.chave.startsWith(`${atual} `)) continue;
+    const presente = new RegExp(`(?:^| )${cidade.chave.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?: |$)`).test(norm);
+    if (!presente) continue;
+    if (!melhor || cidade.chave.length > melhor.chave.length) melhor = cidade;
+  }
+  return melhor;
+}
+
+type StatusForaMapa = "secullum" | "desenvolvedor";
+
+const ROTULO_STATUS_FORA_MAPA: Record<StatusForaMapa, string> = {
+  secullum: "Ajustar o cadastro na Secullum",
+  desenvolvedor: "Solicitar ajuste para o desenvolvedor",
+};
+
+function bairroRepeteCidade(bairro: string, cidade: string): boolean {
+  const nomeBairro = normalizarLocalidade(bairro);
+  const nomeCidade = normalizarLocalidade(cidade);
+  if (!nomeBairro || !nomeCidade || nomeBairro === nomeCidade) return nomeBairro.length > 0 && nomeBairro === nomeCidade;
+  return nomeBairro.includes(nomeCidade);
+}
+
+function motivoForaDoMapa(
+  pessoa: PessoaLocalidade,
+  ctx: {
+    cidadeNaMalha: boolean;
+    malhaConfiavel: boolean;
+    falha?: FalhaGeo;
+    catalogo: Array<{ nome: string; chave: string; uf: string }>;
+  },
+): { motivo: string; status: StatusForaMapa } {
+  const cidade = pessoa.cidade.trim();
+  const uf = pessoa.uf.trim().toUpperCase();
+  const bairro = pessoa.bairro.trim();
+  const endereco = `${pessoa.logradouro} ${pessoa.endereco}`.trim();
+  const ufOk = /^[A-Z]{2}$/.test(uf);
+  const secullum = (motivo: string) => ({ motivo, status: "secullum" as const });
+
+  if (!cidade && !ufOk) return secullum("Cidade e UF não estão preenchidas na Secullum.");
+  if (!cidade) return secullum(`A UF está como ${uf}, mas a cidade não está preenchida na Secullum.`);
+  if (!ufOk) return secullum(`A cidade está como ${cidade}, mas a UF não veio no cadastro e não deu para inferir pelo endereço.`);
+
+  const ufCep = ufDoCep(pessoa.cep);
+  if (ufCep && ufCep !== uf) {
+    const cep = formatarCep(pessoa.cep);
+    return secullum(
+      `A cidade está cadastrada em ${cidade}/${uf}, mas o CEP ${cep || pessoa.cep} pertence a ${ufCep}. O mapa procura o ponto dentro da cidade informada e deixa a bolha de fora quando o endereço cai em outro estado.`,
+    );
+  }
+
+  const ufEndereco = ufCitadaNoEndereco(endereco);
+  if (ufEndereco && ufEndereco !== uf) {
+    return secullum(
+      `A cidade está cadastrada em ${cidade}/${uf}, mas o endereço cita ${ufEndereco}. O ponto fica de fora quando o endereço e a cidade não são o mesmo lugar.`,
+    );
+  }
+
+  const outra = cidadeCitadaNoTexto(`${bairro} ${endereco}`, cidade, ctx.catalogo);
+  if (outra) {
+    const onde = outra.uf !== uf ? `${outra.nome}/${outra.uf}` : outra.nome;
+    const campo = bairro && normalizarLocalidade(bairro).includes(outra.chave) ? "bairro" : "endereço";
+    return secullum(
+      `A cidade cadastrada é ${cidade}/${uf}, mas o ${campo} cita ${onde}. O mapa procura o bairro dentro da cidade informada.`,
+    );
+  }
+
+  if (ctx.malhaConfiavel && !ctx.cidadeNaMalha) {
+    return secullum(
+      `A cidade «${cidade}» não foi encontrada no estado ${uf}. O nome pode estar abreviado, com erro de digitação, ou a UF pode ser outra.`,
+    );
+  }
+
+  if (!bairro) return secullum(`Há cidade (${cidade}/${uf}), mas o bairro não está preenchido. Sem bairro o mapa não marca a bolha.`);
+  if (bairroGenerico(bairro)) {
+    return secullum(`O bairro «${bairro}» é genérico demais para marcar um ponto em ${cidade}/${uf}.`);
+  }
+  if (bairroRepeteCidade(bairro, cidade)) {
+    return secullum(
+      `O bairro «${bairro}» repete a cidade ${cidade} no mesmo campo. Na Secullum, grave só o nome do bairro.`,
+    );
+  }
+  if (ctx.falha === "fora") {
+    return secullum(
+      `O endereço do bairro «${bairro}» foi localizado a mais de 40 km do centro de ${cidade}/${uf}. A cidade do cadastro e o endereço parecem ser lugares diferentes.`,
+    );
+  }
+  return {
+    status: "desenvolvedor",
+    motivo: `O cadastro está coerente, mas o mapa não posicionou o bairro «${bairro}» em ${cidade}/${uf}. Esse nome precisa entrar na base de localização.`,
+  };
+}
+
 function formatarCep(cep: string): string {
   const digitos = cep.replace(/\D/g, "");
   if (digitos.length !== 8) return "";
@@ -240,11 +420,14 @@ type ConsultaGeo = {
   lng?: number;
 };
 
+type FalhaGeo = "fora" | "sem-ponto";
+
 async function pedirPontos(
   consultas: ConsultaGeo[],
   aoReceber?: (pontos: Record<string, PontoMapa>) => void,
-): Promise<Record<string, PontoMapa>> {
+): Promise<{ pontos: Record<string, PontoMapa>; falhas: Record<string, FalhaGeo> }> {
   const saida: Record<string, PontoMapa> = {};
+  const falhas: Record<string, FalhaGeo> = {};
   const faltantes: ConsultaGeo[] = [];
   const disco = lerCacheGeo();
   const centroDa = (consulta: ConsultaGeo) =>
@@ -253,8 +436,10 @@ async function pedirPontos(
     if (!ponto || !Number.isFinite(ponto.lat) || !Number.isFinite(ponto.lng)) return false;
     if (pontoForaDaCidade(ponto, centroDa(consulta))) {
       cacheGeo.set(consulta.chave, null);
+      falhas[consulta.chave] = "fora";
       return false;
     }
+    delete falhas[consulta.chave];
     cacheGeo.set(consulta.chave, ponto);
     saida[consulta.chave] = ponto;
     return true;
@@ -268,7 +453,7 @@ async function pedirPontos(
     if (servir(consulta, salvo)) continue;
     faltantes.push(consulta);
   }
-  if (faltantes.length === 0) return saida;
+  if (faltantes.length === 0) return { pontos: saida, falhas };
   const tentativas = new Map<string, number>();
   let fila = [...faltantes];
   while (fila.length > 0) {
@@ -310,7 +495,10 @@ async function pedirPontos(
       return n < 3;
     });
   }
-  return saida;
+  for (const consulta of consultas) {
+    if (!saida[consulta.chave] && !falhas[consulta.chave]) falhas[consulta.chave] = "sem-ponto";
+  }
+  return { pontos: saida, falhas };
 }
 
 async function carregarMunicipios(ibge: string, uf: string): Promise<FeatureCollection<Polygon | MultiPolygon, PropsCidade>> {
@@ -462,12 +650,15 @@ function RankingLocalidade({
 
 export function MapaLocalidadeCard({
   pessoas,
+  semCadastro = [],
   semLocalidade,
   semBairro,
   referencia,
   onSelect,
 }: {
   pessoas: PessoaLocalidade[];
+  /** Ativos na Secullum que nem entram no mapa: cidade ou UF vazias. */
+  semCadastro?: PessoaLocalidade[];
   semLocalidade: number;
   semBairro: number;
   referencia: string;
@@ -485,6 +676,9 @@ export function MapaLocalidadeCard({
   const [malhaPronta, setMalhaPronta] = useState(false);
   const [falhaCidades, setFalhaCidades] = useState(false);
   const [pontos, setPontos] = useState<Record<string, PontoMapa>>({});
+  const [falhasGeo, setFalhasGeo] = useState<Record<string, FalhaGeo>>({});
+  const [consultaGeoPronta, setConsultaGeoPronta] = useState(false);
+  const [listaForaAberta, setListaForaAberta] = useState(false);
   const [centrosExtras, setCentrosExtras] = useState<Record<string, Ponto>>({});
   const [centrosUrbanos, setCentrosUrbanos] = useState<Record<string, Ponto>>({});
   const [localizando, setLocalizando] = useState(false);
@@ -634,7 +828,11 @@ export function MapaLocalidadeCard({
   const assinaturaCentros = [...centroPorCidade.keys()].sort().join(";");
 
   useEffect(() => {
-    if (!malhaPronta || carregandoCidades || grupos.length === 0) return;
+    if (!malhaPronta || carregandoCidades || grupos.length === 0) {
+      if (malhaPronta && !carregandoCidades) setConsultaGeoPronta(true);
+      return;
+    }
+    setConsultaGeoPronta(false);
     let ativo = true;
     const comBairro = grupos.filter((grupo) => grupo.bairroChave && !bairroGenerico(grupo.bairro));
     const conhecidos: Record<string, PontoMapa> = {};
@@ -646,7 +844,9 @@ export function MapaLocalidadeCard({
     }
     if (Object.keys(conhecidos).length > 0) setPontos((atual) => ({ ...atual, ...conhecidos }));
     if (semTabela.length === 0) {
+      setFalhasGeo({});
       setLocalizando(false);
+      setConsultaGeoPronta(true);
       return;
     }
     setLocalizando(true);
@@ -681,8 +881,10 @@ export function MapaLocalidadeCard({
       });
       const achadosBairro = await pedirPontos(consultasBairro, aoReceber);
       if (!ativo) return;
-      setPontos((atual) => ({ ...atual, ...achadosBairro, ...conhecidos }));
+      setPontos((atual) => ({ ...atual, ...achadosBairro.pontos, ...conhecidos }));
+      setFalhasGeo(achadosBairro.falhas);
       setLocalizando(false);
+      setConsultaGeoPronta(true);
     })();
     return () => {
       ativo = false;
@@ -726,6 +928,62 @@ export function MapaLocalidadeCard({
     }
     return saida;
   }, [grupos, pessoas, pontos]);
+
+  const catalogoCidades = useMemo(
+    () =>
+      malhas.flatMap((malha) =>
+        malha.features.map((feature) => ({
+          nome: feature.properties.nome,
+          chave: feature.properties.chave,
+          uf: feature.properties.uf,
+        })),
+      ),
+    [malhas],
+  );
+  const cidadesNaMalha = useMemo(
+    () => new Set(catalogoCidades.map((cidade) => `${cidade.uf}|${cidade.chave}`)),
+    [catalogoCidades],
+  );
+
+  const foraDoMapa = useMemo(() => {
+    if (!consultaGeoPronta || localizando) return [];
+    const comBolha = new Set(bolhas.map((bolha) => bolha.pessoa.matricula));
+    const malhaConfiavel = malhaPronta && !falhaCidades && malhas.length > 0;
+    const itens: Array<{ pessoa: PessoaLocalidade; motivo: string; status: StatusForaMapa }> = [];
+    const vistos = new Set<string>();
+    const incluir = (pessoa: PessoaLocalidade, naMalha: boolean, falha?: FalhaGeo) => {
+      const chave = `${pessoa.matricula}|${pessoa.nome}`;
+      if (vistos.has(chave)) return;
+      vistos.add(chave);
+      const leitura = motivoForaDoMapa(pessoa, {
+        cidadeNaMalha: naMalha,
+        malhaConfiavel,
+        falha,
+        catalogo: catalogoCidades,
+      });
+      itens.push({ pessoa, motivo: leitura.motivo, status: leitura.status });
+    };
+    for (const pessoa of semCadastro) incluir(pessoa, false);
+    for (const pessoa of pessoas) {
+      if (comBolha.has(pessoa.matricula)) continue;
+      const idBairro = `${pessoa.uf}|${pessoa.cidadeChave}|${pessoa.bairroChave}`;
+      incluir(pessoa, cidadesNaMalha.has(`${pessoa.uf}|${pessoa.cidadeChave}`), falhasGeo[idBairro]);
+    }
+    const ordem: Record<StatusForaMapa, number> = { secullum: 0, desenvolvedor: 1 };
+    return itens.sort((a, b) => ordem[a.status] - ordem[b.status] || a.pessoa.nome.localeCompare(b.pessoa.nome, "pt-BR"));
+  }, [
+    bolhas,
+    catalogoCidades,
+    cidadesNaMalha,
+    consultaGeoPronta,
+    falhaCidades,
+    falhasGeo,
+    localizando,
+    malhaPronta,
+    malhas.length,
+    pessoas,
+    semCadastro,
+  ]);
 
   const matchNome = useMemo(() => criarMatcherTextoLivre(buscaNome), [buscaNome]);
   const sugestoesPessoa = useMemo(() => {
@@ -1032,6 +1290,15 @@ export function MapaLocalidadeCard({
           >
             Enquadrar principais
           </button>
+          {foraDoMapa.length > 0 ? (
+            <button
+              type="button"
+              className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-[#FFAD00]/80 bg-[#FFAD00]/15 px-3 text-xs font-semibold text-[#FFAD00] transition-colors hover:bg-[#FFAD00]/25"
+              onClick={() => setListaForaAberta(true)}
+            >
+              {foraDoMapa.length.toLocaleString("pt-BR")} fora do mapa
+            </button>
+          ) : null}
           <span className="shrink-0 whitespace-nowrap pl-1 text-xs text-muted-foreground">{referencia}</span>
         </div>
       </div>
@@ -1206,6 +1473,73 @@ export function MapaLocalidadeCard({
             : ""}
         </span>
       </div>
+
+      <Dialog open={listaForaAberta} onOpenChange={setListaForaAberta}>
+        <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col gap-3 overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Fora do mapa</DialogTitle>
+            <DialogDescription>
+              {foraDoMapa.length.toLocaleString("pt-BR")}{" "}
+              {foraDoMapa.length === 1 ? "colaborador ativo está" : "colaboradores ativos estão"} na Secullum e sem
+              bolha. O status sai do próprio cadastro.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+            {foraDoMapa.map((item, indice) => {
+              const pessoa = item.pessoa;
+              const podeAbrir = /^[A-Z]{2}$/.test(pessoa.uf) && pessoa.cidade.trim().length > 0;
+              const local = [pessoa.bairro, pessoa.cidade, pessoa.uf].filter(Boolean).join(" · ") || "Sem localidade";
+              const abreGrupo = indice === 0 || foraDoMapa[indice - 1]?.status !== item.status;
+              const totalGrupo = foraDoMapa.filter((outro) => outro.status === item.status).length;
+              const ajusteSecullum = item.status === "secullum";
+              return (
+                <li key={`${pessoa.matricula}-${pessoa.nome}`} className="space-y-2">
+                  {abreGrupo ? (
+                    <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {ROTULO_STATUS_FORA_MAPA[item.status]} · {totalGrupo.toLocaleString("pt-BR")}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!podeAbrir}
+                    className="w-full rounded-md border border-border bg-background/60 px-3 py-2 text-left enabled:hover:bg-muted/40 disabled:cursor-default"
+                    onClick={() => {
+                      if (!podeAbrir) return;
+                      setListaForaAberta(false);
+                      selecionar({
+                        uf: pessoa.uf,
+                        cidade: pessoa.cidade,
+                        bairroChave: pessoa.bairroChave || null,
+                        matricula: pessoa.matricula,
+                        rotulo: pessoa.nome || pessoa.matricula,
+                      });
+                    }}
+                  >
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="truncate text-sm font-semibold text-foreground">{pessoa.nome || "Sem nome"}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{pessoa.matricula}</span>
+                    </span>
+                    <span
+                      className={`mt-1 inline-flex rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        ajusteSecullum ? "bg-[#FFAD00]/15 text-[#FFAD00]" : "bg-sky-400/15 text-sky-300"
+                      }`}
+                    >
+                      {ROTULO_STATUS_FORA_MAPA[item.status]}
+                    </span>
+                    <span className="mt-1 block truncate text-[11px] text-muted-foreground">{local}</span>
+                    {pessoa.logradouro || pessoa.endereco || pessoa.cep ? (
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                        {[pessoa.logradouro || pessoa.endereco, formatarCep(pessoa.cep)].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
+                    <span className="mt-1 block text-xs leading-snug text-foreground">{item.motivo}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

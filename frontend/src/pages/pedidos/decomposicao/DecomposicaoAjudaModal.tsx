@@ -7,28 +7,28 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Esta tela gera a ordem de produção de qualquer produto do catálogo. O setor é livre, como no sistema de exemplo: não fica preso a gôndola ou porta-pallet. Ela fica à parte da Programação de produção (Recurso 1000).',
     comoLe:
-      'No filtro, escolha um setor ou deixe Todos os setores. A primeira grade lista os pais. Cada coluna tem o filtro da grade: lista de valores, ordenação e, em Filhos e Quantidade do pai, filtro numérico. Em cada pai, Gerar ordem abre a quantidade e os filhos. A segunda grade lista as ordens já emitidas, com Ver e PDF.',
+      'A tela tem duas guias. Produtos pai lista o catálogo: a linha verde tem saldo em aberto para produzir. Cada coluna tem o filtro da grade. Em cada pai, Editar abre as peças e os filhos. Gerar ordem abre a quantidade a produzir. Histórico lista as ordens já geradas, com a data, o usuário e o PDF.',
   },
   {
     id: 'ordem',
-    titulo: 'Gerar ordem e PDF',
+    titulo: 'Ordem de serviço',
     oQueE:
-      'Gerar ordem grava a quantidade a produzir e multiplica a quantidade de cada filho. Ver mostra essa ordem na tela. PDF abre a impressão do mesmo conteúdo.',
+      'Gerar ordem grava a quantidade a produzir do pai e multiplica a quantidade de cada peça. Ver lista os pedidos de venda em que os filhos estão alocados e deixa ajustar a quantidade antes de imprimir. O papel é a ordem de serviço industrial: cabeçalho com a logo Só Aço, produto, quantidade a produzir e o detalhamento das peças com a quantidade total.',
     comoLe:
-      'A quantidade sugerida é o total vendido dos filhos. Dá para alterar antes de confirmar. A qtd total de cada filho é a qtd no pai vezes a quantidade da ordem. A matéria-prima impressa é o produto em processo escolhido no cadastro.',
+      'Gerar ordem abre o resumo. Todo filho vinculado aparece na lista. A linha verde é a que ainda tem saldo. Filho sem saldo continua na tabela, sem destaque. A quantidade a produzir fica na tela seguinte, já preenchida com o saldo em aberto: Liberado e Atendido parcialmente, só o que ainda falta atender. Dá para digitar outra quantidade antes de imprimir. No papel, a qtd total de cada peça é a qtd da peça vezes a quantidade informada. L e A não se multiplicam.',
   },
   {
     id: 'cadastros',
     titulo: 'Cadastros',
     oQueE:
-      'Cadastros guarda os setores e os pais. O catálogo já começa com os produtos pai do sistema de exemplo, sem filhos. O setor é um nome livre. Em cada pai dá para vincular ou retirar filhos do NOMUS. O botão Novo cria outro pai no setor escolhido.',
+      'Cadastros guarda os setores, os pais e as peças de corte. O catálogo já começa com os produtos pai e as peças do sistema de exemplo. O setor é um nome livre. Em cada pai dá para incluir peças (quantidade, L, A e matéria-prima) e vincular filhos do NOMUS.',
     comoLe:
-      'Abra Vínculos, busque o produto do NOMUS e salve. Dá para gravar o pai sem filho e voltar depois. A ordem só é gerada quando houver pelo menos um filho. Em cada filho, Matéria-prima (PP) lista só os produtos em processo da lista de materiais daquele filho.',
+      'Na grade, Editar abre aquele pai. Em Cadastros, Vínculos faz o mesmo. No detalhamento, altere, inclua ou remova peças. Abaixo, busque o produto do NOMUS para vincular ou retirar um filho. A ordem sai quando houver ao menos uma peça ou um filho.',
     detalhes: [
       {
-        titulo: 'Matéria-prima',
+        titulo: 'Peças do sistema de exemplo',
         texto:
-          'A lista suspensa lê a lista de materiais padrão do filho no NOMUS (produção, precificação ou parcial) e mostra apenas o tipo Produto em processo. Matéria-prima comprada e produto acabado não entram.',
+          'As peças já gravadas vieram do cadastro de exemplo: componente, quantidade, L (mm), A (mm) e matéria-prima. Dá para editar, incluir e remover em Vínculos.',
       },
       {
         titulo: 'Filho que já está em outro pai',
@@ -43,7 +43,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A carteira é a do Gerenciador de Pedidos: itens com status Liberado ou Atendido parcialmente, das empresas que entram nessa tela. Cada item conta uma vez, pela qtde pedida.',
     comoLe:
-      'Qtde pedida é o que foi vendido no item. A quantidade do pai soma a qtde pedida de todos os filhos vinculados. Pendente aparece no detalhe e não entra nessa soma.',
+      'Qtde pedida é o que foi vendido no item. O saldo é o que ainda está em aberto nesse item. A quantidade do pai soma o saldo dos filhos em Liberado e Atendido parcialmente.',
     detalhes: [
       {
         titulo: 'O que fica de fora',
@@ -56,14 +56,14 @@ const SECOES: SecaoAjuda[] = [
     id: 'sugestao',
     titulo: 'Quantidade do pai',
     oQueE:
-      'A quantidade do pai é o total vendido dos filhos: a soma da qtde pedida de cada produto do NOMUS na carteira. A quantidade no pai diz quantas unidades daquele filho entram em 1 pai simbólico e fica guardada para o plano. Ela não entra nessa soma.',
+      'A quantidade do pai é o saldo em aberto dos filhos: a soma do saldo de cada produto do NOMUS vinculado, nos itens Liberado e Atendido parcialmente.',
     comoLe:
-      'O número da grade é o mesmo total do detalhe. Some a coluna Qtde pedida dos filhos e o resultado é a quantidade do pai.',
+      'O número da grade é o mesmo total do detalhe. Some a coluna Saldo dos filhos e o resultado é a quantidade do pai.',
     detalhes: [
       {
         titulo: 'Exemplo',
         texto:
-          'O pai tem dois filhos. A carteira pediu 10 de um e 12 do outro. A quantidade do pai é 22.',
+          'O pai tem dois filhos. Um ainda tem saldo 6 e o outro saldo 4. A quantidade sugerida do pai é 10.',
       },
     ],
   },
@@ -81,8 +81,8 @@ export default function DecomposicaoAjudaModal({
       aberto={aberto}
       onClose={onClose}
       titulo="Ordem de produção"
-      subtitulo="Produto pai, filhos do NOMUS e matéria-prima em processo"
-      introducao="A ordem é cadastrada aqui, separada da Programação de produção. O pai recebe os filhos, e a matéria-prima de cada filho é um produto em processo da lista de materiais dele."
+      subtitulo="Produto pai, peças de corte e filhos do NOMUS"
+      introducao="A ordem é cadastrada aqui, separada da Programação de produção. O pai recebe as peças de corte e o vínculo dos produtos filhos do NOMUS."
       secoes={SECOES}
     />
   );

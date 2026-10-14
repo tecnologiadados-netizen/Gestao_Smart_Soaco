@@ -4,9 +4,19 @@
  */
 import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
-import type { DoubleCheckInComparativoLinha } from './doubleCheckInRepository.js';
-import { classificarNaturezaDivergencia } from '../services/doubleCheckInNatureza.js';
+import {
+  type DoubleCheckInComparativoLinha,
+} from './doubleCheckInRepository.js';
+import {
+  classificarNaturezaDivergencia,
+  observacaoNaturezaDivergencia,
+  type NaturezaDivergencia,
+} from '../services/doubleCheckInNatureza.js';
 import { SEM_COMPRADOR } from './gestaoEntradasComprador.js';
+import {
+  DOUBLE_CHECKIN_CAMPOS,
+  type DoubleCheckInCampoComparativo,
+} from './doubleCheckInLocalRepository.js';
 
 const CAMPOS_LINHA = [
   { campo: 'valor_unitario' as const, flag: 'divergValorUnitario' as const },
@@ -112,6 +122,7 @@ export async function registrarDivergenciasApontadas(
       nomePedidoCompra: string;
       campo: string;
       natureza: string;
+      retratoJson: string;
     };
     const porChave = new Map<string, Candidato>();
     for (const [idDocumento, linhas] of linhasPorDocumento) {
@@ -129,6 +140,7 @@ export async function registrarDivergenciasApontadas(
             nomePedidoCompra: linha.nomePedidoCompra?.trim() || `PC ${linha.idPedidoCompra}`,
             campo: spec.campo,
             natureza: classificarNaturezaDivergencia({ linha, campo: spec.campo }),
+            retratoJson: JSON.stringify(linha),
           };
           porChave.set(chaveSnapshot(candidato), candidato);
         }
@@ -174,6 +186,7 @@ export async function registrarDivergenciasApontadas(
           nomeComprador: comprador?.nomeComprador ?? SEM_COMPRADOR,
           campo: item.campo,
           natureza: item.natureza,
+          retratoJson: item.retratoJson,
         };
       }),
     });
@@ -181,4 +194,137 @@ export async function registrarDivergenciasApontadas(
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[divergenciaApontada] registrar:', msg);
   }
+}
+
+const LABEL_CAMPO_LEITURA: Record<string, string> = {
+  valor_unitario: 'valor unitário',
+  qtde: 'quantidade',
+  ipi: 'IPI',
+  condicao_pagamento: 'condição de pagamento',
+};
+
+export type LinhaPrimeiraLeitura = DoubleCheckInComparativoLinha & {
+  naturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, NaturezaDivergencia>>;
+  observacaoNaturezaDivergencias: Partial<Record<DoubleCheckInCampoComparativo, string>>;
+};
+
+function campoValido(campo: string): campo is DoubleCheckInCampoComparativo {
+  return (DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo);
+}
+
+function lerRetrato(raw: string | null): DoubleCheckInComparativoLinha | null {
+  if (!raw) return null;
+  try {
+    const valor = JSON.parse(raw) as Partial<DoubleCheckInComparativoLinha>;
+    if (!valor || typeof valor !== 'object') return null;
+    if (!Number.isFinite(Number(valor.idItemDocumentoEstoque))) return null;
+    if (!Number.isFinite(Number(valor.idItemPedidoCompra))) return null;
+    return valor as DoubleCheckInComparativoLinha;
+  } catch {
+    return null;
+  }
+}
+
+function comNaturezaDaLeitura(
+  linha: DoubleCheckInComparativoLinha,
+  naturezas: Map<string, string>
+): LinhaPrimeiraLeitura {
+  const naturezaDivergencias: LinhaPrimeiraLeitura['naturezaDivergencias'] = {};
+  const observacaoNaturezaDivergencias: LinhaPrimeiraLeitura['observacaoNaturezaDivergencias'] = {};
+  for (const campo of DOUBLE_CHECKIN_CAMPOS) {
+    const flag =
+      campo === 'valor_unitario'
+        ? linha.divergValorUnitario
+        : campo === 'qtde'
+          ? linha.divergQtde
+          : campo === 'ipi'
+            ? linha.divergIpi
+            : linha.divergCondicaoPagamento;
+    if (!flag) continue;
+    const gravada = naturezas.get(campo);
+    naturezaDivergencias[campo] =
+      gravada === 'benigna' || gravada === 'real'
+        ? gravada
+        : classificarNaturezaDivergencia({ linha, campo });
+    const obs = observacaoNaturezaDivergencia({ linha, campo });
+    if (obs) observacaoNaturezaDivergencias[campo] = obs;
+  }
+  return { ...linha, naturezaDivergencias, observacaoNaturezaDivergencias };
+}
+
+/** Comparativo gravado na primeira leitura. Leituras antigas só informam quantas divergências houve. */
+export async function carregarRetratoPrimeiraLeitura(idDocumento: number): Promise<{
+  origem: 'retrato' | 'nao_gravada';
+  aviso: string;
+  linhas: LinhaPrimeiraLeitura[];
+  erro?: string;
+}> {
+  const snaps = await prisma.doubleCheckInDivergenciaApontada.findMany({
+    where: { idDocumentoEstoque: idDocumento },
+    orderBy: { apontadoEm: 'asc' },
+  });
+  if (snaps.length === 0) {
+    return {
+      origem: 'retrato',
+      aviso: 'Não há primeira leitura gravada para este documento.',
+      linhas: [],
+    };
+  }
+
+  const porVinculo = new Map<string, typeof snaps>();
+  for (const snap of snaps) {
+    const chave = `${snap.idItemDocumentoEstoque}:${snap.idItemPedidoCompra}`;
+    const lista = porVinculo.get(chave) ?? [];
+    lista.push(snap);
+    porVinculo.set(chave, lista);
+  }
+
+  const campos = [...new Set(snaps.map((snap) => snap.campo).filter(campoValido))];
+  const nomes = campos.map((campo) => LABEL_CAMPO_LEITURA[campo] ?? campo);
+  const listaCampos =
+    nomes.length <= 1 ? (nomes[0] ?? 'divergência') : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`;
+
+  const linhas: LinhaPrimeiraLeitura[] = [];
+  const semRetrato: { idItemDocumentoEstoque: number; idItemPedidoCompra: number }[] = [];
+  for (const grupo of porVinculo.values()) {
+    const retrato = lerRetrato(grupo.find((snap) => snap.retratoJson)?.retratoJson ?? null);
+    const naturezas = new Map(grupo.map((snap) => [snap.campo, snap.natureza]));
+    if (retrato) {
+      linhas.push(comNaturezaDaLeitura(retrato, naturezas));
+      continue;
+    }
+    const base = grupo[0]!;
+    semRetrato.push({
+      idItemDocumentoEstoque: base.idItemDocumentoEstoque,
+      idItemPedidoCompra: base.idItemPedidoCompra,
+    });
+  }
+
+  if (semRetrato.length === 0) {
+    return {
+      origem: 'retrato',
+      aviso: `Comparação gravada na primeira leitura. ${campos.length === 1 ? 'Divergiu' : 'Divergiram'}: ${listaCampos}.`,
+      linhas,
+    };
+  }
+
+  const qtde = snaps.filter((snap) => !snap.retratoJson).length;
+  const camposNaoGravados = [
+    ...new Set(snaps.filter((snap) => !snap.retratoJson).map((snap) => snap.campo).filter(campoValido)),
+  ];
+  const nomesNaoGravados = camposNaoGravados.map((campo) => LABEL_CAMPO_LEITURA[campo] ?? campo);
+  const listaNaoGravada =
+    nomesNaoGravados.length <= 1
+      ? (nomesNaoGravados[0] ?? 'divergência')
+      : `${nomesNaoGravados.slice(0, -1).join(', ')} e ${nomesNaoGravados.at(-1)}`;
+  const textoQtde = qtde === 1 ? 'houve 1 divergência' : `houve ${qtde} divergências`;
+  const aviso = `Sabemos que ${textoQtde} na primeira leitura (${listaNaoGravada}), mas ${qtde === 1 ? 'ela não foi gravada' : 'elas não foram gravadas'}. Nos documentos novos nessa situação, as divergências da primeira leitura ficam gravadas.`;
+  if (linhas.length === 0) {
+    return { origem: 'nao_gravada', aviso, linhas: [] };
+  }
+  return {
+    origem: 'retrato',
+    aviso,
+    linhas,
+  };
 }

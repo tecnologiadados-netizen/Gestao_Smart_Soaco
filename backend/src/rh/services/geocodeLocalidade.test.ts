@@ -323,6 +323,10 @@ describe('geocode de bairro', () => {
       lng: -42.7930784,
     });
     expect(pontoBairroOsmConhecido('PI', 'Teresina', 'ZONA RURAL')).toBeNull();
+    expect(pontoBairroOsmConhecido('PI', 'Teresina', 'Bosque Sul')).toEqual({
+      lat: -5.2095511,
+      lng: -42.7627359,
+    });
   });
 
   it('crava Nova Brasília no suburb OSM do norte, não em Morada Nova', () => {

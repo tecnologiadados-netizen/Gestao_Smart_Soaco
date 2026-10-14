@@ -123,6 +123,7 @@ import {
 } from "./organico-activity-log";
 import { ORGANICO_DETALHE_ORIGEM_API_SECULLUM } from "./organico-secullum-readonly";
 import { OrganicoCard } from "./OrganicoCard";
+import { matriculaTemFoto, registrarMatriculasComFoto } from "./useOrganicoCardFoto";
 import {
   OrganicoRepresentanteCard,
   EMPTY_ORGANICO_REPRESENTANTE_DRAFT,
@@ -867,14 +868,10 @@ const Organico = () => {
   }, [comentariosResumo]);
 
   /** Matrículas que possuem foto no banco (resumo sem base64 — leve). A imagem é buscada sob demanda no card. */
-  const matriculasComFoto = useMemo(() => {
-    const s = new Set<string>();
-    for (const item of fotosResumo ?? []) {
-      const matricula = String(item.colaboradorMatricula ?? "").trim();
-      if (matricula) s.add(matricula);
-    }
-    return s;
-  }, [fotosResumo]);
+  const matriculasComFoto = useMemo(
+    () => registrarMatriculasComFoto((fotosResumo ?? []).map((item) => String(item.colaboradorMatricula ?? ""))),
+    [fotosResumo],
+  );
 
   useEffect(() => {
     dataRef.current = data;
@@ -2383,7 +2380,7 @@ const Organico = () => {
                         canJustificarSecullum &&
                         matriculasComPendenciaSecullum.has(String(row[ORGANICO_IDX.MATRICULA] ?? "").trim())
                       }
-                      fotoCadastrada={matriculasComFoto.has(String(row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
+                      fotoCadastrada={matriculaTemFoto(matriculasComFoto, String(row[ORGANICO_IDX.MATRICULA] ?? ""))}
                       fotoApiHabilitada={canViewPhotos && isApiConfigured()}
                       showCustoTotal={isCustoVisibleFor(String(row[ORGANICO_IDX.MATRICULA] ?? "").trim())}
                       onToggleCustoTotal={() => {

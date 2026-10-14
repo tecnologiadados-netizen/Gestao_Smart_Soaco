@@ -30,9 +30,6 @@ export default function ModalGerarOrdem({
   const [detalhe, setDetalhe] = useState<DecomposicaoDetalhe | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
-  const [quantidade, setQuantidade] = useState('');
-  const [observacao, setObservacao] = useState('');
-  const [erroLocal, setErroLocal] = useState<string | null>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -43,8 +40,6 @@ export default function ModalGerarOrdem({
         if (!ativo) return;
         setCadastro(cad);
         setDetalhe(det.pai);
-        const sugerida = det.pai.sugestao != null && det.pai.sugestao > 0 ? det.pai.sugestao : 1;
-        setQuantidade(String(sugerida));
         if (!det.carteiraDisponivel) {
           setErroCarga(det.carteiraErro || 'A carteira não pôde ser lida. A quantidade sugerida pode ficar incompleta.');
         }
@@ -61,25 +56,19 @@ export default function ModalGerarOrdem({
     };
   }, [pai.id]);
 
-  const qtd = Number(String(quantidade).replace(',', '.'));
+  const qtd = detalhe?.sugestao != null && detalhe.sugestao > 0 ? detalhe.sugestao : 1;
   const linhas = (cadastro?.filhos ?? []).map((filho) => {
     const venda = detalhe?.filhos.find(
       (item) => item.codigoNomus.trim().toUpperCase() === filho.codigoNomus.trim().toUpperCase()
     );
     return {
       ...filho,
-      qtdePedida: venda?.qtdePedida ?? null,
-      total: Number.isFinite(qtd) && qtd > 0 ? filho.quantidade * qtd : null,
+      saldo: venda?.pendente ?? null,
     };
   });
 
   const confirmar = () => {
-    setErroLocal(null);
-    if (!Number.isFinite(qtd) || qtd <= 0) {
-      setErroLocal('Informe a quantidade a produzir.');
-      return;
-    }
-    onConfirmar({ quantidade: qtd, observacao: observacao.trim() });
+    onConfirmar({ quantidade: qtd, observacao: '' });
   };
 
   return (
@@ -90,81 +79,93 @@ export default function ModalGerarOrdem({
       >
         <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{nomeGrupo(pai.grupo)}</p>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Gerar ordem</h2>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Gerar ordem de serviço</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {pai.codigo} — {pai.nome}. A quantidade sugerida é o total vendido dos filhos.
+            {pai.codigo} — {pai.nome}. Na etapa seguinte você informa a quantidade a produzir, já sugerida pelo saldo
+            em aberto dos filhos.
           </p>
         </div>
 
         <div className="space-y-4 overflow-y-auto px-5 py-4">
-          {(erro || erroLocal || erroCarga) && (
+          {(erro || erroCarga) && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {erroLocal || erro || erroCarga}
+              {erro || erroCarga}
             </p>
           )}
-          {!carregando && cadastro && cadastro.filhos.length === 0 && (
+          {!carregando && cadastro && cadastro.filhos.length === 0 && (cadastro.pecas ?? []).length === 0 && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Este pai ainda não tem filhos. Abra Cadastros, entre em Vínculos e vincule os produtos do NOMUS antes de
-              gerar a ordem.
+              Este pai ainda não tem peças nem filhos. Abra Cadastros, entre em Vínculos e complete o detalhamento antes
+              de gerar a ordem.
             </p>
           )}
           {carregando ? (
             <p className="text-sm text-slate-500">Preparando a ordem…</p>
           ) : (
             <>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Quantidade a produzir
-                  </label>
-                  <input
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
-                    value={quantidade}
-                    onChange={(e) => setQuantidade(e.target.value)}
-                  />
+              {(cadastro?.pecas.length ?? 0) > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="w-full min-w-[720px] text-left text-sm">
+                    <thead className="bg-primary-600 text-white">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Componente / peça</th>
+                        <th className="px-4 py-3 font-semibold">Qtd</th>
+                        <th className="px-4 py-3 font-semibold">Qtd total</th>
+                        <th className="px-4 py-3 font-semibold">L (mm)</th>
+                        <th className="px-4 py-3 font-semibold">A (mm)</th>
+                        <th className="px-4 py-3 font-semibold">Matéria-prima</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cadastro?.pecas.map((peca, index) => (
+                        <tr key={`${index}-${peca.descricao}`} className="border-t border-slate-100 dark:border-slate-700">
+                          <td className="px-4 py-2 font-medium">{peca.descricao}</td>
+                          <td className="px-4 py-2">{peca.quantidade}</td>
+                          <td className="px-4 py-2 font-semibold">
+                            {Number.isFinite(qtd) && qtd > 0 ? fmt(peca.quantidade * qtd) : '—'}
+                          </td>
+                          <td className="px-4 py-2">{peca.medidaL || '—'}</td>
+                          <td className="px-4 py-2">{peca.medidaA || '—'}</td>
+                          <td className="px-4 py-2">{peca.materiaPrima || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Observação
-                  </label>
-                  <input
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-700"
-                    value={observacao}
-                    onChange={(e) => setObservacao(e.target.value)}
-                    placeholder="Opcional"
-                  />
-                </div>
-              </div>
+              )}
 
+              {linhas.length > 0 && (
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                 <table className="w-full min-w-[720px] text-left text-sm">
                   <thead className="bg-primary-600 text-white">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Produto filho</th>
-                      <th className="px-4 py-3 font-semibold">Qtd no pai</th>
-                      <th className="px-4 py-3 font-semibold">Qtd total</th>
-                      <th className="px-4 py-3 font-semibold">Matéria-prima (PP)</th>
+                      <th className="px-4 py-3 font-semibold">Saldo</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {linhas.map((linha) => (
-                      <tr key={linha.codigoNomus} className="border-t border-slate-100 dark:border-slate-700">
+                    {linhas.map((linha) => {
+                      const temSaldo = (linha.saldo ?? 0) > 0;
+                      return (
+                      <tr
+                        key={linha.codigoNomus}
+                        className={
+                          temSaldo
+                            ? 'border-t border-l-4 border-emerald-500/80 bg-emerald-500/10'
+                            : 'border-t border-slate-100 dark:border-slate-700'
+                        }
+                      >
                         <td className="px-4 py-2">
                           <div className="font-medium">{linha.codigoNomus}</div>
                           <div className="text-xs text-slate-500">{linha.descricao}</div>
                         </td>
-                        <td className="px-4 py-2">{linha.quantidade}</td>
-                        <td className="px-4 py-2 font-semibold">{fmt(linha.total)}</td>
-                        <td className="px-4 py-2">
-                          {linha.materiaPrimaCodigo
-                            ? `${linha.materiaPrimaCodigo}${linha.materiaPrimaDescricao ? ` — ${linha.materiaPrimaDescricao}` : ''}`
-                            : '—'}
-                        </td>
+                        <td className="px-4 py-2">{fmt(linha.saldo ?? 0)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              )}
             </>
           )}
         </div>
@@ -182,7 +183,9 @@ export default function ModalGerarOrdem({
             type="button"
             className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             onClick={confirmar}
-            disabled={salvando || carregando || !cadastro || cadastro.filhos.length === 0}
+            disabled={
+              salvando || carregando || !cadastro || (cadastro.filhos.length === 0 && (cadastro.pecas ?? []).length === 0)
+            }
           >
             {salvando ? 'Gerando…' : 'Gerar ordem'}
           </button>

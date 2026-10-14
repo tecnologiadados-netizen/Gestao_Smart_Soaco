@@ -1472,6 +1472,49 @@ export async function fetchDoubleCheckInItens(
   };
 }
 
+export type DoubleCheckInHistoricoEvento = {
+  id: string;
+  em: string | null;
+  precisao: 'instante' | 'dia' | 'sem_data';
+  tom: 'neutro' | 'atencao' | 'ok' | 'info';
+  titulo: string;
+  detalhe: string;
+  ator: string | null;
+  fonte: string;
+  abreComparativo?: boolean;
+  origemComparativo?: 'leitura' | 'atual';
+  legenda?: boolean;
+};
+
+export type DoubleCheckInHistorico = {
+  documento: {
+    idDocumento: number;
+    numeroDocumentoFiscal: string | null;
+    numeroNfe: string | null;
+    dataEmissao: string | null;
+    dataEntrada: string | null;
+    nomeParceiro: string | null;
+    idTipoMovimentacao: number;
+    tipoMovimentacao: string | null;
+  };
+  aviso: string;
+  eventos: DoubleCheckInHistoricoEvento[];
+};
+
+export async function fetchDoubleCheckInHistorico(
+  idDocumento: number
+): Promise<{ data: DoubleCheckInHistorico | null; erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/notas/${idDocumento}/historico`);
+  const body = (await res.json().catch(() => ({}))) as DoubleCheckInHistorico & {
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return { data: null, erro: body.erro ?? body.error ?? res.statusText };
+  }
+  return { data: body };
+}
+
 export async function fetchDoubleCheckInStatus(
   ids: number[]
 ): Promise<{
@@ -1749,6 +1792,31 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     decisoes: Array.isArray(body.decisoes) ? body.decisoes : [],
     justificativas: Array.isArray(body.justificativas) ? body.justificativas : [],
     pendentes: typeof body.pendentes === 'number' ? body.pendentes : 0,
+  };
+}
+
+export async function fetchDoubleCheckInPrimeiraLeitura(idDocumento: number): Promise<{
+  linhas: DoubleCheckInComparativoLinha[];
+  aviso: string | null;
+  origem: 'retrato' | 'nao_gravada' | null;
+  erro?: string;
+}> {
+  const res = await apiFetch(`/api/compras/double-checkin/notas/${idDocumento}/historico/leitura`);
+  const body = (await res.json().catch(() => ({}))) as {
+    linhas?: DoubleCheckInComparativoLinha[];
+    aviso?: string;
+    origem?: 'retrato' | 'nao_gravada';
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { linhas: [], aviso: null, origem: null, erro: body.erro ?? body.error ?? res.statusText };
+  }
+  return {
+    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+    aviso: body.aviso ?? null,
+    origem: body.origem ?? null,
+    erro: body.erro,
   };
 }
 

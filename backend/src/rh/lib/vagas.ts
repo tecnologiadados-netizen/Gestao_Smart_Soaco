@@ -20,7 +20,7 @@ export type StatusVaga = (typeof STATUS_VAGA)[number];
 const PROXIMOS: Record<StatusVaga, StatusVaga[]> = {
   aberta_sem_divulgacao: ['em_divulgacao', 'fechada'],
   em_divulgacao: ['aberta_sem_divulgacao', 'triagem', 'fechada'],
-  triagem: ['em_divulgacao', 'entrevista', 'fechada'],
+  triagem: ['em_divulgacao', 'fechada'],
   entrevista: ['triagem', 'em_divulgacao', 'fechada'],
   fechada: ['aberta_sem_divulgacao', 'em_divulgacao'],
 };

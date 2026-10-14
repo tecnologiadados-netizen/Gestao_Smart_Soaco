@@ -4,7 +4,9 @@ import {
   atualizarProdutoPai,
   criarProdutoPai,
   detalharDecomposicao,
+  atualizarQuantidadeOrdem,
   emitirOrdemDecomposicao,
+  listarAlocacoesDaOrdem,
   criarSetorDecomposicao,
   excluirProdutoPai,
   excluirSetorDecomposicao,
@@ -141,6 +143,34 @@ export async function getDecomposicaoOrdem(req: Request, res: Response): Promise
     res.json({ ordem });
   } catch (err) {
     res.status(400).json({ error: mensagem(err) });
+  }
+}
+
+export async function getDecomposicaoOrdemAlocacoes(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await listarAlocacoesDaOrdem(idParam(req));
+    if (!data) {
+      res.status(404).json({ error: 'Ordem não encontrada.' });
+      return;
+    }
+    if (!data.disponivel) {
+      res.status(503).json({ alocacoes: [], saldo: 0, error: data.erro ?? 'NOMUS indisponível' });
+      return;
+    }
+    res.json({ alocacoes: data.alocacoes, saldo: data.saldo });
+  } catch (err) {
+    res.status(400).json({ error: mensagem(err) });
+  }
+}
+
+export async function putDecomposicaoOrdemQuantidade(req: Request, res: Response): Promise<void> {
+  try {
+    const bruto = req.body && typeof req.body === 'object' ? (req.body as { quantidade?: unknown }) : {};
+    const ordem = await atualizarQuantidadeOrdem(idParam(req), Number(bruto.quantidade));
+    res.json({ ordem });
+  } catch (err) {
+    const msg = mensagem(err);
+    res.status(msg.includes('não encontrada') ? 404 : 400).json({ error: msg });
   }
 }
 
