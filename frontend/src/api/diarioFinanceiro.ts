@@ -40,6 +40,9 @@ export interface DiarioContaPagarLinha {
   pedidoCompra: string | null;
   notaFiscal: string | null;
   anotacao: string | null;
+  anotacaoCor: string | null;
+  /** Vencimento original da reprogramação, quando já estiver gravado. */
+  reprogramado: string | null;
   itens: DiarioContaPagarItem[];
 }
 
@@ -55,10 +58,12 @@ export interface DiarioContasPagarResponse {
 export async function fetchDiarioContasPagar(params: {
   dataInicio: string;
   dataFim: string;
+  itens?: boolean;
 }): Promise<DiarioContasPagarResponse> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
+  if (params.itens === false) sp.set('itens', '0');
   const res = await apiFetch(`/api/financeiro/diario/contas-pagar?${sp.toString()}`);
   const body = (await res.json().catch(() => ({}))) as DiarioContasPagarResponse;
   if (!res.ok) {
@@ -194,16 +199,31 @@ export async function salvarAnotacaoDiario(params: {
   origem: 'Nomus' | 'Shop9';
   codigo: number;
   texto: string;
+  cor: string | null;
   dataProcesso: string;
-}): Promise<string | null> {
+}): Promise<{ texto: string | null; cor: string | null }> {
   const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacao', {
     method: 'POST',
     body: params,
   });
-  const body = (await res.json().catch(() => ({}))) as { texto?: string | null; error?: string };
+  const body = (await res.json().catch(() => ({}))) as { texto?: string | null; cor?: string | null; error?: string };
   if (!res.ok) throw new Error(body.error || `Erro ao gravar observação (${res.status})`);
   const texto = body.texto?.trim();
-  return texto || null;
+  return { texto: texto || null, cor: body.cor?.trim() || null };
+}
+
+export async function aplicarCorAnotacoesDiario(params: {
+  itens: { origem: 'Nomus' | 'Shop9'; codigo: number }[];
+  cor: string | null;
+  dataProcesso: string;
+}): Promise<{ atualizados: number; cor: string | null }> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/anotacoes/cor', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as { atualizados?: number; cor?: string | null; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao aplicar a cor (${res.status})`);
+  return { atualizados: Number(body.atualizados) || 0, cor: body.cor?.trim() || null };
 }
 
 export interface ImportacaoAnotacaoResultado {
@@ -232,6 +252,31 @@ export async function importarAnotacoesDiario(
     ambiguos: Number(body.ambiguos) || 0,
     amostrasSem: Array.isArray(body.amostrasSem) ? body.amostrasSem : [],
   };
+}
+
+export interface DiarioSubclassificacaoItem {
+  nome: string;
+  classificacao: string;
+}
+
+export async function fetchDiarioSubclassificacoes(): Promise<DiarioSubclassificacaoItem[]> {
+  const res = await apiFetch('/api/financeiro/diario/subclassificacoes');
+  const body = (await res.json().catch(() => ({}))) as { itens?: DiarioSubclassificacaoItem[]; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao carregar subclassificações (${res.status})`);
+  return Array.isArray(body.itens) ? body.itens : [];
+}
+
+export async function cadastrarDiarioSubclassificacao(params: {
+  classificacao: string;
+  nome: string;
+}): Promise<DiarioSubclassificacaoItem> {
+  const res = await apiFetch('/api/financeiro/diario/subclassificacoes', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as DiarioSubclassificacaoItem & { error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao cadastrar subclassificação (${res.status})`);
+  return { nome: body.nome, classificacao: body.classificacao };
 }
 
 export type StatusProcessoDiario = 'rascunho' | 'em_aprovacao' | 'aprovado' | 'em_correcao';

@@ -9,6 +9,18 @@ export type StatusProcessoDiario = (typeof STATUS_PROCESSO)[number];
 
 const STATUS_TRAVADOS = new Set<StatusProcessoDiario>(['em_aprovacao', 'aprovado']);
 
+const DIAS_SEMANA = ['Domingo', 'Segunda Feira', 'Terça Feira', 'Quarta Feira', 'Quinta Feira', 'Sexta Feira', 'Sábado'] as const;
+
+export function descricaoPadraoContasPagar(ymd: string): string {
+  const [ano, mes, dia] = ymd.split('-').map((parte) => Number(parte));
+  if (!ano || !mes || !dia) return '';
+  const data = new Date(ano, mes - 1, dia);
+  if (Number.isNaN(data.getTime())) return '';
+  const dd = String(dia).padStart(2, '0');
+  const mm = String(mes).padStart(2, '0');
+  return `Contas a Pagar - ${dd}/${mm} - ${DIAS_SEMANA[data.getDay()]}`;
+}
+
 export interface DiarioProcessoDto {
   id: number;
   codigo: number;
@@ -54,7 +66,7 @@ function dto(row: Row): DiarioProcessoDto {
     id: row.id,
     codigo: row.codigo,
     dataVencimento: row.dataVencimento,
-    descricao: row.descricao,
+    descricao: descricaoPadraoContasPagar(row.dataVencimento) || row.descricao,
     usuario: row.usuario,
     status,
     motivoDevolucao: row.motivoDevolucao,
@@ -83,9 +95,8 @@ export async function iniciarProcessoDiario(input: {
   descricao: string;
   usuario: string;
 }): Promise<{ processo: DiarioProcessoDto; existente: boolean }> {
-  const descricao = input.descricao.trim();
-  if (!descricao) throw new Error('Informe a descrição.');
-  if (descricao.length > 200) throw new Error('A descrição pode ter no máximo 200 caracteres.');
+  const descricao = descricaoPadraoContasPagar(input.dataVencimento);
+  if (!descricao) throw new Error('Informe a data de vencimento.');
 
   try {
     const criado = await prisma.$transaction(async (tx) => {
@@ -118,12 +129,11 @@ export async function iniciarProcessoDiario(input: {
   }
 }
 
-export async function atualizarDescricaoProcessoDiario(id: number, descricaoBruta: string): Promise<DiarioProcessoDto> {
-  const descricao = descricaoBruta.trim();
-  if (!descricao) throw new Error('Informe a descrição.');
-  if (descricao.length > 200) throw new Error('A descrição pode ter no máximo 200 caracteres.');
+export async function atualizarDescricaoProcessoDiario(id: number): Promise<DiarioProcessoDto> {
   const atual = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
   if (!atual) throw new Error('Processo não encontrado.');
+  const descricao = descricaoPadraoContasPagar(atual.dataVencimento);
+  if (!descricao) throw new Error('Informe a data de vencimento.');
   if (!processoEditavel(atual.status)) {
     throw new Error('Este contas a pagar não pode ser alterado neste status.');
   }
