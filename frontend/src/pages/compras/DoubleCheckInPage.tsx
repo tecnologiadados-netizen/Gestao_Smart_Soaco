@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, History, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import DoubleCheckInHistoricoModal from './DoubleCheckInHistoricoModal';
 import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
@@ -152,6 +153,7 @@ export default function DoubleCheckInPage() {
   const [statusLoading, setStatusLoading] = useState(false);
 
   const [modalNota, setModalNota] = useState<DoubleCheckInNota | null>(null);
+  const [historicoNota, setHistoricoNota] = useState<DoubleCheckInNota | null>(null);
   const [modalAba, setModalAba] = useState<'preco' | 'nf_pc'>('preco');
   const [modalTelaCheia, setModalTelaCheia] = useState(false);
   const [detalheLoading, setDetalheLoading] = useState(false);
@@ -992,13 +994,25 @@ export default function DoubleCheckInPage() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{n.qtdeItens}</td>
                     <td className="px-3 py-2 text-center">
-                      <GradeCelulaModalBtn
-                        align="center"
-                        title="Ver itens"
-                        onClick={() => void abrirDetalhe(n)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </GradeCelulaModalBtn>
+                      <div className="flex items-center justify-center gap-1">
+                        {isMaster && (
+                          <GradeCelulaModalBtn
+                            align="left"
+                            variant="laranja"
+                            title="Histórico do documento"
+                            onClick={() => setHistoricoNota(n)}
+                          >
+                            <History className="h-4 w-4" />
+                          </GradeCelulaModalBtn>
+                        )}
+                        <GradeCelulaModalBtn
+                          align="left"
+                          title="Ver itens"
+                          onClick={() => void abrirDetalhe(n)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </GradeCelulaModalBtn>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1402,6 +1416,9 @@ export default function DoubleCheckInPage() {
           document.body
         )}
 
+      {historicoNota && (
+        <DoubleCheckInHistoricoModal nota={historicoNota} onClose={() => setHistoricoNota(null)} />
+      )}
       {cadastrosAberto && <DoubleCheckInJustificativasModal onClose={() => setCadastrosAberto(false)} />}
 
       {/* Modal parâmetros */}

@@ -30,6 +30,7 @@ import {
   getDecomposicaoGrade,
   getDecomposicaoMateriasPrimasPp,
   getDecomposicaoOrdem,
+  getDecomposicaoOrdemAlocacoes,
   getDecomposicaoOrdens,
   getDecomposicaoProduto,
   getDecomposicaoProdutosNomus,
@@ -37,6 +38,7 @@ import {
   postDecomposicaoOrdem,
   postDecomposicaoPai,
   postDecomposicaoSetor,
+  putDecomposicaoOrdemQuantidade,
   putDecomposicaoPai,
 } from '../controllers/decomposicaoController.js';
 import {
@@ -163,7 +165,9 @@ router.post('/decomposicao/setores', validateCsrf, podeDecomposicao, async503(po
 router.delete('/decomposicao/setores/:id', validateCsrf, podeDecomposicao, async503(deleteDecomposicaoSetor));
 router.get('/decomposicao/cadastros', podeDecomposicao, async503(getDecomposicaoCadastros));
 router.get('/decomposicao/ordens', podeDecomposicao, async503(getDecomposicaoOrdens));
+router.get('/decomposicao/ordens/:id/alocacoes', podeDecomposicao, async503(getDecomposicaoOrdemAlocacoes));
 router.get('/decomposicao/ordens/:id', podeDecomposicao, async503(getDecomposicaoOrdem));
+router.put('/decomposicao/ordens/:id', validateCsrf, podeDecomposicao, async503(putDecomposicaoOrdemQuantidade));
 router.post('/decomposicao/ordens', validateCsrf, podeDecomposicao, async503(postDecomposicaoOrdem));
 router.get('/decomposicao', podeDecomposicao, async503(getDecomposicaoGrade));
 router.get('/decomposicao/:id', podeDecomposicao, async503(getDecomposicaoProduto));

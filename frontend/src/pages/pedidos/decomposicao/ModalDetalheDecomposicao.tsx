@@ -31,9 +31,7 @@ export default function ModalDetalheDecomposicao({
           </h2>
           {detalhe && (
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Quantidade do pai (total vendido dos filhos): <strong>{fmt(detalhe.sugestao)}</strong>
-              <span className="mx-2 text-slate-300">·</span>
-              Pendente: <strong>{fmt(detalhe.pendente)}</strong>
+              Quantidade do pai (saldo em aberto dos filhos): <strong>{fmt(detalhe.sugestao)}</strong>
             </p>
           )}
         </div>
@@ -47,9 +45,8 @@ export default function ModalDetalheDecomposicao({
                 <thead className="bg-primary-600 text-white">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Filho</th>
-                    <th className="px-4 py-3 font-semibold">Qtd no pai</th>
                     <th className="px-4 py-3 font-semibold">Qtde pedida</th>
-                    <th className="px-4 py-3 font-semibold">Pendente</th>
+                    <th className="px-4 py-3 font-semibold">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -59,7 +56,6 @@ export default function ModalDetalheDecomposicao({
                         <div className="font-medium text-slate-800 dark:text-slate-100">{filho.codigoNomus}</div>
                         <div className="text-xs text-slate-500">{filho.descricao}</div>
                       </td>
-                      <td className="px-4 py-2">{filho.quantidade}</td>
                       <td className="px-4 py-2">{fmt(filho.qtdePedida)}</td>
                       <td className="px-4 py-2">{fmt(filho.pendente)}</td>
                     </tr>
@@ -67,8 +63,8 @@ export default function ModalDetalheDecomposicao({
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50 font-semibold dark:border-slate-600 dark:bg-slate-900">
-                    <td className="px-4 py-2" colSpan={2}>
-                      Total vendido dos filhos
+                    <td className="px-4 py-2">
+                      Total
                     </td>
                     <td className="px-4 py-2">{fmt(detalhe.qtdePedida)}</td>
                     <td className="px-4 py-2">{fmt(detalhe.pendente)}</td>

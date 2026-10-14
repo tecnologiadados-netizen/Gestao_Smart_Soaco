@@ -96,6 +96,7 @@ const TERESINA_OSM: Record<string, Ponto> = {
   'SANTO ANTONIO': { lat: -5.1531794, lng: -42.7756977 },
   ESPLANADA: { lat: -5.1924686, lng: -42.7547267 },
   ANGELIM: { lat: -5.1818157, lng: -42.7810193 },
+  'BOSQUE SUL': { lat: -5.2095511, lng: -42.7627359 },
   'VILA IRMA DULCE': { lat: -5.1925999, lng: -42.7741595 },
   'IRMA DULCE': { lat: -5.1925999, lng: -42.7741595 },
   'PORTAL DA ALEGRIA': { lat: -5.192725, lng: -42.7438477 },

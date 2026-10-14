@@ -162,6 +162,87 @@ export function vendaDoCodigo(vendas: Map<string, VendaCarteira>, codigo: string
   return vendas.get(chaveCodigo(codigo)) ?? { qtdePedida: 0, pendente: 0 };
 }
 
+export type AlocacaoPedido = {
+  idItem: number;
+  idPedido: number;
+  numeroPedido: string;
+  cliente: string;
+  codigoFilho: string;
+  descricaoFilho: string;
+  statusItem: number;
+  statusNome: string;
+  qtdePedida: number;
+  saldo: number;
+};
+
+function nomeStatusItem(status: number): string {
+  if (status === 2) return 'Liberado';
+  if (status === 3) return 'Atendido parcialmente';
+  return String(status);
+}
+
+/** Itens de pedido em aberto dos filhos, na mesma regra da soma da carteira. */
+export async function listarAlocacoesCarteira(
+  codigos: string[]
+): Promise<{ disponivel: boolean; alocacoes: AlocacaoPedido[]; saldo: number; erro?: string }> {
+  const unicos = [...new Set(codigos.map((c) => c.trim()).filter(Boolean))];
+  if (unicos.length === 0) return { disponivel: true, alocacoes: [], saldo: 0 };
+
+  const pool = getNomusPool();
+  if (!pool || !isNomusEnabled()) {
+    return { disponivel: false, alocacoes: [], saldo: 0, erro: 'NOMUS indisponível' };
+  }
+
+  const marcas = unicos.map(() => '?').join(', ');
+  const rotas = [...ROTAS_FORA_DA_CARTEIRA, ...ROTAS_FORA_DA_CARTEIRA];
+  const sql = `
+    SELECT
+      ip.id AS idItem,
+      pd.id AS idPedido,
+      TRIM(pd.nome) AS numeroPedido,
+      TRIM(pe.nome) AS cliente,
+      TRIM(p.nome) AS codigoFilho,
+      TRIM(p.descricao) AS descricaoFilho,
+      ip.status AS statusItem,
+      ip.qtde AS qtdePedida,
+      (ip.qtde - IFNULL(ip.qtdeAtendida, 0)) + IFNULL(devol.qtdDevolvida, 0) AS saldo
+    FROM itempedido ip
+    INNER JOIN pedido pd ON pd.id = ip.idPedido
+    INNER JOIN produto p ON p.id = ip.idProduto
+    ${SQL_JOINS_CATEGORIA}
+    WHERE ip.status IN (2, 3)
+      AND pd.idEmpresa IN (1, 2)
+      AND TRIM(p.nome) IN (${marcas})
+      ${filtroEmpresa2()}
+    ORDER BY pd.nome ASC, p.nome ASC, ip.id ASC
+  `;
+
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(sql, [...unicos, ...rotas]);
+    const alocacoes = rows.map((row) => {
+      const statusItem = numero(row.statusItem);
+      return {
+        idItem: numero(row.idItem),
+        idPedido: numero(row.idPedido),
+        numeroPedido: String(row.numeroPedido ?? '').trim(),
+        cliente: String(row.cliente ?? '').trim(),
+        codigoFilho: String(row.codigoFilho ?? '').trim(),
+        descricaoFilho: String(row.descricaoFilho ?? '').trim(),
+        statusItem,
+        statusNome: nomeStatusItem(statusItem),
+        qtdePedida: numero(row.qtdePedida),
+        saldo: numero(row.saldo),
+      };
+    });
+    const saldo = alocacoes.reduce((soma, item) => soma + item.saldo, 0);
+    return { disponivel: true, alocacoes, saldo };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[decomposicao] alocações da carteira:', msg);
+    return { disponivel: false, alocacoes: [], saldo: 0, erro: msg };
+  }
+}
+
 export async function buscarProdutosNomusDecomposicao(
   termo: string
 ): Promise<{ disponivel: boolean; produtos: ProdutoNomusBusca[]; erro?: string }> {

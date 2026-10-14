@@ -39,7 +39,7 @@ const CORES: Record<StatusVaga, string> = {
   fechada: 'bg-[#e8edf3] text-[#334155]',
 };
 
-type FiltroVaga = 'todas' | 'abertas' | StatusVaga;
+type FiltroVaga = 'todas' | 'abertas' | Exclude<StatusVaga, 'entrevista'>;
 
 type LinhaLink = { chave: string; descricao: string; url: string };
 
@@ -364,7 +364,6 @@ export default function Vagas() {
       aberta_sem_divulgacao: porStatus('aberta_sem_divulgacao'),
       em_divulgacao: porStatus('em_divulgacao'),
       triagem: porStatus('triagem'),
-      entrevista: porStatus('entrevista'),
       fechada: porStatus('fechada'),
     } satisfies Record<FiltroVaga, number>;
   }, [vagas]);
@@ -386,7 +385,7 @@ export default function Vagas() {
           <div>
             <h1 className="text-2xl font-semibold text-[#10233f] dark:text-white">Vagas</h1>
             <p className="mt-1 text-sm text-[#3d5168] dark:text-[#b7c3d4]">
-              Cadastre a posição em aberto e acompanhe divulgação, triagem, entrevista e o fechamento.
+              Cadastre a posição em aberto e acompanhe divulgação, triagem e o fechamento.
             </p>
           </div>
           {podeCadastrar ? (
@@ -412,7 +411,6 @@ export default function Vagas() {
                 ['aberta_sem_divulgacao', 'Sem divulgação'],
                 ['em_divulgacao', 'Em divulgação'],
                 ['triagem', 'Triagem'],
-                ['entrevista', 'Entrevista'],
                 ['fechada', 'Fechadas'],
               ] as const
             )

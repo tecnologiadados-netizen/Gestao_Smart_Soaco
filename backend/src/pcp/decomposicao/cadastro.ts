@@ -6,13 +6,48 @@ export type FilhoCadastro = {
   materiaPrimaDescricao: string | null;
 };
 
+export type PecaCadastro = {
+  descricao: string;
+  quantidade: number;
+  medidaL: string;
+  medidaA: string;
+  materiaPrima: string;
+};
+
 export type PaiCadastro = {
   grupo: string;
   codigo: string;
   nome: string;
   observacao: string | null;
   filhos: FilhoCadastro[];
+  pecas: PecaCadastro[];
 };
+
+function medida(valor: unknown): string {
+  return texto(valor).slice(0, 20);
+}
+
+function normalizarPecas(lista: unknown): PecaCadastro[] {
+  if (!Array.isArray(lista)) return [];
+  const pecas: PecaCadastro[] = [];
+  for (const item of lista) {
+    const linha = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const descricao = texto(linha.descricao).toUpperCase().slice(0, 120);
+    if (!descricao) continue;
+    const quantidade = Math.floor(Number(linha.quantidade));
+    if (!Number.isFinite(quantidade) || quantidade < 1) {
+      throw new Error(`Informe a quantidade da peça ${descricao}.`);
+    }
+    pecas.push({
+      descricao,
+      quantidade,
+      medidaL: medida(linha.medidaL),
+      medidaA: medida(linha.medidaA),
+      materiaPrima: texto(linha.materiaPrima).toUpperCase().slice(0, 80),
+    });
+  }
+  return pecas;
+}
 
 function texto(valor: unknown): string {
   return String(valor ?? '').trim();
@@ -74,5 +109,6 @@ export function normalizarPaiCadastro(body: unknown): PaiCadastro {
     nome,
     observacao: observacao || null,
     filhos,
+    pecas: normalizarPecas(bruto.pecas),
   };
 }

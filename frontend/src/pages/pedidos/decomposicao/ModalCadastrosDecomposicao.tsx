@@ -10,6 +10,7 @@ import {
   type DecomposicaoCadastroResumo,
   type DecomposicaoFilhoCadastro,
   type DecomposicaoPaiCadastro,
+  type DecomposicaoPecaCadastro,
   type SetorProducao,
 } from '../../../api/decomposicao';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../../utils/textoLivreBusca';
@@ -66,7 +67,8 @@ export default function ModalCadastrosDecomposicao({
           match(pai.nome) ||
           match(pai.grupo) ||
           match(pai.observacao ?? '') ||
-          pai.filhos.some((filho) => match(filho.codigoNomus) || match(filho.descricao))
+          pai.filhos.some((filho) => match(filho.codigoNomus) || match(filho.descricao)) ||
+          (pai.pecas ?? []).some((peca) => match(peca.descricao) || match(peca.materiaPrima))
       ),
     [pais, match]
   );
@@ -112,6 +114,7 @@ export default function ModalCadastrosDecomposicao({
     nome: string;
     observacao: string;
     filhos: DecomposicaoFilhoCadastro[];
+    pecas: DecomposicaoPecaCadastro[];
   }) => {
     setSalvando(true);
     setErroForm(null);
@@ -129,7 +132,7 @@ export default function ModalCadastrosDecomposicao({
   };
 
   const excluir = async (pai: DecomposicaoCadastroResumo) => {
-    if (!window.confirm(`Excluir o produto pai ${pai.codigo} e os vínculos dos filhos?`)) return;
+    if (!window.confirm(`Excluir o produto pai ${pai.codigo}, as peças e os vínculos dos filhos?`)) return;
     setExcluindoId(pai.id);
     setErro(null);
     try {
@@ -227,6 +230,7 @@ export default function ModalCadastrosDecomposicao({
                     <th className="px-4 py-3 font-semibold">Código simbólico</th>
                     <th className="px-4 py-3 font-semibold">Setor</th>
                     <th className="px-4 py-3 font-semibold">Produto pai</th>
+                    <th className="px-4 py-3 font-semibold">Peças</th>
                     <th className="px-4 py-3 font-semibold">Filhos vinculados</th>
                     <th className="px-4 py-3 font-semibold" />
                   </tr>
@@ -240,6 +244,7 @@ export default function ModalCadastrosDecomposicao({
                         <div className="text-slate-800 dark:text-slate-100">{pai.nome}</div>
                         {pai.observacao && <div className="text-xs text-slate-500">{pai.observacao}</div>}
                       </td>
+                      <td className="px-4 py-3">{pai.pecas?.length ?? 0}</td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                         {pai.filhos.length === 0
                           ? 'Nenhum'

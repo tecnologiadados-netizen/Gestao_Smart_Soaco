@@ -5,8 +5,9 @@
  * A quantidade gravada no vínculo diz quantas unidades daquele filho entram em
  * 1 pai e fica para o plano. Ela não entra na conta da quantidade do pai.
  *
- * A quantidade do pai é o total vendido dos filhos: a soma da qtde pedida
- * de cada filho em itens Liberado e Atendido parcialmente.
+ * A quantidade sugerida do pai é o saldo em aberto dos filhos: a soma do
+ * saldo de cada item Liberado ou Atendido parcialmente. A qtde pedida fica
+ * só como referência do que foi vendido.
  */
 
 export type FilhoParaSugestao = {
@@ -45,7 +46,7 @@ export function resumirSugestao(filhos: FilhoParaSugestao[]): ResumoSugestao {
   return {
     qtdePedida: linhas.reduce((acc, linha) => acc + linha.qtdePedida, 0),
     pendente: linhas.reduce((acc, linha) => acc + linha.pendente, 0),
-    sugestao: linhas.reduce((acc, linha) => acc + linha.qtdePedida, 0),
+    sugestao: linhas.reduce((acc, linha) => acc + linha.pendente, 0),
     filhos: linhas,
   };
 }

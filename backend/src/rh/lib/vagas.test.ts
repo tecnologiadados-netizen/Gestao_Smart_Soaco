@@ -13,7 +13,8 @@ describe('andamento da vaga', () => {
     expect(normalizarTransicao('aberta_sem_divulgacao', 'em_divulgacao')).toBe('em_divulgacao');
     expect(() => normalizarTransicao('aberta_sem_divulgacao', 'triagem')).toThrow(/andamento/i);
     expect(normalizarTransicao('em_divulgacao', 'triagem')).toBe('triagem');
-    expect(normalizarTransicao('triagem', 'entrevista')).toBe('entrevista');
+    expect(() => normalizarTransicao('triagem', 'entrevista')).toThrow(/andamento/i);
+    expect(normalizarTransicao('triagem', 'fechada')).toBe('fechada');
     expect(normalizarTransicao('entrevista', 'fechada')).toBe('fechada');
     expect(normalizarTransicao('fechada', 'em_divulgacao')).toBe('em_divulgacao');
     expect(normalizarTransicao('fechada', 'aberta_sem_divulgacao')).toBe('aberta_sem_divulgacao');

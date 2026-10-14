@@ -18,6 +18,7 @@ export type DecomposicaoPaiGrade = {
   nome: string;
   observacao: string | null;
   qtdFilhos: number;
+  qtdPecas: number;
   qtdePedida: number | null;
   pendente: number | null;
   sugestao: number | null;
@@ -45,6 +46,14 @@ export type DecomposicaoDetalhe = {
   filhos: DecomposicaoFilhoDetalhe[];
 };
 
+export type DecomposicaoPecaCadastro = {
+  descricao: string;
+  quantidade: number;
+  medidaL: string;
+  medidaA: string;
+  materiaPrima: string;
+};
+
 export type DecomposicaoFilhoCadastro = {
   codigoNomus: string;
   descricao: string;
@@ -66,6 +75,7 @@ export type DecomposicaoPaiCadastro = {
   nome: string;
   observacao: string | null;
   filhos: DecomposicaoFilhoCadastro[];
+  pecas: DecomposicaoPecaCadastro[];
 };
 
 export type ProdutoNomusOpcao = {
@@ -118,6 +128,7 @@ export type DecomposicaoCadastroResumo = {
   nome: string;
   observacao: string | null;
   filhos: DecomposicaoFilhoCadastro[];
+  pecas: DecomposicaoPecaCadastro[];
 };
 
 export async function listarCadastrosDecomposicao(): Promise<DecomposicaoCadastroResumo[]> {
@@ -161,6 +172,7 @@ export async function salvarDecomposicaoPai(
     nome: string;
     observacao: string;
     filhos: DecomposicaoFilhoCadastro[];
+    pecas: DecomposicaoPecaCadastro[];
   }
 ): Promise<void> {
   const res = await apiFetch(id == null ? '/api/pcp/decomposicao' : `/api/pcp/decomposicao/${id}`, {
@@ -193,11 +205,52 @@ export type OrdemProducao = {
   criadoPorLogin: string | null;
   createdAt: string;
   itens: OrdemProducaoItem[];
+  pecas: OrdemProducaoPeca[];
+};
+
+export type OrdemProducaoPeca = {
+  id: number;
+  descricao: string;
+  quantidadeNoPai: number;
+  quantidadeTotal: number;
+  medidaL: string;
+  medidaA: string;
+  materiaPrima: string;
 };
 
 export async function listarOrdensProducao(): Promise<OrdemProducao[]> {
   const data = await apiJson<{ ordens: OrdemProducao[] }>('/api/pcp/decomposicao/ordens');
   return data.ordens ?? [];
+}
+
+export type AlocacaoPedido = {
+  idItem: number;
+  idPedido: number;
+  numeroPedido: string;
+  cliente: string;
+  codigoFilho: string;
+  descricaoFilho: string;
+  statusItem: number;
+  statusNome: string;
+  qtdePedida: number;
+  saldo: number;
+};
+
+export async function listarAlocacoesOrdem(ordemId: number): Promise<{ alocacoes: AlocacaoPedido[]; saldo: number }> {
+  const res = await apiFetch(`/api/pcp/decomposicao/ordens/${ordemId}/alocacoes`);
+  if (!res.ok) await lerErro(res, 'Não foi possível ler os pedidos dos filhos.');
+  const data = (await res.json()) as { alocacoes: AlocacaoPedido[]; saldo: number };
+  return { alocacoes: data.alocacoes ?? [], saldo: Number(data.saldo) || 0 };
+}
+
+export async function atualizarQuantidadeOrdem(ordemId: number, quantidade: number): Promise<OrdemProducao> {
+  const res = await apiFetch(`/api/pcp/decomposicao/ordens/${ordemId}`, {
+    method: 'PUT',
+    body: { quantidade },
+  });
+  if (!res.ok) await lerErro(res, 'Não foi possível gravar a quantidade a produzir.');
+  const data = (await res.json()) as { ordem: OrdemProducao };
+  return data.ordem;
 }
 
 export async function emitirOrdemProducao(body: {

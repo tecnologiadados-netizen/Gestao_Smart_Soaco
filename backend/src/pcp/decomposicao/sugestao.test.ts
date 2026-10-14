@@ -9,13 +9,13 @@ describe('sugestão do produto pai', () => {
     expect(paisImplicados(8, 0)).toBe(0);
   });
 
-  it('a quantidade do pai é o total vendido dos filhos', () => {
+  it('a quantidade do pai é o saldo em aberto dos filhos', () => {
     const resumo = resumirSugestao([
       { quantidade: 2, qtdePedida: 10, pendente: 6 },
       { quantidade: 4, qtdePedida: 12, pendente: 4 },
     ]);
 
-    expect(resumo.sugestao).toBe(22);
+    expect(resumo.sugestao).toBe(10);
     expect(resumo.qtdePedida).toBe(22);
     expect(resumo.pendente).toBe(10);
   });

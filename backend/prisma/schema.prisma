@@ -309,6 +309,8 @@ model DoubleCheckInDivergenciaApontada {
   campo                  String
   /// real | benigna — natureza na primeira leitura
   natureza               String
+  /// Cópia da linha NF × PC na primeira leitura. Nulo nas leituras anteriores a esta coluna.
+  retratoJson            String?
   apontadoEm             DateTime @default(now())
 
   @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo], map: "double_checkin_divergencia_apontada_idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo_key")
@@ -812,6 +814,7 @@ model DecomposicaoProdutoPai {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   filhos         DecomposicaoProdutoFilho[]
+  pecas          DecomposicaoPeca[]
   ordens         DecomposicaoOrdem[]
 
   @@index([grupo])
@@ -836,6 +839,22 @@ model DecomposicaoProdutoFilho {
   @@map("decomposicao_produto_filho")
 }
 
+/// Peça de corte do pai: nome, quantidade, medidas em mm e matéria-prima livre.
+model DecomposicaoPeca {
+  id           Int                    @id @default(autoincrement())
+  paiId        Int
+  descricao    String
+  quantidade   Int                    @default(1)
+  medidaL      String                 @default("")
+  medidaA      String                 @default("")
+  materiaPrima String                 @default("")
+  sortOrder    Int                    @default(0)
+  pai          DecomposicaoProdutoPai @relation(fields: [paiId], references: [id], onDelete: Cascade)
+
+  @@index([paiId])
+  @@map("decomposicao_peca")
+}
+
 /// Ordem emitida a partir de um pai. O conteúdo fica gravado para reimpressão.
 model DecomposicaoOrdem {
   id             Int                      @id @default(autoincrement())
@@ -850,6 +869,7 @@ model DecomposicaoOrdem {
   createdAt      DateTime                 @default(now())
   pai            DecomposicaoProdutoPai?  @relation(fields: [paiId], references: [id], onDelete: SetNull)
   itens          DecomposicaoOrdemItem[]
+  pecas          DecomposicaoOrdemPeca[]
 
   @@index([grupo])
   @@index([paiId])
@@ -871,6 +891,23 @@ model DecomposicaoOrdemItem {
 
   @@index([ordemId])
   @@map("decomposicao_ordem_item")
+}
+
+/// Cópia das peças no momento da emissão. A quantidade total já está multiplicada.
+model DecomposicaoOrdemPeca {
+  id              Int               @id @default(autoincrement())
+  ordemId         Int
+  descricao       String
+  quantidadeNoPai Int
+  quantidadeTotal Float
+  medidaL         String            @default("")
+  medidaA         String            @default("")
+  materiaPrima    String            @default("")
+  sortOrder       Int               @default(0)
+  ordem           DecomposicaoOrdem @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@index([ordemId])
+  @@map("decomposicao_ordem_peca")
 }
 
 // --- SycroOrder (migrado do sincroorder-crm): pedidos, histórico e notificações ---

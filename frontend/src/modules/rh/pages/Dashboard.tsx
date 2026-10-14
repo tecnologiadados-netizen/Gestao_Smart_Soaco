@@ -1658,6 +1658,18 @@ const Dashboard = () => {
     }> = [];
     let semLocalidade = 0;
     let semBairro = 0;
+    const semCadastro: Array<{
+      uf: string;
+      cidade: string;
+      cidadeChave: string;
+      bairro: string;
+      bairroChave: string;
+      endereco: string;
+      logradouro: string;
+      cep: string;
+      matricula: string;
+      nome: string;
+    }> = [];
 
     secullumDaEmpresa.forEach((funcionario, index) => {
       const matricula = String(funcionario.numeroFolha ?? "").trim();
@@ -1681,8 +1693,24 @@ const Dashboard = () => {
         cidade,
         `${funcionario.endereco ?? ""} ${funcionario.logradouro ?? ""}`,
       );
+      const endereco = String(funcionario.endereco ?? "").trim();
+      const logradouro = String(funcionario.logradouro ?? "").trim();
+      const cep = String(funcionario.cep ?? "").replace(/\D/g, "");
+      const nomePessoa = String(organico?.row[ORGANICO_IDX.NOME] ?? funcionario.nome ?? "").trim();
       if (!/^[A-Z]{2}$/.test(uf) || !cidade) {
         semLocalidade += 1;
+        semCadastro.push({
+          uf,
+          cidade,
+          cidadeChave: chaveCidade(cidade),
+          bairro,
+          bairroChave: chaveCidade(bairro),
+          endereco,
+          logradouro,
+          cep,
+          matricula,
+          nome: nomePessoa,
+        });
         return;
       }
       if (!bairro) semBairro += 1;
@@ -1700,18 +1728,18 @@ const Dashboard = () => {
         cidadeChave: chaveCidade(cidade),
         bairro,
         bairroChave: chaveCidade(bairro),
-        endereco: String(funcionario.endereco ?? "").trim(),
-        logradouro: String(funcionario.logradouro ?? "").trim(),
-        cep: String(funcionario.cep ?? "").replace(/\D/g, ""),
+        endereco,
+        logradouro,
+        cep,
         matricula,
-        nome: String(row[ORGANICO_IDX.NOME] ?? funcionario.nome ?? "").trim(),
+        nome: nomePessoa,
         row,
         demissao,
         rowIndex: organico?.rowIndex ?? index,
       });
     });
 
-    return { pessoas, semLocalidade, semBairro };
+    return { pessoas, semLocalidade, semBairro, semCadastro };
   }, [secullumDaEmpresa, organicoDaEmpresa, hojePainel]);
 
   const colaboradoresDaLocalidade = useMemo(() => {
@@ -2256,6 +2284,14 @@ const Dashboard = () => {
                                     )?.motivoFilho ?? ""
                                   : undefined
                               }
+                              motivoDetalhadoSensivel={
+                                grupo.titulo === "Desligamentos" &&
+                                escolherComplementoDesligamento(
+                                  complementosDesligamento,
+                                  String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                  item.demissao,
+                                )?.motivoSensivel === true
+                              }
                         fotoCadastrada={matriculaTemFoto(
                           matriculasComFoto,
                           String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
@@ -2514,6 +2550,14 @@ const Dashboard = () => {
                                     )?.motivoFilho ?? ""
                                   : undefined
                               }
+                              motivoDetalhadoSensivel={
+                                grupo.mostrarMotivo &&
+                                escolherComplementoDesligamento(
+                                  complementosDesligamento,
+                                  String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                  item.demissao,
+                                )?.motivoSensivel === true
+                              }
                               fotoCadastrada={matriculaTemFoto(
                                 matriculasComFoto,
                                 String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
@@ -2711,6 +2755,13 @@ const Dashboard = () => {
                             String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
                             item.demissao,
                           )?.motivoFilho ?? ""
+                        }
+                        motivoDetalhadoSensivel={
+                          escolherComplementoDesligamento(
+                            complementosDesligamento,
+                            String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                            item.demissao,
+                          )?.motivoSensivel === true
                         }
                         fotoCadastrada={matriculaTemFoto(
                           matriculasComFoto,
@@ -3013,6 +3064,14 @@ const Dashboard = () => {
                                           )?.motivoFilho ?? ""
                                         : undefined
                                     }
+                                    motivoDetalhadoSensivel={
+                                      grupo.mostrarMotivo &&
+                                      escolherComplementoDesligamento(
+                                        complementosDesligamento,
+                                        String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                                        item.demissao,
+                                      )?.motivoSensivel === true
+                                    }
                                     fotoCadastrada={matriculaTemFoto(
                                       matriculasComFoto,
                                       String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
@@ -3187,6 +3246,13 @@ const Dashboard = () => {
                             item.demissao,
                           )?.motivoFilho ?? ""
                         }
+                        motivoDetalhadoSensivel={
+                          escolherComplementoDesligamento(
+                            complementosDesligamento,
+                            String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
+                            item.demissao,
+                          )?.motivoSensivel === true
+                        }
                         fotoCadastrada={matriculaTemFoto(
                           matriculasComFoto,
                           String(item.row[ORGANICO_IDX.MATRICULA] ?? ""),
@@ -3350,6 +3416,7 @@ const Dashboard = () => {
         <div className="mt-6">
           <MapaLocalidadeCard
             pessoas={locaisColaboradores.pessoas}
+            semCadastro={locaisColaboradores.semCadastro}
             semLocalidade={locaisColaboradores.semLocalidade}
             semBairro={locaisColaboradores.semBairro}
             referencia={folhaNoFechamento}
