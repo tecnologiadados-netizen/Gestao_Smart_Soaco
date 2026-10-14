@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
-import { importarAnotacoesDiario, lerMatrizPlanilha, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
+import { aplicarCorAnotacoesDiario, importarAnotacoesDiario, lerMatrizPlanilha, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
+import { cadastrarSubclassificacaoDiario, listarSubclassificacoesDiario } from '../data/diarioSubclassificacao.js';
 import { assertDatasDiarioEditaveis } from '../data/diarioProcessoRepository.js';
 import {
   MAX_REPROGRAMAR,
@@ -45,7 +46,8 @@ export async function getDiarioContasPagar(req: Request, res: Response): Promise
   }
 
   try {
-    const resultado = await queryDiarioContasPagar({ dataInicio, dataFim });
+    const incluirItens = String(req.query.itens ?? '1') !== '0';
+    const resultado = await queryDiarioContasPagar({ dataInicio, dataFim, incluirItens });
     res.json({ dataInicio, dataFim, ...resultado });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -287,12 +289,83 @@ export async function postSalvarAnotacaoDiario(req: Request, res: Response): Pro
       origem,
       codigo,
       texto,
+      cor: req.body?.cor,
       usuario: req.user?.login ?? '?',
     });
     res.json(resultado);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postSalvarAnotacaoDiario]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/anotacoes/cor */
+export async function postAplicarCorAnotacoesDiario(req: Request, res: Response): Promise<void> {
+  const bruto = req.body?.itens;
+  if (!Array.isArray(bruto) || bruto.length === 0) {
+    res.status(400).json({ error: 'Selecione ao menos um título.' });
+    return;
+  }
+  const itens: { origem: 'Nomus' | 'Shop9'; codigo: number }[] = [];
+  for (const item of bruto) {
+    const origem = item?.origem;
+    const codigo = Number(item?.codigo);
+    if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(codigo) || codigo <= 0) {
+      res.status(400).json({ error: 'Cada título precisa de origem Nomus ou Shop9 e um código válido.' });
+      return;
+    }
+    itens.push({ origem, codigo });
+  }
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso])) return;
+  try {
+    const resultado = await aplicarCorAnotacoesDiario({
+      itens,
+      cor: req.body?.cor,
+      usuario: req.user?.login ?? '?',
+    });
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postAplicarCorAnotacoesDiario]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/diario/subclassificacoes */
+export async function getDiarioSubclassificacoes(_req: Request, res: Response): Promise<void> {
+  try {
+    const itens = await listarSubclassificacoesDiario();
+    res.json({ itens });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDiarioSubclassificacoes]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/subclassificacoes */
+export async function postAlocarSubclassificacao(req: Request, res: Response): Promise<void> {
+  try {
+    const item = await cadastrarSubclassificacaoDiario({
+      classificacao: String(req.body?.classificacao ?? ''),
+      nome: String(req.body?.nome ?? ''),
+    });
+    console.log(
+      '[diario subclassificacao] user=%s classificacao=%s nome=%s',
+      req.user?.login ?? '?',
+      item.classificacao,
+      item.nome,
+    );
+    res.json(item);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postAlocarSubclassificacao]', msg);
     res.status(400).json({ error: msg });
   }
 }

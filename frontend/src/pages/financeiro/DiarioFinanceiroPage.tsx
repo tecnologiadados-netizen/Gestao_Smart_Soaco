@@ -6,6 +6,7 @@ import {
   fetchDiarioContasBancarias,
   fetchDiarioFormasPagamento,
   fetchDiarioContasPagar,
+  aplicarCorAnotacoesDiario,
   importarAnotacoesDiario,
   reprogramarDiarioContasPagar,
   type ContaBancariaOpcao,
@@ -25,7 +26,8 @@ import {
   type DfcTipoRefLancamento,
 } from '../../api/dfcPrioridade';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
-import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
+import { FILTRO_COR_QUALQUER } from '../../components/grade/GradeFiltroExcelPortal';
+import { compareRowsBySortLevels, useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import {
   DIARIO_COLUNAS_GRADE,
   DiarioCabecalhoTh,
@@ -37,6 +39,11 @@ import {
 } from './diario/exportDiarioContasPagar';
 import { DescricaoReprogramadaGrade } from './diario/descricaoReprogramada';
 import { DiarioAnotacaoCelula } from './diario/DiarioAnotacaoCelula';
+import { DiarioClassificarCorDialog, type NivelClassificacaoCor } from './diario/DiarioClassificarCorDialog';
+import { DiarioPaletaCorExcel } from './diario/DiarioPaletaCorExcel';
+import { corObservacaoDiario } from './diario/coresObservacaoDiario';
+import { DiarioSubclassificacaoModal } from './diario/DiarioSubclassificacaoModal';
+import { DiarioVencidosPainel, type DiarioVencidosPainelHandle } from './diario/DiarioVencidosPainel';
 import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
@@ -179,6 +186,8 @@ function textoCelula(l: DiarioContaPagarLinha, col: string): string {
       return l.status.toLocaleUpperCase('pt-BR');
     case 'vencimento':
       return formatData(l.dataVencimento);
+    case 'reprogramado':
+      return texto(l.reprogramado);
     case 'baixa':
       return formatData(l.dataBaixa);
     case 'fornecedor':
@@ -254,17 +263,27 @@ export type DiarioFinanceiroModo = {
 export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiroModo } = {}) {
   const inicial = modo ? { inicio: modo.dataFixa, fim: modo.dataFixa } : periodoAtalho('hoje');
   const editavel = modo ? modo.editavel : true;
-  const periodoTravado = !!modo;
+  const [aba, setAba] = useState<'pagar' | 'vencidos'>('pagar');
   const [atalho, setAtalho] = useState<Atalho | null>(modo ? null : 'hoje');
   const [dataInicio, setDataInicio] = useState(inicial.inicio);
   const [dataFim, setDataFim] = useState(inicial.fim);
-  const [faixaFiltrosVisivel, setFaixaFiltrosVisivel] = useState(true);
+  const dataProcesso = modo?.dataFixa || dataInicio;
+  const [filtrosPagarVisivel, setFiltrosPagarVisivel] = useState(true);
+  const [filtrosVencidosVisivel, setFiltrosVencidosVisivel] = useState(true);
+  const [vencidosVisitado, setVencidosVisitado] = useState(false);
+  const filtrosVisivel = aba === 'vencidos' ? filtrosVencidosVisivel : filtrosPagarVisivel;
+  const [acoesAberto, setAcoesAberto] = useState(false);
+  const acoesRef = useRef<HTMLDivElement>(null);
   const [fornecedores, setFornecedores] = useState('');
   const [empresas, setEmpresas] = useState('');
   const [planos, setPlanos] = useState('');
   const [origens, setOrigens] = useState('');
   const [situacoes, setSituacoes] = useState('');
   const [observacao, setObservacao] = useState('');
+  const [corObservacao, setCorObservacao] = useState('');
+  const [filtroCorHex, setFiltroCorHex] = useState<string | null>(null);
+  const [niveisCor, setNiveisCor] = useState<NivelClassificacaoCor[]>([]);
+  const [classificarCorAberto, setClassificarCorAberto] = useState(false);
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
   const [modalAberto, setModalAberto] = useState(false);
@@ -277,6 +296,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [contaId, setContaId] = useState('');
   const [carregandoContas, setCarregandoContas] = useState(false);
   const [formaAberta, setFormaAberta] = useState(false);
+  const [subAberta, setSubAberta] = useState(false);
+  const [subSugestoes, setSubSugestoes] = useState<string[]>([]);
+  const [subInicial, setSubInicial] = useState('');
+  const vencidosRef = useRef<DiarioVencidosPainelHandle>(null);
+  const [vencidosUi, setVencidosUi] = useState({ linhas: 0, selecionadas: 0, loading: false });
+  const onResumoVencidos = useCallback((resumo: { linhas: number; selecionadas: number; loading: boolean }) => {
+    setVencidosUi(resumo);
+  }, []);
   const [formasOpcoes, setFormasOpcoes] = useState<FormaPagamentoOpcao[]>([]);
   const [formaId, setFormaId] = useState('');
   const [carregandoFormas, setCarregandoFormas] = useState(false);
@@ -289,6 +316,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [salvandoPrioridade, setSalvandoPrioridade] = useState<string | null>(null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [importando, setImportando] = useState(false);
+  const [aplicandoCor, setAplicandoCor] = useState(false);
   const arquivoAnotacaoRef = useRef<HTMLInputElement | null>(null);
   const [cargaTick, setCargaTick] = useState(0);
 
@@ -403,6 +431,22 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     return () => window.removeEventListener('focus', onFocus);
   }, [carregarPrioridades]);
 
+  useEffect(() => {
+    if (!acoesAberto) return;
+    const fechar = (e: MouseEvent) => {
+      if (!acoesRef.current?.contains(e.target as Node)) setAcoesAberto(false);
+    };
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAcoesAberto(false);
+    };
+    document.addEventListener('mousedown', fechar);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', fechar);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [acoesAberto]);
+
   const aplicarAtalho = (id: Atalho) => {
     const p = periodoAtalho(id);
     setAtalho(id);
@@ -441,12 +485,35 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l) ?? '')) return false;
       if (fPlano.size > 0 && !fPlano.has(l.planoContas ?? '')) return false;
       if (observacao.trim()) {
-        const texto = `${l.observacao ?? ''} ${l.descricao ?? ''}`;
+        const texto = `${l.observacao ?? ''} ${l.descricao ?? ''} ${l.anotacao ?? ''}`;
         if (!casaObs(texto)) return false;
       }
+      if (corObservacao === 'sem' && l.anotacaoCor) return false;
+      if (corObservacao === 'com' && !l.anotacaoCor) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, origens, situacoes, observacao]);
+  }, [linhas, fornecedores, empresas, planos, origens, situacoes, observacao, corObservacao]);
+
+  const coresCabecalho = useMemo(() => {
+    const usadas = new Set<string>();
+    let temSem = false;
+    for (const l of linhasFiltradas) {
+      const cor = corObservacaoDiario(l.anotacaoCor);
+      if (cor) usadas.add(cor);
+      else temSem = true;
+    }
+    const lista = [...usadas].sort().map((hex) => ({ id: hex, hex }));
+    if (temSem) lista.push({ id: '', hex: null });
+    return lista;
+  }, [linhasFiltradas]);
+
+  const linhasComCor = useMemo(() => {
+    if (filtroCorHex == null) return linhasFiltradas;
+    if (filtroCorHex === FILTRO_COR_QUALQUER) {
+      return linhasFiltradas.filter((l) => corObservacaoDiario(l.anotacaoCor) != null);
+    }
+    return linhasFiltradas.filter((l) => (corObservacaoDiario(l.anotacaoCor) ?? '') === filtroCorHex);
+  }, [linhasFiltradas, filtroCorHex]);
 
   const getCellText = useCallback(
     (row: DiarioContaPagarLinha, colId: string) =>
@@ -458,26 +525,60 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       colId === 'prioridade' ? prioridadeDaLinha(row).efetiva ?? -1 : valorOrdenacao(row, colId),
     [prioridadeDaLinha],
   );
+  const compareRows = useCallback(
+    (
+      a: DiarioContaPagarLinha,
+      b: DiarioContaPagarLinha,
+      levels: { id: string; dir: 'asc' | 'desc' }[],
+      getSortValue: (row: DiarioContaPagarLinha, columnId: string) => string | number,
+    ) => {
+      if (niveisCor.length > 0 && levels.some((nivel) => nivel.id === 'anotacao')) {
+        const corA = corObservacaoDiario(a.anotacaoCor) ?? '';
+        const corB = corObservacaoDiario(b.anotacaoCor) ?? '';
+        for (const nivel of niveisCor) {
+          const aCombina = corA === nivel.corId;
+          const bCombina = corB === nivel.corId;
+          if (aCombina === bCombina) continue;
+          if (nivel.posicao === 'superior') return aCombina ? -1 : 1;
+          return aCombina ? 1 : -1;
+        }
+        return 0;
+      }
+      return compareRowsBySortLevels(a, b, levels, getSortValue);
+    },
+    [niveisCor],
+  );
   const grade = useGradeFiltrosExcel({
-    rows: linhasFiltradas,
+    rows: linhasComCor,
     columnIds: DIARIO_COLUNAS_GRADE.map((c) => c.id),
     getCellText,
     valueForSort,
+    compareRows,
     dateColumnIds: ['vencimento', 'baixa'],
   });
   const limparFiltros = () => {
+    if (aba === 'vencidos') {
+      vencidosRef.current?.limparFiltros();
+      return;
+    }
     setFornecedores('');
     setEmpresas('');
     setPlanos('');
     setOrigens('');
     setSituacoes('');
     setObservacao('');
+    setCorObservacao('');
+    setFiltroCorHex(null);
+    setNiveisCor([]);
+    setClassificarCorAberto(false);
     grade.limparFiltrosGrade();
   };
   const limparGradeRef = useRef(grade.limparFiltrosGrade);
   limparGradeRef.current = grade.limparFiltrosGrade;
   useEffect(() => {
     limparGradeRef.current();
+    setFiltroCorHex(null);
+    setNiveisCor([]);
   }, [cargaTick]);
 
   const linhasExibidas = grade.rowsExibidas;
@@ -523,11 +624,15 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     });
   };
 
+  const linhasMarcadas = () => (
+    aba === 'vencidos'
+      ? (vencidosRef.current?.linhasSelecionadas() ?? [])
+      : linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l)))
+  );
+
   const abrirReprogramar = () => {
     if (!editavel) return;
-    const escolhidas = dedupeReprogramar(
-      linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
-    );
+    const escolhidas = dedupeReprogramar(linhasMarcadas());
     if (escolhidas.length === 0) return;
     setModalLinhas(escolhidas);
     setNovaData('');
@@ -537,9 +642,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
   const abrirContaBancaria = () => {
     if (!editavel) return;
-    const escolhidas = dedupeReprogramar(
-      linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
-    );
+    const escolhidas = dedupeReprogramar(linhasMarcadas());
     if (escolhidas.length === 0) return;
     const origens = new Set(escolhidas.map((l) => l.origem));
     if (origens.size > 1) {
@@ -574,11 +677,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await definirContaBancariaDiario({
-        idContaBancaria: idConta,
-        itens,
-        dataProcesso: modo?.dataFixa || dataInicio,
-      });
+      const res = await definirContaBancariaDiario({ idContaBancaria: idConta, dataProcesso, itens });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
@@ -598,6 +697,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         setAviso(texto || null);
         setContaAberta(false);
         await carregar(dataInicio, dataFim);
+        vencidosRef.current?.recarregar();
       } else {
         setErroModal(texto || 'Nenhuma conta bancária foi alterada.');
       }
@@ -610,9 +710,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
   const abrirFormaPagamento = () => {
     if (!editavel) return;
-    const escolhidas = dedupeReprogramar(
-      linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l))),
-    );
+    const escolhidas = dedupeReprogramar(linhasMarcadas());
     if (escolhidas.length === 0) return;
     const origens = new Set(escolhidas.map((l) => l.origem));
     if (origens.size > 1) {
@@ -636,6 +734,19 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       .finally(() => setCarregandoFormas(false));
   };
 
+  const abrirSubclassificacao = () => {
+    if (!editavel) return;
+    const fonte = aba === 'vencidos' ? (vencidosRef.current?.linhasVisiveis() ?? []) : linhas;
+    const marcadas = linhasMarcadas();
+    const nomes = new Set(marcadas.map((l) => l.planoContas?.trim() || '').filter(Boolean));
+    setSubSugestoes(
+      [...new Set(fonte.map((l) => l.planoContas?.trim() || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    );
+    setSubInicial(nomes.size === 1 ? [...nomes][0] ?? '' : '');
+    setErro(null);
+    setSubAberta(true);
+  };
+
   const confirmarFormaPagamento = async () => {
     const idForma = formaId.trim();
     if (!idForma || salvando) return;
@@ -647,11 +758,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await definirFormaPagamentoDiario({
-        idFormaPagamento: idForma,
-        itens,
-        dataProcesso: modo?.dataFixa || dataInicio,
-      });
+      const res = await definirFormaPagamentoDiario({ idFormaPagamento: idForma, dataProcesso, itens });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         const onde = res.origem === 'Nomus' ? 'no Nomus' : 'neste projeto';
@@ -671,6 +778,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         setAviso(texto || null);
         setFormaAberta(false);
         await carregar(dataInicio, dataFim);
+        vencidosRef.current?.recarregar();
       } else {
         setErroModal(texto || 'Nenhuma forma de pagamento foi alterada.');
       }
@@ -691,11 +799,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setSalvando(true);
     setErroModal(null);
     try {
-      const res = await reprogramarDiarioContasPagar({
-        dataVencimento: novaData,
-        itens,
-        dataProcesso: modo?.dataFixa || dataInicio,
-      });
+      const res = await reprogramarDiarioContasPagar({ dataVencimento: novaData, dataProcesso, itens });
       const partes: string[] = [];
       if (res.atualizados > 0) {
         partes.push(`${res.atualizados.toLocaleString('pt-BR')} vencimento(s) atualizado(s) para ${formatData(res.dataVencimento)}.`);
@@ -711,6 +815,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         setAviso(texto || null);
         setModalAberto(false);
         await carregar(dataInicio, dataFim);
+        vencidosRef.current?.recarregar();
       } else {
         setErroModal(texto || 'Nenhum vencimento foi alterado.');
       }
@@ -732,17 +837,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   );
 
   const importarAnotacoes = async (arquivo: File | undefined) => {
-    if (!arquivo || importando) return;
+    if (!editavel || !arquivo || importando) return;
     setImportando(true);
     setErro(null);
     try {
       const matriz = await lerPlanilhaAnotacoes(arquivo);
-      const res = await importarAnotacoesDiario(matriz, modo?.dataFixa || dataInicio);
+      const res = await importarAnotacoesDiario(matriz, dataProcesso);
       const partes = [`${res.gravados} observação(ões) gravada(s).`];
       if (res.semCorrespondencia > 0) partes.push(`${res.semCorrespondencia} sem conta correspondente.`);
       if (res.ambiguos > 0) partes.push(`${res.ambiguos} com mais de uma conta possível.`);
       if (res.amostrasSem.length > 0) partes.push(`Exemplos: ${res.amostrasSem.join('; ')}.`);
       await carregar(dataInicio, dataFim);
+      vencidosRef.current?.recarregar();
       setAviso(partes.join(' '));
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
@@ -752,24 +858,66 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     }
   };
 
+  const aplicarCorLote = async (corHex: string | null) => {
+    if (!editavel || aplicandoCor) return;
+    const vistos = new Set<string>();
+    const itens = linhas.flatMap((l) => {
+      if (!selecionadas.has(chaveLinha(l)) || !(l.codigo > 0)) return [];
+      const chave = `${l.origem}:${l.codigo}`;
+      if (vistos.has(chave)) return [];
+      vistos.add(chave);
+      return [{ origem: l.origem, codigo: l.codigo }];
+    });
+    if (itens.length === 0) {
+      setErro('Marque ao menos um título na grade para aplicar a cor.');
+      return;
+    }
+    setAplicandoCor(true);
+    setErro(null);
+    try {
+      const res = await aplicarCorAnotacoesDiario({ itens, cor: corHex, dataProcesso });
+      setLinhas((prev) =>
+        prev.map((item) => (vistos.has(`${item.origem}:${item.codigo}`) ? { ...item, anotacaoCor: res.cor } : item)),
+      );
+      setAviso(
+        res.cor
+          ? `${res.atualizados.toLocaleString('pt-BR')} observação(ões) coloridas.`
+          : `${res.atualizados.toLocaleString('pt-BR')} observação(ões) sem preenchimento.`,
+      );
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAplicandoCor(false);
+    }
+  };
+
   const exportar = async (formato: 'xlsx' | 'pdf') => {
-    if (exportando || linhasExibidas.length === 0) return;
+    const doVencidos = aba === 'vencidos';
+    const alvo = doVencidos ? (vencidosRef.current?.linhasVisiveis() ?? []) : linhasExibidas;
+    const periodo = doVencidos ? vencidosRef.current?.periodo() : { inicio: dataInicio, fim: dataFim };
+    if (exportando || alvo.length === 0 || !periodo) return;
+    const totaisAlvo = {
+      qtd: alvo.length,
+      valor: soma(alvo, 'valor'),
+      baixado: soma(alvo, 'valorBaixado'),
+      saldo: soma(alvo, 'saldo'),
+    };
     setExportando(formato);
     try {
       if (formato === 'xlsx') {
         await exportarDiarioContasPagarExcel({
-          linhas: linhasExibidas,
-          totais,
-          dataInicio,
-          dataFim,
+          linhas: alvo,
+          totais: totaisAlvo,
+          dataInicio: periodo.inicio,
+          dataFim: periodo.fim,
           rotuloPrioridade: (l) => rotuloPrioridade(l),
         });
       } else {
         exportarDiarioContasPagarPdf({
-          linhas: linhasExibidas,
-          totais,
-          dataInicio,
-          dataFim,
+          linhas: alvo,
+          totais: totaisAlvo,
+          dataInicio: periodo.inicio,
+          dataFim: periodo.fim,
           rotuloPrioridade: (l) => rotuloPrioridade(l),
         });
       }
@@ -789,12 +937,33 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           </div>
         )}
         <div className="px-4 flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700">
-          <button
-            type="button"
-            className="px-3 py-2 text-sm font-medium border-b-2 border-primary-600 text-primary-700 dark:text-primary-300"
-          >
-            Contas a pagar
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setAba('pagar')}
+              className={`px-3 py-2 text-sm font-medium border-b-2 ${
+                aba === 'pagar'
+                  ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Contas a pagar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setVencidosVisitado(true);
+                setAba('vencidos');
+              }}
+              className={`px-3 py-2 text-sm font-medium border-b-2 ${
+                aba === 'vencidos'
+                  ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Vencidos/Reprogramados
+            </button>
+          </div>
           <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
             <input
               ref={arquivoAnotacaoRef}
@@ -803,64 +972,130 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               className="hidden"
               onChange={(e) => void importarAnotacoes(e.target.files?.[0])}
             />
+            <div className="relative" ref={acoesRef}>
+              <button
+                type="button"
+                onClick={() => setAcoesAberto((v) => !v)}
+                aria-expanded={acoesAberto}
+                aria-haspopup="menu"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+                Ações
+                <svg className={`h-3.5 w-3.5 transition-transform ${acoesAberto ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {acoesAberto ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={loading || importando || !editavel}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      arquivoAnotacaoRef.current?.click();
+                    }}
+                    className="flex w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    {importando ? 'Importando…' : 'Importar observações'}
+                  </button>
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Exportar</p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={(aba === 'vencidos' ? vencidosUi.loading : loading) || exportando != null || (aba === 'vencidos' ? vencidosUi.linhas === 0 : linhasExibidas.length === 0)}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      void exportar('xlsx');
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    {exportando === 'xlsx' ? 'Exportando…' : 'Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={(aba === 'vencidos' ? vencidosUi.loading : loading) || exportando != null || (aba === 'vencidos' ? vencidosUi.linhas === 0 : linhasExibidas.length === 0)}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      void exportar('pdf');
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    {exportando === 'pdf' ? 'Gerando PDF…' : 'PDF'}
+                  </button>
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Atualizar</p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0)}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirReprogramar();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Reprogramar
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirContaBancaria();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Conta bancária
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirFormaPagamento();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Forma de pagamento
+                  </button>
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Alocar</p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!editavel}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirSubclassificacao();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    SubClassificação
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
-              onClick={() => arquivoAnotacaoRef.current?.click()}
-              disabled={loading || importando || !editavel}
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {importando ? 'Importando…' : 'Importar observações'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void exportar('xlsx')}
-              disabled={loading || exportando != null || linhasExibidas.length === 0}
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void exportar('pdf')}
-              disabled={loading || exportando != null || linhasExibidas.length === 0}
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {exportando === 'pdf' ? 'Gerando PDF…' : 'Exportar PDF'}
-            </button>
-            <button
-              type="button"
-              onClick={abrirReprogramar}
-              disabled={!editavel || selecionadas.size === 0}
-              className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              Reprogramar
-            </button>
-            <button
-              type="button"
-              onClick={abrirContaBancaria}
-              disabled={!editavel || selecionadas.size === 0 || salvando}
-              className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
-            >
-              Conta bancária
-            </button>
-            <button
-              type="button"
-              onClick={abrirFormaPagamento}
-              disabled={!editavel || selecionadas.size === 0 || salvando}
-              className="inline-flex h-8 items-center rounded-lg border border-primary-600 bg-white px-3 text-xs font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50 dark:bg-slate-800 dark:text-primary-200 dark:hover:bg-slate-700"
-            >
-              Forma de pagamento
-            </button>
-            <button
-              type="button"
-              onClick={() => setFaixaFiltrosVisivel((v) => !v)}
-              aria-expanded={faixaFiltrosVisivel}
-              aria-label={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
-              title={faixaFiltrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
+              onClick={() => {
+                if (aba === 'vencidos') setFiltrosVencidosVisivel((v) => !v);
+                else setFiltrosPagarVisivel((v) => !v);
+              }}
+              aria-expanded={filtrosVisivel}
+              aria-label={filtrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
+              title={filtrosVisivel ? 'Ocultar filtros' : 'Mostrar filtros'}
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
             >
               <svg
-                className={`h-4 w-4 transition-transform ${faixaFiltrosVisivel ? '' : 'rotate-180'}`}
+                className={`h-4 w-4 transition-transform ${filtrosVisivel ? '' : 'rotate-180'}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -884,10 +1119,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           </div>
         </div>
 
-        {faixaFiltrosVisivel ? (
+        {aba === 'pagar' && filtrosPagarVisivel ? (
           <div className="px-3 py-2 flex flex-wrap items-end gap-2">
-            {periodoTravado ? null : (
-              <>
             <div>
               <span className={FILTRO_LABEL_CLASS}>Período</span>
               <div className="inline-flex h-8 overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
@@ -936,8 +1169,6 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                 disabled={loading}
               />
             </div>
-              </>
-            )}
             <FiltroMulti
               label="Fornecedor"
               placeholder="Todos"
@@ -998,6 +1229,19 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                 className={FILTRO_INPUT_CLASS}
               />
             </div>
+            <div className="w-44">
+              <label className={FILTRO_LABEL_CLASS}>Cor da observação</label>
+              <select
+                value={corObservacao}
+                onChange={(e) => setCorObservacao(e.target.value)}
+                className={FILTRO_INPUT_CLASS}
+                disabled={loading}
+              >
+                <option value="">Todas</option>
+                <option value="sem">Sem cor</option>
+                <option value="com">Com cor</option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={aplicarIntervalo}
@@ -1006,21 +1250,37 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             >
               {loading ? 'Buscando…' : 'Buscar'}
             </button>
+            <DiarioPaletaCorExcel
+              disabled={!editavel || aplicandoCor || selecionadas.size === 0}
+              onEscolher={(cor) => void aplicarCorLote(cor)}
+            />
           </div>
         ) : null}
       </div>
 
-      {erro && (
+      {vencidosVisitado ? (
+        <div className={aba === 'vencidos' ? 'contents' : 'hidden'}>
+          <DiarioVencidosPainel
+            ref={vencidosRef}
+            ativo={aba === 'vencidos'}
+            filtrosVisivel={filtrosVencidosVisivel}
+            onResumo={onResumoVencidos}
+          />
+        </div>
+      ) : null}
+
+      {aba === 'pagar' && erro && (
         <div className="rounded-lg border border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200 px-4 py-2 text-sm">
           {erro}
         </div>
       )}
-      {aviso && !erro && (
+      {aba === 'pagar' && aviso && !erro && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 px-4 py-2 text-sm">
           {aviso}
         </div>
       )}
 
+      <div className={aba === 'pagar' ? 'contents' : 'hidden'}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Resumo label="Lançamentos" valor={totais.qtd.toLocaleString('pt-BR')} />
         <Resumo label="Valor" valor={formatMoeda(totais.valor)} />
@@ -1040,11 +1300,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       <div
         ref={grade.tableScrollRef}
         className={`card-panel min-h-0 overflow-auto !p-0 ${
-          modo
-            ? 'flex-1'
-            : faixaFiltrosVisivel
-              ? 'max-h-[calc(100svh-18.5rem)]'
-              : 'max-h-[calc(100svh-14rem)]'
+          filtrosPagarVisivel ? 'max-h-[calc(100svh-18.5rem)]' : 'max-h-[calc(100svh-14rem)]'
         }`}
       >
         <table className="min-w-[1100px] w-full text-xs">
@@ -1068,6 +1324,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   label={col.label}
                   grade={grade}
                   align={'align' in col ? col.align : 'left'}
+                  filtroExtraAtivo={col.id === 'anotacao' && (filtroCorHex != null || niveisCor.length > 0)}
                 />
               ))}
             </tr>
@@ -1075,7 +1332,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={17} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={18} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1126,6 +1383,9 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   {l.planoContas ?? '—'}
                 </td>
                 <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">
+                  {l.reprogramado ?? '—'}
+                </td>
                 <td className="px-2 py-1.5 max-w-[12rem] truncate" title={empresaExibida(l) ?? ''}>
                   {empresaExibida(l) ?? '—'}
                 </td>
@@ -1145,12 +1405,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                 <td className="px-1 py-1">
                   <DiarioAnotacaoCelula
                     linha={l}
-                    dataProcesso={modo?.dataFixa || dataInicio}
+                    dataProcesso={dataProcesso}
                     somenteLeitura={!editavel}
-                    onGravada={(texto) => {
+                    onGravada={(gravado) => {
                       setLinhas((prev) =>
                         prev.map((item) =>
-                          item.origem === l.origem && item.codigo === l.codigo ? { ...item, anotacao: texto } : item,
+                          item.origem === l.origem && item.codigo === l.codigo
+                            ? { ...item, anotacao: gravado.texto, anotacaoCor: gravado.cor }
+                            : item,
                         ),
                       );
                     }}
@@ -1176,7 +1438,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     >
                       <option value="">
                         {prio.override == null && prio.plano != null
-                          ? `${prio.plano} — ${DFC_PRIORIDADE_LABEL_CURTO[prio.plano]} (plano)`
+                          ? `${prio.plano} — ${DFC_PRIORIDADE_LABEL_CURTO[prio.plano]}`
                           : prio.override == null
                             ? '— Sem prioridade —'
                             : '— Remover —'}
@@ -1212,7 +1474,44 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           </tbody>
         </table>
       </div>
-      <DiarioGradeFiltroPortal grade={grade} />
+      <DiarioGradeFiltroPortal
+        grade={grade}
+        onOrdenacaoTexto={() => setNiveisCor([])}
+        filtroCor={{
+          cores: coresCabecalho,
+          filtroId: filtroCorHex,
+          ordemId: niveisCor.length === 1 ? niveisCor[0].corId : null,
+          onClassificar: (id) => {
+            const desligar = niveisCor.length === 1 && niveisCor[0].corId === id && niveisCor[0].posicao === 'superior';
+            setNiveisCor(desligar ? [] : [{ id: crypto.randomUUID(), corId: id, posicao: 'superior' }]);
+            grade.setSortState(desligar ? null : { key: 'anotacao', direction: 'asc' });
+            grade.setSortLevels([]);
+            grade.fecharFiltroExcel();
+          },
+          onAbrirClassificacao: () => {
+            grade.fecharFiltroExcel();
+            setClassificarCorAberto(true);
+          },
+          onFiltrar: (id) => {
+            setFiltroCorHex(id);
+            grade.fecharFiltroExcel();
+          },
+        }}
+      />
+      {classificarCorAberto ? (
+        <DiarioClassificarCorDialog
+          cores={coresCabecalho}
+          niveis={niveisCor}
+          onCancelar={() => setClassificarCorAberto(false)}
+          onConfirmar={(niveis) => {
+            setNiveisCor(niveis);
+            grade.setSortState({ key: 'anotacao', direction: 'asc' });
+            grade.setSortLevels([]);
+            setClassificarCorAberto(false);
+          }}
+        />
+      ) : null}
+      </div>
 
       {itensModal ? <ModalItensNota linha={itensModal} onClose={() => setItensModal(null)} /> : null}
 
@@ -1249,6 +1548,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           onConfirm={() => void confirmarContaBancaria()}
           salvando={salvando}
           erro={erroModal}
+        />
+      ) : null}
+
+      {subAberta ? (
+        <DiarioSubclassificacaoModal
+          sugestoes={subSugestoes}
+          classificacaoInicial={subInicial}
+          onClose={() => setSubAberta(false)}
         />
       ) : null}
 

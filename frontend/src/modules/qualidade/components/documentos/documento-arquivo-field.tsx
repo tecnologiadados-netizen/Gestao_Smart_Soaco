@@ -6,6 +6,11 @@ import {
   type SgqAnexo,
 } from "@qualidade/types/registro-anexo";
 
+export interface DocumentoArquivoSelecionado {
+  nome: string;
+  dataUrl: string;
+}
+
 const DEFAULT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
 interface DocumentoArquivoFieldProps {
@@ -14,7 +19,10 @@ interface DocumentoArquivoFieldProps {
   arquivoDataUrl?: string;
   /** Arquivo já gravado no servidor. O bootstrap não devolve base64. */
   arquivoStoragePath?: string;
-  onFileSelect: (file: File) => void;
+  /** Preferir este: a grade já entregou nome e base64, sem reler o arquivo. */
+  onArquivoChange?: (arquivo: DocumentoArquivoSelecionado) => void;
+  /** @deprecated Use onArquivoChange. Relê o arquivo e pode apagar a linha no intervalo. */
+  onFileSelect?: (file: File) => void;
   onRemove: () => void;
   accept?: string;
   hint?: string;
@@ -26,6 +34,7 @@ export function DocumentoArquivoField({
   arquivoNome,
   arquivoDataUrl,
   arquivoStoragePath,
+  onArquivoChange,
   onFileSelect,
   onRemove,
   accept = DEFAULT_ACCEPT,
@@ -66,20 +75,35 @@ export function DocumentoArquivoField({
       return;
     }
 
-    setRascunho([]);
     const principal = preenchidos[0]!;
     // Sem base64 o arquivo veio do servidor e segue inalterado — nada a reenviar.
     if (!principal.dataUrl.trim()) return;
     if (
-      principal.nome !== (arquivoNome ?? "") ||
-      principal.dataUrl !== (arquivoDataUrl ?? "")
+      principal.nome === (arquivoNome ?? "") &&
+      principal.dataUrl === (arquivoDataUrl ?? "")
     ) {
-      const blob = dataUrlToBlob(principal.dataUrl);
-      const file = new File([blob], principal.nome, {
-        type: blob.type || "application/octet-stream",
-      });
-      onFileSelect(file);
+      return;
     }
+
+    // A grade já leu o arquivo. Aplicar direto evita reconverter o base64
+    // (o que apagava a linha antes do estado do formulário atualizar).
+    if (onArquivoChange) {
+      onArquivoChange({
+        nome: principal.nome,
+        dataUrl: principal.dataUrl,
+      });
+      return;
+    }
+
+    // Mantém a linha visível enquanto o formulário relê o File.
+    setRascunho(preenchidos);
+    if (!onFileSelect) return;
+    const blob = dataUrlToBlob(principal.dataUrl);
+    onFileSelect(
+      new File([blob], principal.nome, {
+        type: blob.type || "application/octet-stream",
+      })
+    );
   }
 
   return (
@@ -106,3 +130,4 @@ function dataUrlToBlob(dataUrl: string): Blob {
   }
   return new Blob([bytes], { type: mime });
 }
+

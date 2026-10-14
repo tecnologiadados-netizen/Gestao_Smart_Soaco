@@ -328,20 +328,41 @@ function diasEntre(inicio: string, fim: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
+const CORES_ANTIGAS: Record<string, string> = {
+  laranja_claro: '#F6D7A8',
+  laranja: '#F0A202',
+  azul: '#A9C6E3',
+  rosa: '#F0BBA8',
+  amarelo: '#FFE14A',
+};
+
+export function corAnotacaoDiario(valor: unknown): string | null {
+  const cor = String(valor ?? '').trim();
+  if (!cor) return null;
+  const antiga = CORES_ANTIGAS[cor];
+  if (antiga) return antiga;
+  return /^#[0-9a-fA-F]{6}$/.test(cor) ? cor.toUpperCase() : null;
+}
+
 export async function aplicarAnotacoesDiario(linhas: DiarioContaPagarLinha[]): Promise<void> {
   if (linhas.length === 0) return;
   try {
     const rows = await prisma.diarioAnotacao.findMany({
-      select: { origem: true, codigo: true, texto: true },
+      select: { origem: true, codigo: true, texto: true, cor: true },
     });
-    const porChave = new Map(rows.map((r) => [`${r.origem}:${r.codigo}`, r.texto]));
+    const porChave = new Map(rows.map((r) => [`${r.origem}:${r.codigo}`, r]));
     for (const linha of linhas) {
-      linha.anotacao = porChave.get(`${linha.origem}:${linha.codigo}`) ?? null;
+      const item = porChave.get(`${linha.origem}:${linha.codigo}`);
+      linha.anotacao = item?.texto?.trim() || null;
+      linha.anotacaoCor = corAnotacaoDiario(item?.cor);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[diarioAnotacao] leitura:', msg);
-    for (const linha of linhas) linha.anotacao = null;
+    for (const linha of linhas) {
+      linha.anotacao = null;
+      linha.anotacaoCor = null;
+    }
   }
 }
 
@@ -349,17 +370,19 @@ export async function salvarAnotacaoDiario(input: {
   origem: 'Nomus' | 'Shop9';
   codigo: number;
   texto: string;
+  cor: unknown;
   usuario: string;
-}): Promise<{ texto: string | null }> {
+}): Promise<{ texto: string | null; cor: string | null }> {
   const texto = input.texto.trim();
+  const cor = corAnotacaoDiario(input.cor);
   if (texto.length > ANOTACAO_MAX) {
     throw new Error(`A observação pode ter no máximo ${ANOTACAO_MAX} caracteres.`);
   }
-  if (!texto) {
+  if (!texto && !cor) {
     await prisma.diarioAnotacao.deleteMany({
       where: { origem: input.origem, codigo: input.codigo },
     });
-    return { texto: null };
+    return { texto: null, cor: null };
   }
   await prisma.diarioAnotacao.upsert({
     where: { origem_codigo: { origem: input.origem, codigo: input.codigo } },
@@ -367,11 +390,71 @@ export async function salvarAnotacaoDiario(input: {
       origem: input.origem,
       codigo: input.codigo,
       texto,
+      cor,
       usuario: input.usuario,
     },
-    update: { texto, usuario: input.usuario },
+    update: { texto, cor, usuario: input.usuario },
   });
-  return { texto };
+  return { texto: texto || null, cor };
+}
+
+export async function aplicarCorAnotacoesDiario(input: {
+  itens: { origem: 'Nomus' | 'Shop9'; codigo: number }[];
+  cor: unknown;
+  usuario: string;
+}): Promise<{ atualizados: number; cor: string | null }> {
+  const informada = input.cor == null || String(input.cor).trim() === '' ? null : corAnotacaoDiario(input.cor);
+  if (input.cor != null && String(input.cor).trim() !== '' && !informada) {
+    throw new Error('Selecione uma cor.');
+  }
+  const cor = informada;
+  const vistos = new Set<string>();
+  const itens = input.itens.filter((item) => {
+    const chave = `${item.origem}:${item.codigo}`;
+    if (vistos.has(chave) || item.codigo <= 0) return false;
+    vistos.add(chave);
+    return true;
+  });
+  if (itens.length === 0) throw new Error('Selecione ao menos um título.');
+  if (itens.length > 400) throw new Error('É possível colorir no máximo 400 títulos por vez.');
+
+  if (!cor) {
+    const atuais = await prisma.diarioAnotacao.findMany({
+      where: { OR: itens.map((item) => ({ origem: item.origem, codigo: item.codigo })) },
+      select: { origem: true, codigo: true, texto: true },
+    });
+    if (atuais.length === 0) return { atualizados: 0, cor: null };
+    await prisma.$transaction(
+      atuais.map((item) =>
+        item.texto.trim()
+          ? prisma.diarioAnotacao.update({
+              where: { origem_codigo: { origem: item.origem, codigo: item.codigo } },
+              data: { cor: null, usuario: input.usuario },
+            })
+          : prisma.diarioAnotacao.delete({
+              where: { origem_codigo: { origem: item.origem, codigo: item.codigo } },
+            }),
+      ),
+    );
+    return { atualizados: atuais.length, cor: null };
+  }
+
+  await prisma.$transaction(
+    itens.map((item) =>
+      prisma.diarioAnotacao.upsert({
+        where: { origem_codigo: { origem: item.origem, codigo: item.codigo } },
+        create: {
+          origem: item.origem,
+          codigo: item.codigo,
+          texto: '',
+          cor,
+          usuario: input.usuario,
+        },
+        update: { cor, usuario: input.usuario },
+      }),
+    ),
+  );
+  return { atualizados: itens.length, cor };
 }
 
 export async function importarAnotacoesDiario(input: {

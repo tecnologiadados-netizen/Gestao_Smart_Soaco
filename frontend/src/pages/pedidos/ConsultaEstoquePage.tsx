@@ -232,6 +232,8 @@ export default function ConsultaEstoquePage() {
   const [consultaProdutoResumo, setConsultaProdutoResumo] =
     useState<ConsultaProdutoResumo | null>(null);
   const [msgFiltro, setMsgFiltro] = useState<string | null>(null);
+  /** Âmbar só depois de Filtrar sem concluir a visualização do produto. */
+  const [avisoEscolhaProdutoPendente, setAvisoEscolhaProdutoPendente] = useState(false);
   const [linhas, setLinhas] = useState<ConsultaEstoqueLinha[]>([]);
   const [mostrarGrade, setMostrarGrade] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -605,6 +607,7 @@ export default function ConsultaEstoquePage() {
     setProdutoBomCarregando(false);
     setConfirmEscolhasProdutoAberto(false);
     setEscolhaModoProdutoTemp(null);
+    setAvisoEscolhaProdutoPendente(false);
     setMsgFiltro(null);
   };
 
@@ -729,6 +732,7 @@ export default function ConsultaEstoquePage() {
     const mexeuEmProduto = 'codigos' in patch || 'descricoes' in patch;
     setFiltros(proximos);
     if (!mexeuEmProduto) return;
+    setAvisoEscolhaProdutoPendente(false);
 
     if (!produtoFiltroTemTermo(proximos)) {
       setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
@@ -751,6 +755,7 @@ export default function ConsultaEstoquePage() {
         : escolhaModoProdutoTemp;
     const proximo: ProdutoFiltroConsultaEstoque = { modoProduto: modo, empenhoEscopo: escopo };
     setProdutoFiltro(proximo);
+    setAvisoEscolhaProdutoPendente(false);
     setConfirmEscolhasProdutoAberto(false);
     setEscolhaModoProdutoTemp(null);
     if (consultarAposEscolhaRef.current) {
@@ -760,12 +765,14 @@ export default function ConsultaEstoquePage() {
   };
 
   const cancelarEscolhasProduto = () => {
+    const vinhaDoFiltrar = consultarAposEscolhaRef.current;
     consultarAposEscolhaRef.current = false;
     setConfirmEscolhasProdutoAberto(false);
     setEscolhaModoProdutoTemp(null);
     setProdutoBomCarregando(false);
     if (!produtoFiltro.modoProduto || !produtoFiltro.empenhoEscopo) {
       setProdutoFiltro(EMPTY_PRODUTO_FILTRO);
+      if (vinhaDoFiltrar) setAvisoEscolhaProdutoPendente(true);
     }
   };
 
@@ -1300,6 +1307,7 @@ export default function ConsultaEstoquePage() {
         filtros={filtros}
         pedidoFiltro={pedidoFiltro}
         produtoFiltro={produtoFiltro}
+        avisoEscolhaProdutoPendente={avisoEscolhaProdutoPendente}
         onAlterarEscolhasProduto={handleAlterarEscolhasProduto}
         opcoes={opcoesFiltro}
         onBuscarPedido={buscarPedidoAsync}

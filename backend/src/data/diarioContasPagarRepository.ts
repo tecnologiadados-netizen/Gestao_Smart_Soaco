@@ -23,6 +23,7 @@ import {
   SHOP9_DESCRICAO_MAX,
   descricaoPrimeiraReprogramacao,
 } from './diarioContasPagarDescricao.js';
+import { aplicarReprogramacoesDiario, gravarReprogramacaoOriginal } from './diarioReprogramacao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_SHOP9 = readFileSync(join(__dirname, 'sql', 'diarioContasPagarShop9.sql'), 'utf-8');
@@ -279,6 +280,10 @@ export interface DiarioContaPagarLinha {
   notaFiscal: string | null;
   /** Texto gravado neste projeto. Não vem do Nomus nem do Shop9. */
   anotacao: string | null;
+  /** Cor da observação gravada neste projeto. */
+  anotacaoCor: string | null;
+  /** Vencimento original gravado quando o título foi reprogramado. */
+  reprogramado: string | null;
   itens: DiarioContaPagarItem[];
 }
 
@@ -438,6 +443,8 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     pedidoCompra: null,
     notaFiscal: texto(row.notaFiscal),
     anotacao: null,
+    anotacaoCor: null,
+    reprogramado: null,
     itens: [],
   };
 }
@@ -475,6 +482,8 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
     pedidoCompra: null,
     notaFiscal: null,
     anotacao: null,
+    anotacaoCor: null,
+    reprogramado: null,
     itens: [],
   };
 }
@@ -497,7 +506,11 @@ function chaveItemShop9(item: DiarioContaPagarItem): string {
   return [item.codigo, item.produto, item.qtde, item.valorUnitario, item.valorTotal, item.valorDesconto, item.valorTotalComDesconto].join('|');
 }
 
-async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
+async function queryShop9(
+  dataInicio: string,
+  dataFim: string,
+  incluirItens: boolean,
+): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
   if (!isShop9Enabled()) return { linhas: [], erro: 'Shop9 não configurado' };
   const pool = await getShop9Pool();
   if (!pool) return { linhas: [], erro: 'Shop9: falha ao conectar' };
@@ -510,6 +523,7 @@ async function queryShop9(dataInicio: string, dataFim: string): Promise<{ linhas
     const result = await req.query(SQL_SHOP9);
     const list = (Array.isArray(result.recordset) ? result.recordset : []) as Record<string, unknown>[];
     const linhas = list.map((r) => mapShop9(r));
+    if (!incluirItens) return { linhas };
     const docs = new Map<number, DocAcum>();
     let erroItens: string | undefined;
     try {
@@ -549,12 +563,17 @@ function mapItemNomus(row: Record<string, unknown>): DiarioContaPagarItem | null
   return itemPreenchido(item) ? item : null;
 }
 
-async function queryNomus(dataInicio: string, dataFim: string): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
+async function queryNomus(
+  dataInicio: string,
+  dataFim: string,
+  incluirItens: boolean,
+): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
   const params = [...NOMUS_EMPRESAS, dataInicio, dataFim, ...NOMUS_EMPRESAS, dataInicio, dataFim];
   try {
     const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS, params);
     const list = Array.isArray(rows) ? rows : [];
     const linhas = list.map((r) => mapNomus(r));
+    if (!incluirItens) return { linhas };
     const docs = new Map<number, DocAcum>();
     let erroItens: string | undefined;
     try {
@@ -595,14 +614,17 @@ async function queryNomus(dataInicio: string, dataFim: string): Promise<{ linhas
 export async function queryDiarioContasPagar(params: {
   dataInicio: string;
   dataFim: string;
+  /** A grade de contas a pagar precisa dos itens. O painel de vencidos não. */
+  incluirItens?: boolean;
 }): Promise<{
   linhas: DiarioContaPagarLinha[];
   erroShop9?: string;
   erroNomus?: string;
 }> {
+  const incluirItens = params.incluirItens !== false;
   const [shop9, nomus] = await Promise.all([
-    queryShop9(params.dataInicio, params.dataFim),
-    queryNomus(params.dataInicio, params.dataFim),
+    queryShop9(params.dataInicio, params.dataFim, incluirItens),
+    queryNomus(params.dataInicio, params.dataFim, incluirItens),
   ]);
   const linhas = [...shop9.linhas, ...nomus.linhas].sort((a, b) => {
     const dv = (a.dataVencimento ?? '').localeCompare(b.dataVencimento ?? '');
@@ -614,6 +636,7 @@ export async function queryDiarioContasPagar(params: {
   await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
   const { aplicarAnotacoesDiario } = await import('./diarioAnotacao.js');
   await aplicarAnotacoesDiario(linhas);
+  await aplicarReprogramacoesDiario(linhas);
   return {
     linhas,
     erroShop9: shop9.erro,
@@ -833,8 +856,11 @@ async function reprogramarNomus(
         const [again] = await connection.query(SQL_NOMUS_ELEGIVEL, [id]);
         if (Array.isArray(again) && again.length > 0) affected = 1;
       }
-      if (affected > 0) atualizados += 1;
-      else ignorados.push({ origem: 'Nomus', id, motivo: MOTIVO_IGNORADO });
+      if (affected > 0) {
+        atualizados += 1;
+        const original = formatSqlDateYmd(row.dataVencimento);
+        await gravarReprogramacaoOriginal('Nomus', id, original);
+      } else ignorados.push({ origem: 'Nomus', id, motivo: MOTIVO_IGNORADO });
     }
     await connection.commit();
     return { atualizados, ignorados };
@@ -892,8 +918,11 @@ async function reprogramarShop9(
         const still = await check.query(SQL_SHOP9_ELEGIVEL);
         if ((still.recordset?.length ?? 0) > 0) affected = 1;
       }
-      if (affected > 0) atualizados += 1;
-      else ignorados.push({ origem: 'Shop9', id: ordem, motivo: MOTIVO_IGNORADO });
+      if (affected > 0) {
+        atualizados += 1;
+        const original = formatSqlDateYmd(row.dataVencimento);
+        await gravarReprogramacaoOriginal('Shop9', ordem, original);
+      } else ignorados.push({ origem: 'Shop9', id: ordem, motivo: MOTIVO_IGNORADO });
     }
     await transaction.commit();
     return { atualizados, ignorados };

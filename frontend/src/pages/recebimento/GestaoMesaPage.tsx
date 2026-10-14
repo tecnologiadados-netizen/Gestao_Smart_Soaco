@@ -16,6 +16,7 @@ import {
   fetchRecebimentoMesaDocumentos,
   fetchRecebimentoMesaItens,
   postRecebimentoMesaAcao,
+  postRecebimentoMesaCancelar,
   postRecebimentoMesaDeliberar,
   type RecebimentoConferenteOpcao,
   type RecebimentoDetalhe,
@@ -49,6 +50,8 @@ const btnPrimary =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
+const btnDanger =
+  'inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
@@ -171,6 +174,8 @@ function badgeStatus(status: RecebimentoStatusCodigo, label: string) {
             ? 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200'
           : status === 'FINALIZADO'
             ? 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+            : status === 'CANCELADO'
+              ? 'border-slate-400 bg-slate-100 text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-200'
             : 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200';
   return (
     <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${cls}`}>
@@ -287,6 +292,9 @@ export default function GestaoMesaPage() {
   const [qtdeVolumesInformada, setQtdeVolumesInformada] = useState('');
   const [apoioErro, setApoioErro] = useState<string | null>(null);
   const [gerandoApoio, setGerandoApoio] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [cancelando, setCancelando] = useState(false);
+  const [cancelarErro, setCancelarErro] = useState<string | null>(null);
 
   const filtrar = useCallback(async () => {
     setLoading(true);
@@ -354,6 +362,8 @@ export default function GestaoMesaPage() {
     setMesaJustificativa('');
     setMesaAcaoErro(null);
     setMesaAcaoOk(null);
+    setMotivoCancelamento('');
+    setCancelarErro(null);
     setConferenteBusca('');
     setConferenteId(doc.conferenteUsuarioId ?? '');
     const cached = detalheCacheRef.current.get(doc.idDocumento);
@@ -506,6 +516,32 @@ export default function GestaoMesaPage() {
     if (feedbackDeliberacao !== 'off') return;
     setApoioAberto(false);
     setModalDoc(null);
+  };
+
+  const cancelarConferencia = async () => {
+    if (!modalDoc || cancelando) return;
+    const motivo = motivoCancelamento.trim();
+    if (!motivo) {
+      setCancelarErro('Informe o motivo do cancelamento.');
+      return;
+    }
+    setCancelando(true);
+    setCancelarErro(null);
+    try {
+      await postRecebimentoMesaCancelar({
+        idDocumento: modalDoc.idDocumento,
+        motivo,
+        numeroDocumento: modalDoc.numeroDocumentoFiscal,
+      });
+      detalheCacheRef.current.delete(modalDoc.idDocumento);
+      setDocumentos((prev) => prev.filter((d) => d.idDocumento !== modalDoc.idDocumento));
+      setModalDoc(null);
+      setMotivoCancelamento('');
+    } catch (e) {
+      setCancelarErro(e instanceof Error ? e.message : 'Não foi possível cancelar a conferência.');
+    } finally {
+      setCancelando(false);
+    }
   };
 
   const abrirDocumentoApoio = () => {
@@ -1116,6 +1152,42 @@ export default function GestaoMesaPage() {
                     <p className="text-sm text-emerald-700 dark:text-emerald-300" role="status">
                       {mesaAcaoOk}
                     </p>
+                  )}
+                  {modalDoc.status !== 'FINALIZADO' && (
+                    <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-600">
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                        Cancelar conferência
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Use quando este material não é conferido pelo almoxarifado. O documento sai da
+                        Mesa e permanece no histórico com status cancelado.
+                      </p>
+                      <label className={labelClass} htmlFor="motivo-cancelamento">
+                        Motivo do cancelamento
+                      </label>
+                      <textarea
+                        id="motivo-cancelamento"
+                        className={`${inputClass} min-h-[4.5rem] w-full`}
+                        value={motivoCancelamento}
+                        onChange={(e) => setMotivoCancelamento(e.target.value)}
+                        maxLength={1000}
+                        placeholder="Ex.: material conferido por outro setor, fora do piloto do almoxarifado."
+                        disabled={cancelando || detalheLoading}
+                      />
+                      {cancelarErro && (
+                        <p className="text-sm text-rose-600" role="alert">
+                          {cancelarErro}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className={btnDanger}
+                        disabled={cancelando || detalheLoading || motivoCancelamento.trim() === ''}
+                        onClick={() => void cancelarConferencia()}
+                      >
+                        {cancelando ? 'Cancelando…' : 'Cancelar conferência'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

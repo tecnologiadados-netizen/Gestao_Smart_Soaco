@@ -4,6 +4,7 @@ import { rhFetchJson } from "@rh/lib/rh-fetch";
 import { rhFieldInput } from "@rh/lib/form-field-styles";
 import { pontoBairroOsmConhecido } from "@rh/lib/bairros-osm";
 import { criarMatcherTextoLivre } from "@/utils/textoLivreBusca";
+import { MAPA_TILE_ATTRIBUTION, MAPA_TILE_URL } from "@/config/mapaTiles";
 import type { Feature, FeatureCollection, GeoJsonObject, MultiPolygon, Polygon } from "geojson";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1076,10 +1077,7 @@ export function MapaLocalidadeCard({
             zoomControl
             className="h-full w-full bg-[#e8eef4]"
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <TileLayer attribution={MAPA_TILE_ATTRIBUTION} url={MAPA_TILE_URL} />
             <Enquadrar
               token={enquadramento}
               box={box}

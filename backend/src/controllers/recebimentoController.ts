@@ -22,6 +22,7 @@ import {
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { listarIdsConferenciaDoubleCheckConcluida } from './doubleCheckInController.js';
 import {
+  cancelarConferencia,
   concluirConferenciaPorMovimentacaoAlterada,
   deliberarConferente,
   devolverConferenciaParaMesa,
@@ -35,6 +36,7 @@ import {
   listarConferenciasEnviadas,
   qtdeFisicaConfere,
   normalizarJustificativaAceite,
+  normalizarMotivoCancelamento,
   registrarAcaoMesa,
   registrarTentativaContagem,
   RECEBIMENTO_TENTATIVAS_MAX,
@@ -168,7 +170,9 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
   const liberadosDoubleCheck = await idsMesaLiberadosPeloDoubleCheck(
     semConferenciaLocal.map((d) => ({ idDocumento: d.idDocumento, dataEntrada: d.dataEntrada }))
   );
-  const lista = documentos.map((d) => {
+  const lista = documentos
+    .filter((d) => locais.get(d.idDocumento)?.status !== RECEBIMENTO_STATUS.CANCELADO)
+    .map((d) => {
     const local = locais.get(d.idDocumento);
     const codigo =
       local?.status ?? statusAntesDoConferente(liberadosDoubleCheck.has(d.idDocumento)).codigo;
@@ -256,7 +260,10 @@ async function montarHistoricosConferencia(
   });
   if (local.finalizadoEm != null) {
     const linhasAtuais = await listarItensContagem(local.id);
-    const statusAtual = statusPelosItens(linhasAtuais);
+    const statusAtual =
+      local.status === RECEBIMENTO_STATUS.CANCELADO
+        ? RECEBIMENTO_STATUS.CANCELADO
+        : statusPelosItens(linhasAtuais);
     historicosConferencia.push({
       status: statusAtual,
       statusLabel: RECEBIMENTO_STATUS_LABEL[statusAtual] ?? statusAtual,
@@ -889,6 +896,48 @@ export async function postRecebimentoDigitacaoDevolver(req: Request, res: Respon
   });
 }
 
+/**
+ * POST /api/recebimento/mesa/documentos/:id/cancelar
+ * body: { motivo: string, numeroDocumento?: string }
+ */
+export async function postRecebimentoMesaCancelar(req: Request, res: Response): Promise<void> {
+  const usuario = await usuarioLogado(req);
+  if (!usuario) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  const motivo = normalizarMotivoCancelamento(req.body?.motivo);
+  if (!motivo.ok) {
+    res.status(400).json({ error: motivo.erro });
+    return;
+  }
+  const numeroDocumento =
+    typeof req.body?.numeroDocumento === 'string' ? req.body.numeroDocumento.trim() : null;
+
+  try {
+    const atualizado = await cancelarConferencia({
+      idDocumentoEstoque: idDocumento,
+      numeroDocumento: numeroDocumento || null,
+      motivo: motivo.texto,
+      usuario,
+    });
+    res.json({
+      ok: true,
+      status: atualizado.status,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[atualizado.status],
+      cancelamentoMotivo: atualizado.cancelamentoMotivo,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
 function resumoEnvioDto(
   envio: Awaited<ReturnType<typeof listarConferenciasEnviadas>>[number],
   cab: {
@@ -1001,6 +1050,7 @@ export async function getRecebimentoDigitacaoHistoricoDocumento(
     mesaAcaoEm: local.mesaAcaoEm,
     mesaAcaoPorLogin: local.mesaAcaoPorLogin,
     mesaAceiteJustificativa: local.mesaAceiteJustificativa,
+    cancelamentoMotivo: local.cancelamentoMotivo,
     devolucao: local.idDocumentoDevolucaoNomus
       ? {
           idDocumento: local.idDocumentoDevolucaoNomus,

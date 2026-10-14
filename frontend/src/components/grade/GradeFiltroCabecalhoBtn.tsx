@@ -18,8 +18,8 @@ export default function GradeFiltroCabecalhoBtn({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-0.5 rounded border border-white/25 px-1 py-0.5 text-[9px] leading-none hover:bg-white/15 ${
-        ativo ? 'text-amber-200' : 'text-white/90'
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded border border-current/40 px-1 py-0.5 text-[9px] leading-none text-current hover:bg-current/10 ${
+        ativo ? 'border-amber-700/40 bg-amber-400 text-slate-900 hover:bg-amber-300' : ''
       } ${className}`.trim()}
       title={title}
       aria-label={ativo ? `${title} (filtro ativo)` : title}

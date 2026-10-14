@@ -8,6 +8,7 @@ import { PONTO_RETORNO_TERESINA } from '../utils/heatmapRoteirizador';
 import { iconeBandeiraFiltro, iconeParadaRota, iconeParadaSelecao } from '../utils/heatmapParadaMapaIcon';
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca';
 import { aplicarZoomRoteiroNoMapa, type PontoMapaRoteiro } from '../utils/heatmapMapaBoundsRoteiro';
+import { MAPA_TILE_ATTRIBUTION, MAPA_TILE_URL } from '../config/mapaTiles';
 import HeatmapDetalhesPedidosTable from './HeatmapDetalhesPedidosTable';
 
 const CENTRO_BRASIL: [number, number] = [-14.235, -51.9253];
@@ -435,10 +436,7 @@ export default function MapaMunicipios({
           scrollWheelZoom={true}
           style={{ background: 'hsl(210 40% 96%)', height: '100%', minHeight: 280 }}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <TileLayer attribution={MAPA_TILE_ATTRIBUTION} url={MAPA_TILE_URL} />
           <RecalcularMapa token={layoutToken} />
           {rotaPolyline && paradasRoteiro && paradasRoteiro.length > 0 ? (
             <AjustarBoundsRota

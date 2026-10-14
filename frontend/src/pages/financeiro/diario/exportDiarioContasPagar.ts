@@ -10,6 +10,7 @@ const COLUNAS = [
   'Situação',
   'Classificação',
   'Vencimento',
+  'Reprogramado',
   'Empresa',
   'Conta',
   'Forma de pagamento',
@@ -23,8 +24,8 @@ const COLUNAS = [
   'Prioridade',
 ] as const;
 
-const COL_DESCRICAO = 8;
-const COL_SALDO = 13;
+const COL_DESCRICAO = 9;
+const COL_SALDO = 14;
 
 function maiusculo(valor: string | null | undefined): string {
   return (valor ?? '').toLocaleUpperCase('pt-BR');
@@ -124,6 +125,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
       maiusculo(l.status),
       maiusculo(l.planoContas),
       dataExcelSemHora(l.dataVencimento),
+      maiusculo(l.reprogramado),
       maiusculo(empresaExibida(l)),
       maiusculo(l.contaBancaria),
       maiusculo(l.formaPagamento),
@@ -143,6 +145,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
 
   const total = ws.addRow([
     `Lançamentos: ${opts.totais.qtd.toLocaleString('pt-BR')}`,
+    '',
     '',
     '',
     '',
@@ -258,6 +261,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     maiusculo(l.status),
     maiusculo(l.planoContas),
     formatData(l.dataVencimento),
+    maiusculo(l.reprogramado),
     maiusculo(empresaExibida(l)),
     maiusculo(l.contaBancaria),
     maiusculo(l.formaPagamento),
@@ -289,6 +293,7 @@ export function exportarDiarioContasPagarPdf(opts: {
       '',
       '',
       '',
+      '',
       formatMoeda(opts.totais.saldo),
       '',
       '',
@@ -301,17 +306,18 @@ export function exportarDiarioContasPagarPdf(opts: {
       1: { cellWidth: 18 },
       2: { cellWidth: 28 },
       3: { cellWidth: 18 },
-      4: { cellWidth: 24 },
-      5: { cellWidth: 22 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 24 },
       6: { cellWidth: 22 },
-      7: { cellWidth: 28 },
-      8: { cellWidth: 32 },
-      9: { cellWidth: 20 },
-      10: { cellWidth: 24 },
-      11: { cellWidth: 22 },
-      12: { cellWidth: 18, halign: 'right' },
-      13: { cellWidth: 16 },
+      7: { cellWidth: 22 },
+      8: { cellWidth: 28 },
+      9: { cellWidth: 32 },
+      10: { cellWidth: 20 },
+      11: { cellWidth: 24 },
+      12: { cellWidth: 22 },
+      13: { cellWidth: 18, halign: 'right' },
       14: { cellWidth: 16 },
+      15: { cellWidth: 16 },
     },
     horizontalPageBreak: true,
     willDrawCell(data) {

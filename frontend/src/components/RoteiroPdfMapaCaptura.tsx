@@ -8,6 +8,7 @@ import {
   aplicarZoomRoteiroNoMapa,
   type PontoMapaRoteiro,
 } from '../utils/heatmapMapaBoundsRoteiro';
+import { MAPA_TILE_ATTRIBUTION, MAPA_TILE_URL } from '../config/mapaTiles';
 
 export type ParadaPdfMapa = { lat: number; lng: number; seq: number };
 
@@ -92,10 +93,7 @@ export default function RoteiroPdfMapaCaptura({ polyline, paradas, onPronto }: R
       keyboard={false}
       touchZoom={false}
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer attribution={MAPA_TILE_ATTRIBUTION} url={MAPA_TILE_URL} />
       <AjustaBoundsEPronto polyline={polyline} paradas={paradas} onProntoRef={onProntoRef} />
       <Pane name="pdf-rota" style={{ zIndex: 400 }}>
         {polyline.length >= 2 && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from "date-fns";
 import { Button } from "@qualidade/components/ui/button";
@@ -8,12 +8,11 @@ import { Input } from "@qualidade/components/ui/input";
 import { Label } from "@qualidade/components/ui/label";
 import { Textarea } from "@qualidade/components/ui/textarea";
 import { DocumentoStepper } from "@qualidade/components/documentos/documento-stepper";
-import { DocumentoArquivoField } from "@qualidade/components/documentos/documento-arquivo-field";
 import {
-  mensagemLimiteAnexo,
-  SGQ_ANEXO_MAX_BYTES,
-  SGQ_ANEXO_MAX_MB,
-} from "@qualidade/types/registro-anexo";
+  DocumentoArquivoField,
+  type DocumentoArquivoSelecionado,
+} from "@qualidade/components/documentos/documento-arquivo-field";
+import { SGQ_ANEXO_MAX_MB } from "@qualidade/types/registro-anexo";
 import {
   defaultResponsaveisValues,
   DocumentoResponsaveisFieldset,
@@ -96,9 +95,19 @@ export function SolicitarRevisaoDocumentoDialog({
   const [error, setError] = useState("");
   const exigeValidadeRevalidacao =
     fromRevalidacao && Boolean(doc?.validade?.ativa && doc.validade.dataValidade);
+  const formInitKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || !versaoAnterior) return;
+    if (!open) {
+      formInitKeyRef.current = null;
+      return;
+    }
+    if (!versaoAnterior || !doc) return;
+    // Soft refresh (dispara ao fechar o seletor de arquivo) troca a referência
+    // do documento. Reinicializar aqui apagava o anexo recém-escolhido.
+    const key = `${doc.id}|${versaoAnterior.id}|${fromRevalidacao ? "reval" : "rev"}`;
+    if (formInitKeyRef.current === key) return;
+    formInitKeyRef.current = key;
     setResponsaveis({
       elaboradorId: versaoAnterior.elaboradorId,
       consensoId: versaoAnterior.consensoId ?? "",
@@ -109,7 +118,7 @@ export function SolicitarRevisaoDocumentoDialog({
     setArquivoNome(versaoAnterior.arquivoNome ?? "");
     setArquivoDataUrl(versaoAnterior.arquivoDataUrl ?? "");
     setDataPublicacao(toDateInputValue(new Date().toISOString()));
-    if (fromRevalidacao && doc?.validade?.ativa) {
+    if (fromRevalidacao && doc.validade?.ativa) {
       const defaultDate = doc.validade.dataValidade
         ? calcularProximaDataValidade(
             doc.validade.dataValidade,
@@ -135,18 +144,10 @@ export function SolicitarRevisaoDocumentoDialog({
   const fluxoSimplificado = doc?.origem === "externo" || doc?.origem === "registro";
   const fluxoExterno = doc?.origem === "externo";
 
-  function handleFileSelect(file: File) {
-    if (file.size > SGQ_ANEXO_MAX_BYTES) {
-      setError(mensagemLimiteAnexo());
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setArquivoNome(file.name);
-      setArquivoDataUrl(reader.result as string);
-      setError("");
-    };
-    reader.readAsDataURL(file);
+  function handleArquivoChange(arquivo: DocumentoArquivoSelecionado) {
+    setArquivoNome(arquivo.nome);
+    setArquivoDataUrl(arquivo.dataUrl);
+    setError("");
   }
 
   function handleRemoveArquivo() {
@@ -396,7 +397,7 @@ export function SolicitarRevisaoDocumentoDialog({
                     }
                     arquivoNome={arquivoNome}
                     arquivoDataUrl={arquivoDataUrl}
-                    onFileSelect={handleFileSelect}
+                    onArquivoChange={handleArquivoChange}
                     onRemove={handleRemoveArquivo}
                     hint={
                       fluxoExterno

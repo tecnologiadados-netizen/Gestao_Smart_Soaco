@@ -14,6 +14,7 @@ import {
   postRecebimentoDigitacaoDevolver,
   postRecebimentoDigitacaoItem,
   postRecebimentoMesaAcao,
+  postRecebimentoMesaCancelar,
   postRecebimentoMesaDeliberar,
 } from '../controllers/recebimentoController.js';
 
@@ -53,6 +54,12 @@ router.post(
   validateCsrf,
   verMesa,
   async503(postRecebimentoMesaAcao)
+);
+router.post(
+  '/mesa/documentos/:id/cancelar',
+  validateCsrf,
+  verMesa,
+  async503(postRecebimentoMesaCancelar)
 );
 
 router.get('/digitacao/pendencias', verConferente, async503(getRecebimentoDigitacaoPendencias));

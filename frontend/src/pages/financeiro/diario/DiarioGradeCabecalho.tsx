@@ -1,5 +1,5 @@
 import GradeFiltroCabecalhoBtn from '../../../components/grade/GradeFiltroCabecalhoBtn';
-import GradeFiltroExcelPortal from '../../../components/grade/GradeFiltroExcelPortal';
+import GradeFiltroExcelPortal, { type FiltroCorCabecalho } from '../../../components/grade/GradeFiltroExcelPortal';
 import type { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 
@@ -8,6 +8,7 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'situacao', label: 'Situação' },
   { id: 'plano', label: 'Classificação' },
   { id: 'vencimento', label: 'Vencimento' },
+  { id: 'reprogramado', label: 'Reprogramado' },
   { id: 'empresa', label: 'Empresa' },
   { id: 'conta', label: 'Conta' },
   { id: 'forma', label: 'Forma de pagamento' },
@@ -32,11 +33,13 @@ export function DiarioCabecalhoTh({
   label,
   grade,
   align = 'left',
+  filtroExtraAtivo = false,
 }: {
   colId: string;
   label: string;
   grade: GradeApi;
   align?: 'left' | 'right' | 'center';
+  filtroExtraAtivo?: boolean;
 }) {
   return (
     <th className="px-0 py-0 font-medium whitespace-nowrap">
@@ -47,7 +50,7 @@ export function DiarioCabecalhoTh({
       >
         <span className={`min-w-0 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}`}>{label}</span>
         <GradeFiltroCabecalhoBtn
-          ativo={grade.colunaComFiltroAtivo(colId)}
+          ativo={grade.colunaComFiltroAtivo(colId) || filtroExtraAtivo}
           onClick={(e) => grade.abrirFiltroExcel(colId, e)}
           className="shrink-0"
         />
@@ -56,7 +59,15 @@ export function DiarioCabecalhoTh({
   );
 }
 
-export function DiarioGradeFiltroPortal({ grade }: { grade: GradeApi }) {
+export function DiarioGradeFiltroPortal({
+  grade,
+  filtroCor,
+  onOrdenacaoTexto,
+}: {
+  grade: GradeApi;
+  filtroCor?: FiltroCorCabecalho;
+  onOrdenacaoTexto?: () => void;
+}) {
   if (!grade.colunaFiltroAberta || !grade.filtroAbertoRect) return null;
   const colId = grade.colunaFiltroAberta;
   const numerica = NUMERICAS.has(colId);
@@ -68,12 +79,15 @@ export function DiarioGradeFiltroPortal({ grade }: { grade: GradeApi }) {
       excelFilterDrafts={grade.excelFilterDrafts}
       setExcelFilterDrafts={grade.setExcelFilterDrafts}
       valoresUnicosPorColuna={grade.valoresUnicosPorColuna}
+      filtroCor={colId === 'anotacao' ? filtroCor : undefined}
       onSortAsc={(id) => {
+        onOrdenacaoTexto?.();
         grade.setSortState({ key: id, direction: 'asc' });
         grade.setSortLevels([]);
         grade.fecharFiltroExcel();
       }}
       onSortDesc={(id) => {
+        onOrdenacaoTexto?.();
         grade.setSortState({ key: id, direction: 'desc' });
         grade.setSortLevels([]);
         grade.fecharFiltroExcel();

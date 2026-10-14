@@ -42,7 +42,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'produto',
     titulo: 'Filtro por produto (item ou componentes)',
     oQueE:
-      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar com código ou descrição, abre o modal para escolher a visualização: “Item filtrado” ou, quando todos têm BOM, “Componentes do item filtrado”. Sem BOM, só “Item filtrado” aparece e o empenho considera todos os pedidos. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece. A grade só carrega depois de confirmar essa escolha.',
+      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar com código ou descrição, abre o modal para escolher a visualização: “Item filtrado” ou, quando todos têm BOM, “Componentes do item filtrado”. O aviso amarelo só aparece se esse modal for fechado sem confirmar. Sem BOM, só “Item filtrado” aparece e o empenho considera todos os pedidos. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece. A grade só carrega depois de confirmar essa escolha.',
     comoLe:
       'Em “Componentes do item filtrado” a grade traz SÓ os componentes — o item pai não aparece nas linhas. No empenho “Somente do item filtrado” (só no modo componentes sem PD), a coluna considera apenas a demanda gerada pelo(s) item(ns) pai filtrado(s); o modal analítico usa o mesmo escopo e fecha com a grade. Ao tentar misturar PA com MP, a seleção é revertida com aviso.',
   },
