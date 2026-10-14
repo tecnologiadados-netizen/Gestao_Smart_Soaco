@@ -40,6 +40,7 @@ const ACAO_MESA_LABEL: Record<string, string> = {
   REENVIAR_CONFERENCIA: 'Reenviada para conferência',
   DEVOLVER_MATERIAL: 'Devolver material',
   ACEITAR_COMO_ESTA: 'Aceita como está',
+  CANCELAR_CONFERENCIA: 'Conferência cancelada',
 };
 
 function fmtDataBr(ymd: string | null): string {
@@ -109,8 +110,10 @@ function badgeStatus(status: RecebimentoStatusCodigo, label: string) {
       ? 'border-sky-400 bg-sky-50 text-sky-800 dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-200'
       : status === 'DIVERGENCIA'
         ? 'border-rose-400 bg-rose-50 text-rose-800 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-200'
-        : status === 'FINALIZADO' || status === 'DEVOLUCAO_VINCULADA'
-          ? 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200'
+        : status === 'CANCELADO'
+          ? 'border-slate-400 bg-slate-100 text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-200'
+          : status === 'FINALIZADO' || status === 'DEVOLUCAO_VINCULADA'
+            ? 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200'
           : 'border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200';
   return (
     <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${cls}`}>
@@ -447,7 +450,10 @@ export default function DigitacaoConferenciaHistorico() {
                         rotulo="Conferente do último envio"
                         valor={conferenteLabel(detalhe.conferenteNome, detalhe.conferenteLogin)}
                       />
-                      <Campo rotulo="Enviado em" valor={fmtDateTimeBr(detalhe.enviadoEm)} />
+                      <Campo
+                        rotulo={detalhe.status === 'CANCELADO' ? 'Cancelado em' : 'Enviado em'}
+                        valor={fmtDateTimeBr(detalhe.enviadoEm)}
+                      />
                       <Campo
                         rotulo="Conferente atual"
                         valor={conferenteLabel(detalhe.conferenteAtualNome, detalhe.conferenteAtualLogin)}
@@ -463,6 +469,16 @@ export default function DigitacaoConferenciaHistorico() {
                         Este documento está em uma nova conferência. As voltas abaixo são as que já foram
                         enviadas à Mesa.
                       </p>
+                    )}
+                    {detalhe.cancelamentoMotivo && (
+                      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
+                        <p className="font-semibold">Conferência cancelada</p>
+                        <p className="mt-1 whitespace-pre-wrap">{detalhe.cancelamentoMotivo}</p>
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          {fmtDateTimeBr(detalhe.mesaAcaoEm)}
+                          {detalhe.mesaAcaoPorLogin ? ` · ${detalhe.mesaAcaoPorLogin}` : ''}
+                        </p>
+                      </div>
                     )}
                     {detalhe.mesaAceiteJustificativa && (
                       <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100">
@@ -488,7 +504,11 @@ export default function DigitacaoConferenciaHistorico() {
                         <HistoricoVolta
                           key={`${volta.retornadoEm ?? 'volta'}-${indice}`}
                           volta={volta}
-                          titulo={tituloVolta(voltas.length - 1 - indice, voltas.length)}
+                          titulo={
+                            volta.status === 'CANCELADO'
+                              ? 'Conferência cancelada'
+                              : tituloVolta(voltas.length - 1 - indice, voltas.length)
+                          }
                         />
                       ))}
                     </div>

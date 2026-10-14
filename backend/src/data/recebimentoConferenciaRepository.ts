@@ -38,6 +38,7 @@ export type RecebimentoConferenciaLocal = {
   mesaAcaoPorUsuarioId: number | null;
   mesaAcaoPorLogin: string | null;
   mesaAceiteJustificativa: string | null;
+  cancelamentoMotivo: string | null;
   idDocumentoDevolucaoNomus: number | null;
   numeroDocumentoDevolucao: string | null;
   numeroNfeDevolucao: string | null;
@@ -73,6 +74,7 @@ function mapRow(row: {
   mesaAcaoPorUsuarioId: number | null;
   mesaAcaoPorLogin: string | null;
   mesaAceiteJustificativa: string | null;
+  cancelamentoMotivo: string | null;
   idDocumentoDevolucaoNomus: number | null;
   numeroDocumentoDevolucao: string | null;
   numeroNfeDevolucao: string | null;
@@ -95,6 +97,7 @@ function mapRow(row: {
     mesaAcaoPorUsuarioId: row.mesaAcaoPorUsuarioId,
     mesaAcaoPorLogin: row.mesaAcaoPorLogin,
     mesaAceiteJustificativa: row.mesaAceiteJustificativa,
+    cancelamentoMotivo: row.cancelamentoMotivo,
     idDocumentoDevolucaoNomus: row.idDocumentoDevolucaoNomus,
     numeroDocumentoDevolucao: row.numeroDocumentoDevolucao,
     numeroNfeDevolucao: row.numeroNfeDevolucao,
@@ -216,6 +219,9 @@ export async function deliberarConferente(params: {
   });
   if (existente && asStatus(existente.status) === RECEBIMENTO_STATUS.FINALIZADO) {
     throw new Error('Esta conferência já foi finalizada. Reabra antes de deliberar novamente.');
+  }
+  if (existente && asStatus(existente.status) === RECEBIMENTO_STATUS.CANCELADO) {
+    throw new Error('Esta conferência foi cancelada.');
   }
 
   const agora = new Date();
@@ -459,6 +465,56 @@ export async function obterUltimoCicloConferencia(
 const ACEITE_JUSTIFICATIVA_MAX = 1000;
 
 /** Motivo obrigatório da ação "Aceitar como está". */
+const CANCELAMENTO_MOTIVO_MAX = 1000;
+
+/** Motivo obrigatório para cancelar a conferência na Mesa. */
+export function normalizarMotivoCancelamento(
+  valor: unknown
+): { ok: true; texto: string } | { ok: false; erro: string } {
+  const texto = typeof valor === 'string' ? valor.trim() : '';
+  if (!texto) {
+    return { ok: false, erro: 'Informe o motivo do cancelamento.' };
+  }
+  if (texto.length > CANCELAMENTO_MOTIVO_MAX) {
+    return { ok: false, erro: 'O motivo pode ter no máximo 1000 caracteres.' };
+  }
+  return { ok: true, texto };
+}
+
+/** Tira o documento da fila da Mesa e registra o cancelamento no histórico. */
+export async function cancelarConferencia(params: {
+  idDocumentoEstoque: number;
+  numeroDocumento: string | null;
+  motivo: string;
+  usuario: { id: number; login: string };
+}): Promise<RecebimentoConferenciaLocal> {
+  const existente = await prisma.recebimentoConferencia.findUnique({
+    where: { idDocumentoEstoque: params.idDocumentoEstoque },
+  });
+  const statusAtual = existente ? asStatus(existente.status) : null;
+  if (statusAtual === RECEBIMENTO_STATUS.FINALIZADO || statusAtual === RECEBIMENTO_STATUS.CANCELADO) {
+    throw new Error('Esta conferência não pode ser cancelada.');
+  }
+
+  const agora = new Date();
+  const data = {
+    numeroDocumento: params.numeroDocumento ?? existente?.numeroDocumento ?? null,
+    status: RECEBIMENTO_STATUS.CANCELADO,
+    finalizadoEm: agora,
+    mesaUltimaAcao: 'CANCELAR_CONFERENCIA',
+    mesaAcaoEm: agora,
+    mesaAcaoPorUsuarioId: params.usuario.id,
+    mesaAcaoPorLogin: params.usuario.login,
+    cancelamentoMotivo: params.motivo,
+  };
+  const row = existente
+    ? await prisma.recebimentoConferencia.update({ where: { id: existente.id }, data })
+    : await prisma.recebimentoConferencia.create({
+        data: { idDocumentoEstoque: params.idDocumentoEstoque, ...data },
+      });
+  return mapRow(row);
+}
+
 export function normalizarJustificativaAceite(
   valor: unknown
 ): { ok: true; texto: string } | { ok: false; erro: string } {

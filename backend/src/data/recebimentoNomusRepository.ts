@@ -22,6 +22,7 @@ export const RECEBIMENTO_STATUS = {
   AGUARDANDO_DEVOLUCAO: 'AGUARDANDO_DEVOLUCAO',
   DEVOLUCAO_VINCULADA: 'DEVOLUCAO_VINCULADA',
   FINALIZADO: 'FINALIZADO',
+  CANCELADO: 'CANCELADO',
 } as const;
 
 export type RecebimentoStatus = (typeof RECEBIMENTO_STATUS)[keyof typeof RECEBIMENTO_STATUS];
@@ -36,6 +37,7 @@ export const RECEBIMENTO_STATUS_LABEL: Record<RecebimentoStatus, string> = {
   AGUARDANDO_DEVOLUCAO: 'Aguardando documento de devolução',
   DEVOLUCAO_VINCULADA: 'Devolução vinculada',
   FINALIZADO: 'Concluído',
+  CANCELADO: 'Cancelado',
 };
 
 /** Conferência ok sai da fila quando o Nomus deixa de usar um tipo de pré-entrada. */

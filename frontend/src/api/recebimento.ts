@@ -9,7 +9,8 @@ export type RecebimentoStatusCodigo =
   | 'TRATAMENTO_COMPRAS'
   | 'AGUARDANDO_DEVOLUCAO'
   | 'DEVOLUCAO_VINCULADA'
-  | 'FINALIZADO';
+  | 'FINALIZADO'
+  | 'CANCELADO';
 
 export type RecebimentoDocumentoGrade = {
   idDocumento: number;
@@ -98,6 +99,7 @@ export type RecebimentoHistoricoEnvioDetalhe = RecebimentoHistoricoEnvio & {
   mesaAcaoEm: string | null;
   mesaAcaoPorLogin: string | null;
   mesaAceiteJustificativa: string | null;
+  cancelamentoMotivo: string | null;
   devolucao: RecebimentoDocumentoDevolucao | null;
   historicosConferencia: RecebimentoHistoricoConferencia[];
   erro?: string;
@@ -417,4 +419,22 @@ export async function fetchRecebimentoDigitacaoHistoricoDocumento(
   idDocumento: number
 ): Promise<RecebimentoHistoricoEnvioDetalhe> {
   return apiJson<RecebimentoHistoricoEnvioDetalhe>(`/api/recebimento/digitacao/historico/${idDocumento}`);
+}
+
+export async function postRecebimentoMesaCancelar(params: {
+  idDocumento: number;
+  motivo: string;
+  numeroDocumento?: string | null;
+}): Promise<void> {
+  const res = await apiFetch(`/api/recebimento/mesa/documentos/${params.idDocumento}/cancelar`, {
+    method: 'POST',
+    body: {
+      motivo: params.motivo,
+      numeroDocumento: params.numeroDocumento ?? null,
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    throw new Error(body.error ?? res.statusText);
+  }
 }
