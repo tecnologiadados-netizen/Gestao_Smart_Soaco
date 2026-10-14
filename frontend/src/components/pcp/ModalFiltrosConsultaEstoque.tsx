@@ -72,6 +72,11 @@ type Props = {
   onAlterarEscolhasProduto?: () => void;
   /** Quando false, oculta o botão “Alterar” das escolhas do produto. */
   produtoEscolhasAlteraveis?: boolean;
+  /**
+   * Aviso âmbar de escolha pendente. Só depois que o usuário abriu o modal no Filtrar
+   * e saiu sem confirmar — não na hora de selecionar o código.
+   */
+  avisoEscolhaProdutoPendente?: boolean;
   opcoes: OpcoesFiltroConsultaEstoque;
   /** `cobertura` oculta pedido, tipo, grupo, setor, subgrupos e sim/não de empenho/saldo. */
   modo?: 'consulta' | 'cobertura';
@@ -252,6 +257,7 @@ export default function ModalFiltrosConsultaEstoque({
   produtoFiltro = EMPTY_PRODUTO_FILTRO,
   onAlterarEscolhasProduto,
   produtoEscolhasAlteraveis = true,
+  avisoEscolhaProdutoPendente = false,
   opcoes,
   modo = 'consulta',
   origensEmpenho = '',
@@ -406,7 +412,7 @@ export default function ModalFiltrosConsultaEstoque({
                     onSearchAsync={onBuscarDescricao}
                   />
                 </div>
-                {!isCobertura && temTermoProduto && (
+                {!isCobertura && temTermoProduto && (produtoCompleto || avisoEscolhaProdutoPendente) && (
                   <div className="min-w-0 xl:col-span-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       {produtoCompleto ? (
