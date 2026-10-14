@@ -8,13 +8,28 @@ import { getDefaultPostLoginPath, hasRoutePermission } from '@rh/lib/route-permi
 import { rhPath } from '@rh/lib/rh-paths';
 import SemAcesso from '@rh/pages/SemAcesso';
 import NotFound from '@rh/pages/NotFound';
+import { isErroChunkObsoleto, recarregarSeChunkObsoleto } from '@/utils/chunkObsoleto';
+
+function esperaReload<T>(): Promise<T> {
+  return new Promise(() => {});
+}
 
 function lazyImportWithRetry<T extends { default: React.ComponentType<object> }>(
   importer: () => Promise<T>,
 ): Promise<T> {
-  return importer().catch((err) => {
+  const carregar = () =>
+    importer().then((mod) => {
+      if (mod?.default) return mod;
+      throw new Error('Failed to fetch dynamically imported module');
+    });
+
+  return carregar().catch((err: unknown) => {
+    if (!isErroChunkObsoleto(err)) throw err;
     console.warn('[rh/lazy] Falha ao carregar módulo, tentando novamente…', err);
-    return importer();
+    return carregar().catch((err2: unknown) => {
+      if (recarregarSeChunkObsoleto(err2)) return esperaReload<T>();
+      throw err2;
+    });
   });
 }
 
@@ -27,14 +42,30 @@ const DemandasInternas = lazy(() => lazyImportWithRetry(() => import('@rh/pages/
 const Vagas = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Vagas')));
 const Configuracoes = lazy(() => lazyImportWithRetry(() => import('@rh/pages/Configuracoes')));
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null as Error | null };
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null; atualizando: boolean }
+> {
+  state = { error: null as Error | null, atualizando: false };
 
   static getDerivedStateFromError(error: Error) {
-    return { error };
+    return { error, atualizando: false };
+  }
+
+  componentDidCatch(error: Error) {
+    if (isErroChunkObsoleto(error) && recarregarSeChunkObsoleto(error)) {
+      this.setState({ atualizando: true });
+    }
   }
 
   render() {
+    if (this.state.atualizando) {
+      return (
+        <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
+          Atualizando a página...
+        </div>
+      );
+    }
     if (this.state.error) {
       return (
         <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 p-8 text-center">
