@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, CalendarRange, ChartPie, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
@@ -24,7 +24,9 @@ import {
   type DiarioContaPagarLinha,
   type DiarioSubclassificacaoItem,
 } from '../../../api/diarioFinanceiro';
+import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
+import { DiarioCabecalhoTh, DiarioGradeFiltroPortal } from './DiarioGradeCabecalho';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
 
 type Subaba = 'titulos' | 'dashboard';
@@ -93,8 +95,104 @@ function formatMoeda(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function empresaCanon(nome: string): string {
+  const k = chaveClassificacao(nome);
+  if (!k || k === 'SEM EMPRESA') return 'SEM EMPRESA';
+  if (k.includes('SO MOVEIS')) return 'SÓ MÓVEIS';
+  if (k.includes('SO ACO') || k.includes('ACO INDUSTRIAL')) return 'SÓ AÇO INDUSTRIAL';
+  if (k.includes('REFRIGER')) return 'SO REFRIGERAÇÃO';
+  if (k.includes('R N MARQUES') || k.includes('RN MARQUES')) return 'R N MARQUES ARAUJO';
+  return nome.toLocaleUpperCase('pt-BR');
+}
+
 function empresaExibida(l: DiarioContaPagarLinha): string {
-  return (l.filial?.trim() || l.empresa?.trim() || 'Sem empresa').toLocaleUpperCase('pt-BR');
+  return empresaCanon(l.filial?.trim() || l.empresa?.trim() || 'Sem empresa');
+}
+
+const VAZIO_CELULA = '—';
+
+const COLUNAS_TITULOS_VENCIDOS = [
+  { id: 'codigo', label: 'Código' },
+  { id: 'situacao', label: 'Situação' },
+  { id: 'plano', label: 'Classificação' },
+  { id: 'subclassificacao', label: 'SubClassificação' },
+  { id: 'vencimento', label: 'Vencimento' },
+  { id: 'reprogramado', label: 'Reprogramado' },
+  { id: 'dias', label: 'Dias' },
+  { id: 'empresa', label: 'Empresa' },
+  { id: 'fornecedor', label: 'Pessoa' },
+  { id: 'descricao', label: 'Descrição' },
+  { id: 'observacao', label: 'Comentários' },
+  { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
+] as const;
+
+const COLUNAS_DETALHE_VENCIDOS = [
+  { id: 'situacao', label: 'Situação' },
+  { id: 'plano', label: 'Classificação' },
+  { id: 'subclassificacao', label: 'SubClassificação' },
+  { id: 'vencimento', label: 'Vencimento' },
+  { id: 'empresa', label: 'Empresa' },
+  { id: 'fornecedor', label: 'Pessoa' },
+  { id: 'descricao', label: 'Descrição' },
+  { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
+] as const;
+
+function textoCelulaVencidos(
+  l: DiarioContaPagarLinha,
+  col: string,
+  mapaSub: Map<string, string>,
+  hoje: string,
+): string {
+  const texto = (v: string | null | undefined) => {
+    const t = v?.trim();
+    return t ? t.toLocaleUpperCase('pt-BR') : VAZIO_CELULA;
+  };
+  switch (col) {
+    case 'codigo':
+      return l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : VAZIO_CELULA;
+    case 'situacao':
+      return l.status.toLocaleUpperCase('pt-BR');
+    case 'plano':
+      return texto(l.planoContas);
+    case 'subclassificacao':
+      return nomeSubclassificacao(l, mapaSub);
+    case 'vencimento':
+      return formatData(l.dataVencimento);
+    case 'reprogramado':
+      return texto(l.reprogramado);
+    case 'dias': {
+      const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+      return dias != null ? String(dias) : VAZIO_CELULA;
+    }
+    case 'empresa':
+      return empresaExibida(l);
+    case 'fornecedor':
+      return texto(l.fornecedor);
+    case 'descricao':
+      return texto(l.descricao);
+    case 'observacao':
+      return texto(l.observacao);
+    case 'saldo':
+      return formatMoeda(l.saldo);
+    default:
+      return '';
+  }
+}
+
+function valorOrdenacaoVencidos(
+  l: DiarioContaPagarLinha,
+  col: string,
+  mapaSub: Map<string, string>,
+  hoje: string,
+): string | number {
+  if (col === 'saldo') return Number(l.saldo) || 0;
+  if (col === 'codigo') return l.codigoClassificacao ?? 0;
+  if (col === 'vencimento') return l.dataVencimento ?? '';
+  if (col === 'dias') {
+    const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+    return dias ?? -1;
+  }
+  return textoCelulaVencidos(l, col, mapaSub, hoje);
 }
 
 function selecionados(csv: string): Set<string> {
@@ -372,6 +470,23 @@ export const DiarioVencidosPainel = forwardRef<
     });
   }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, observacao, hoje, mapaSub]);
 
+  const getCellTextTitulos = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const valueForSortTitulos = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacaoVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const gradeTitulos = useGradeFiltrosExcel({
+    rows: base,
+    columnIds: COLUNAS_TITULOS_VENCIDOS.map((c) => c.id),
+    getCellText: getCellTextTitulos,
+    valueForSort: valueForSortTitulos,
+    dateColumnIds: ['vencimento'],
+  });
+  const titulosExibidos = gradeTitulos.rowsExibidas;
+
   const opcoes = (campo: 'fornecedor' | 'planoContas') => {
     const set = new Set<string>();
     for (const l of linhas) {
@@ -454,7 +569,7 @@ export const DiarioVencidosPainel = forwardRef<
     };
   }, [base, hoje, mapaSub]);
 
-  const elegiveis = useMemo(() => base.filter(podeAlterar), [base]);
+  const elegiveis = useMemo(() => titulosExibidos.filter(podeAlterar), [titulosExibidos]);
   const marcadas = useMemo(
     () => elegiveis.filter((l) => selecionadas.has(chaveSelecao(l))),
     [elegiveis, selecionadas],
@@ -473,8 +588,9 @@ export const DiarioVencidosPainel = forwardRef<
       setOrigens('');
       setSituacoes('');
       setObservacao('');
+      gradeTitulos.limparFiltrosGrade();
     },
-    linhasVisiveis: () => base,
+    linhasVisiveis: () => titulosExibidos,
     linhasSelecionadas: () => marcadas,
     periodo: () => {
       const datas = base
@@ -502,7 +618,7 @@ export const DiarioVencidosPainel = forwardRef<
         setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
       });
     },
-  }), [base, marcadas, hoje, onResumo]);
+  }), [base, titulosExibidos, marcadas, hoje, onResumo, gradeTitulos.limparFiltrosGrade]);
 
   const abrirDetalhe = (titulo: string, linhasDetalhe: DiarioContaPagarLinha[]) => {
     setDetalhe({ titulo, linhas: linhasDetalhe });
@@ -663,11 +779,11 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
         </div>
       ) : (
-        <div className="card-panel min-h-0 overflow-auto !p-0">
-          <table className="min-w-[1100px] w-full text-xs uppercase">
+        <div ref={gradeTitulos.tableScrollRef} className="card-panel min-h-0 overflow-auto !p-0">
+          <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-xs uppercase">
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
-                <th className="w-8 px-2 py-2">
+                <th className="sticky top-0 z-20 w-8 bg-primary-600 px-2 py-2">
                   <input
                     type="checkbox"
                     aria-label="Selecionar títulos em aberto"
@@ -686,15 +802,28 @@ export const DiarioVencidosPainel = forwardRef<
                     }}
                   />
                 </th>
-                {['Código', 'Situação', 'Classificação', 'SubClassificação', 'Vencimento', 'Reprogramado', 'Dias', 'Empresa', 'Pessoa', 'Descrição', 'Comentários', 'Saldo a pagar'].map((col) => (
-                  <th key={col} className="px-2 py-2 text-left font-medium whitespace-nowrap">{col}</th>
+                {COLUNAS_TITULOS_VENCIDOS.map((col) => (
+                  <DiarioCabecalhoTh
+                    key={col.id}
+                    colId={col.id}
+                    label={col.label}
+                    grade={gradeTitulos}
+                    align={'align' in col ? col.align : 'left'}
+                    className="sticky top-0 bg-primary-600"
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {base.length === 0 && !loading ? (
-                <tr><td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">Nenhum título vencido ou reprogramado em aberto.</td></tr>
-              ) : base.map((l, i) => {
+              {titulosExibidos.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">
+                    {base.length === 0
+                      ? 'Nenhum título vencido ou reprogramado em aberto.'
+                      : 'Nenhum lançamento com os filtros da grade.'}
+                  </td>
+                </tr>
+              ) : titulosExibidos.map((l, i) => {
                 const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
                 const chave = chaveSelecao(l);
                 const alteravel = podeAlterar(l);
@@ -739,7 +868,16 @@ export const DiarioVencidosPainel = forwardRef<
         </div>
       )}
       </div>
-      {detalhe ? <ModalDetalheGrafico titulo={detalhe.titulo} linhas={detalhe.linhas} mapaSub={mapaSub} onClose={() => setDetalhe(null)} /> : null}
+      {subaba === 'titulos' ? <DiarioGradeFiltroPortal grade={gradeTitulos} zIndex={14000} /> : null}
+      {detalhe ? (
+        <ModalDetalheGrafico
+          titulo={detalhe.titulo}
+          linhas={detalhe.linhas}
+          mapaSub={mapaSub}
+          hoje={hoje}
+          onClose={() => setDetalhe(null)}
+        />
+      ) : null}
     </div>
   );
 });
@@ -748,14 +886,32 @@ function ModalDetalheGrafico({
   titulo,
   linhas,
   mapaSub,
+  hoje,
   onClose,
 }: {
   titulo: string;
   linhas: DiarioContaPagarLinha[];
   mapaSub: Map<string, string>;
+  hoje: string;
   onClose: () => void;
 }) {
-  const saldo = linhas.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
+  const getCellText = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const valueForSort = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacaoVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const grade = useGradeFiltrosExcel({
+    rows: linhas,
+    columnIds: COLUNAS_DETALHE_VENCIDOS.map((c) => c.id),
+    getCellText,
+    valueForSort,
+    dateColumnIds: ['vencimento'],
+  });
+  const visiveis = grade.rowsExibidas;
+  const saldo = visiveis.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
   return createPortal(
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
@@ -763,27 +919,47 @@ function ModalDetalheGrafico({
         role="dialog"
         aria-modal="true"
         aria-labelledby="detalhe-grafico-titulo"
-        className="relative z-[81] flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className="relative z-[81] flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
       >
-        <div className="px-5 pt-5 pb-3">
-          <h2 id="detalhe-grafico-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">{titulo}</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {linhas.length.toLocaleString('pt-BR')} título(s) · saldo {formatMoeda(saldo)}
-          </p>
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
+          <div>
+            <h2 id="detalhe-grafico-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">{titulo}</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {visiveis.length.toLocaleString('pt-BR')}
+              {visiveis.length !== linhas.length ? ` de ${linhas.length.toLocaleString('pt-BR')}` : ''} título(s) · saldo {formatMoeda(saldo)}
+              {' · use ▾ no cabeçalho para filtrar e classificar'}
+            </p>
+          </div>
+          {grade.temFiltrosOuOrdem ? (
+            <button
+              type="button"
+              onClick={() => grade.limparFiltrosGrade()}
+              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+            >
+              Limpar filtros da grade
+            </button>
+          ) : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="min-w-[860px] w-full text-xs uppercase">
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
+          <table className="min-w-[860px] w-full border-separate border-spacing-0 text-xs uppercase">
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
-                {['Situação', 'Classificação', 'SubClassificação', 'Vencimento', 'Empresa', 'Pessoa', 'Descrição', 'Saldo a pagar'].map((col) => (
-                  <th key={col} className={`px-2 py-2 font-medium whitespace-nowrap ${col === 'Saldo a pagar' ? 'text-right' : 'text-left'}`}>{col}</th>
+                {COLUNAS_DETALHE_VENCIDOS.map((col) => (
+                  <DiarioCabecalhoTh
+                    key={col.id}
+                    colId={col.id}
+                    label={col.label}
+                    grade={grade}
+                    align={'align' in col ? col.align : 'left'}
+                    className="sticky top-0 bg-primary-600"
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {linhas.length === 0 ? (
+              {visiveis.length === 0 ? (
                 <tr><td colSpan={8} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
-              ) : linhas.map((l, i) => (
+              ) : visiveis.map((l, i) => (
                 <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
                   <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
                   <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
@@ -809,6 +985,7 @@ function ModalDetalheGrafico({
             Fechar
           </button>
         </div>
+        <DiarioGradeFiltroPortal grade={grade} zIndex={14000} />
       </div>
     </div>,
     document.body,
@@ -1035,24 +1212,24 @@ function RankingFornecedores({
                   {linhasMatriz.length === 0 || empresas.length === 0 ? (
                     <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
                   ) : (
-                    <table className="w-full text-xs uppercase">
-                      <thead className="sticky top-0 z-10 bg-primary-600 text-white">
+                    <table className="w-max min-w-full border-separate border-spacing-0 text-xs uppercase">
+                      <thead>
                         <tr>
-                          <th className="sticky left-0 z-20 bg-primary-600 px-2 py-2 text-left font-medium whitespace-nowrap">
+                          <th className="sticky left-0 top-0 z-40 min-w-[16rem] bg-primary-600 px-2 py-2 text-left font-medium whitespace-nowrap text-white shadow-[2px_0_0_0_rgb(37,99,235)]">
                             Fornecedor
                           </th>
                           {empresas.map((emp) => (
-                            <th key={emp} className="px-2 py-2 text-right font-medium whitespace-nowrap">
+                            <th key={emp} className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">
                               {emp}
                             </th>
                           ))}
-                          <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Total</th>
+                          <th className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {linhasMatriz.map((forn) => (
-                          <tr key={forn.nome} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
-                            <th className="sticky left-0 z-10 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap dark:bg-slate-800">
+                          <tr key={forn.nome} className="text-slate-800 dark:text-slate-100">
+                            <th className="sticky left-0 z-10 border-t border-slate-100 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
                               <button
                                 type="button"
                                 className="max-w-[22rem] truncate text-left hover:underline"
@@ -1065,7 +1242,7 @@ function RankingFornecedores({
                             {empresas.map((emp) => {
                               const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
                               return (
-                                <td key={emp} className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
+                                <td key={emp} className="border-t border-slate-100 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
                                   {valor > 0 ? (
                                     <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(forn.nome, emp)}>
                                       {formatMoeda(valor)}
@@ -1076,7 +1253,7 @@ function RankingFornecedores({
                                 </td>
                               );
                             })}
-                            <td className="px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                            <td className="border-t border-slate-100 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
                               {formatMoeda(forn.saldo)}
                             </td>
                           </tr>
