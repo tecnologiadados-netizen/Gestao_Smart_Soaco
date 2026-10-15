@@ -634,6 +634,14 @@ export default function DoubleCheckInPage() {
       decisoes = cached.decisoes;
     }
 
+    if (regimeConferencia === 'completa' && linhas.length === 0) {
+      setModalAba('nf_pc');
+      setCompBloqueioMsg(
+        'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.'
+      );
+      return;
+    }
+
     const pendentes =
       regimeConferencia === 'completa'
         ? contarPendentesComparativo(linhas, decisoes)
@@ -670,7 +678,7 @@ export default function DoubleCheckInPage() {
       });
       if (r.erro) {
         setSenhaErro(r.erro);
-        if (/divergência/i.test(r.erro)) {
+        if (/divergência|pedido de compra/i.test(r.erro)) {
           setSenhaAberto(false);
           setModalAba('nf_pc');
           setCompBloqueioMsg(r.erro);
@@ -1294,6 +1302,12 @@ export default function DoubleCheckInPage() {
                         : ''}
                       .
                     </span>
+                  ) : regimeDaNota(modalNota) === 'completa' &&
+                    !compLoading &&
+                    comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0 ? (
+                    <span>
+                      Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.
+                    </span>
                   ) : modalNota.conferenciaReaberta ? (
                     <span>
                       {compDecisoes.some((decisao) => decisao.vigente === false)
@@ -1331,7 +1345,9 @@ export default function DoubleCheckInPage() {
                       Boolean(modalNota.conferido) ||
                       regimeDaNota(modalNota) === 'nao_aplicada' ||
                       detalheLoading ||
-                      compLoading
+                      compLoading ||
+                      (regimeDaNota(modalNota) === 'completa' &&
+                        comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0)
                     }
                     onClick={() => void abrirSenhaConferir()}
                   >

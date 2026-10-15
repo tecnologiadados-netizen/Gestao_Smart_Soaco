@@ -838,6 +838,13 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       res.status(503).json({ error: erroComp });
       return;
     }
+    if (linhas.length === 0 && (!ja || reconferenciaSolicitada)) {
+      res.status(400).json({
+        error:
+          'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.',
+      });
+      return;
+    }
     const decisoes = await listarDecisoesComparativo(idDocumento);
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     if (!validacao.ok) {

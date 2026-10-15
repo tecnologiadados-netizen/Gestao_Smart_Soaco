@@ -54,27 +54,19 @@ function base(): EntradaHistoricoDoubleCheck {
 }
 
 describe('montarEventosHistorico', () => {
-  it('coloca o desvínculo depois da primeira leitura e sem horário', () => {
+  it('coloca o desvínculo depois da criação e sem horário', () => {
     const eventos = montarEventosHistorico(base());
-    const leitura = eventos.findIndex((evento) => evento.id.startsWith('leitura-'));
-    const desfeito = eventos.find((evento) => evento.id.startsWith('desfeito-'));
-    const desfeitoIdx = eventos.findIndex((evento) => evento.id.startsWith('desfeito-'));
-    expect(leitura).toBeGreaterThanOrEqual(0);
-    expect(desfeitoIdx).toBe(leitura + 1);
-    expect(desfeito).toMatchObject({
+    expect(eventos.map((evento) => evento.id)).toEqual(['criado', 'desvinculo']);
+    expect(eventos[1]).toMatchObject({
       precisao: 'sem_data',
       em: null,
-      titulo: 'Desvinculado do pedido',
-    });
-    expect(desfeito?.detalhe).toContain('PC 30');
-    expect(desfeito?.detalhe).toContain('hora do desvínculo não ficou registrada');
-    expect(eventos.at(-1)?.id).toBe(desfeito?.id);
-    expect(eventos[0]).toMatchObject({ id: 'criado', precisao: 'instante' });
-    expect(eventos.find((evento) => evento.id.startsWith('leitura-'))).toMatchObject({
+      titulo: 'Desvínculo do pedido',
       origemComparativo: 'leitura',
       abreComparativo: true,
     });
-    expect(eventos.some((evento) => evento.id === 'sem-desvinculo')).toBe(false);
+    expect(eventos[1]?.detalhe).toContain('Houve desvínculo de PC 30');
+    expect(eventos[1]?.detalhe).toContain('A hora não ficou registrada');
+    expect(eventos[0]).toMatchObject({ id: 'criado', precisao: 'instante' });
   });
 
   it('não chama de desfeito o vínculo que continua e foi aceito', () => {
@@ -123,14 +115,11 @@ describe('montarEventosHistorico', () => {
       },
     ];
     const eventos = montarEventosHistorico(entrada);
-    expect(eventos.some((evento) => evento.id.startsWith('desfeito-'))).toBe(false);
-    expect(eventos.some((evento) => evento.id === 'ajustado')).toBe(false);
-    expect(eventos.some((evento) => evento.id === 'permanece-igual')).toBe(false);
-    expect(eventos.find((evento) => evento.id.startsWith('decisao-'))).toMatchObject({
-      titulo: 'Divergência aceita',
-      ator: 'ana',
-      precisao: 'instante',
-    });
+    expect(eventos.map((evento) => evento.id)).toEqual(['criado', 'sem-desvinculo', 'ate-agora']);
+    expect(eventos[1]?.detalhe).toContain('Não houve desvínculo');
+    expect(eventos[1]?.detalhe).toContain('PC 30');
+    expect(eventos[2]).toMatchObject({ titulo: 'Até o momento', precisao: 'instante' });
+    expect(eventos[2]?.detalhe).toContain('ana aceitou');
   });
 
   it('resume o vínculo que ficou igual numa legenda', () => {
@@ -166,15 +155,9 @@ describe('montarEventosHistorico', () => {
       },
     ];
     const eventos = montarEventosHistorico(entrada);
-    const legenda = eventos.at(-1);
-    expect(legenda).toMatchObject({
-      id: 'permanece-igual',
-      titulo: 'Documento permanece igual',
-      legenda: true,
-      abreComparativo: false,
-      detalhe: '',
-    });
-    expect(eventos.some((evento) => evento.id === 'sem-desvinculo')).toBe(false);
+    expect(eventos.map((evento) => evento.id)).toEqual(['criado', 'sem-desvinculo']);
+    expect(eventos[1]?.detalhe).toContain('Não houve desvínculo');
+    expect(eventos[1]?.detalhe).toContain('PC 30');
   });
 
   it('mostra desvínculo e um vínculo posterior quando o pedido muda', () => {
@@ -189,11 +172,8 @@ describe('montarEventosHistorico', () => {
       valorUnitarioPC: 8,
     };
     const eventos = montarEventosHistorico(entrada);
-    const desfeito = eventos.findIndex((evento) => evento.id.startsWith('desfeito-'));
-    const posterior = eventos.findIndex((evento) => evento.id === 'posterior');
-    expect(desfeito).toBeGreaterThanOrEqual(0);
-    expect(posterior).toBe(desfeito + 1);
-    expect(eventos[posterior]?.detalhe).toContain('PC 40');
-    expect(eventos.some((evento) => evento.id === 'sem-desvinculo' || evento.id === 'permanece-igual')).toBe(false);
+    expect(eventos.map((evento) => evento.id)).toEqual(['criado', 'desvinculo']);
+    expect(eventos[1]?.detalhe).toContain('Houve desvínculo de PC 30');
+    expect(eventos[1]?.detalhe).toContain('Depois foi ligado a PC 40');
   });
 });

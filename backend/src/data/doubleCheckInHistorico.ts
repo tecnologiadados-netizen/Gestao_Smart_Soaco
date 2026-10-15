@@ -14,7 +14,7 @@ import {
 } from './recebimentoNomusRepository.js';
 
 export const AVISO_HISTORICO_DOUBLE_CHECK =
-  'A linha começa quando o documento é criado no Nomus. O primeiro vínculo com pedido é a primeira vez que o Double Check viu a nota ligada, ou o vínculo que existe agora quando essa leitura ainda não aconteceu. O Nomus não guarda a hora de cada vínculo. No fim, a linha diz se o mesmo pedido permaneceu ou se houve desvínculo e um vínculo posterior.';
+  'A linha mostra quando o documento foi criado, se houve desvínculo de pedido e o que aconteceu daí até a situação atual. O Nomus não guarda a hora de cada vínculo.';
 
 export type PrecisaoHistorico = 'instante' | 'dia' | 'sem_data';
 export type TomHistorico = 'neutro' | 'atencao' | 'ok' | 'info';
@@ -200,40 +200,10 @@ function chaveVinculo(idItemDocumento: number, idItemPedido: number): string {
   return `${idItemDocumento}:${idItemPedido}`;
 }
 
-function chaveCampo(idItemDocumento: number, idItemPedido: number, campo: string): string {
-  return `${chaveVinculo(idItemDocumento, idItemPedido)}:${campo}`;
-}
-
-function aindaDiverge(linha: LinhaAtualHistorico, campo: string): boolean {
-  if (campo === 'valor_unitario') return linha.divergValorUnitario;
-  if (campo === 'qtde') return linha.divergQtde;
-  if (campo === 'ipi') return linha.divergIpi;
-  if (campo === 'condicao_pagamento') return linha.divergCondicaoPagamento;
-  return false;
-}
-
 function evento(
   partial: Omit<EventoHistoricoDoubleCheck, 'abreComparativo'> & { abreComparativo?: boolean }
 ): EventoHistoricoDoubleCheck {
   return { abreComparativo: false, ...partial };
-}
-
-function fmtDia(ymd: string | null): string | null {
-  if (!ymd) return null;
-  const [ano, mes, dia] = ymd.slice(0, 10).split('-');
-  if (!ano || !mes || !dia) return ymd;
-  return `${dia}/${mes}/${ano}`;
-}
-
-function diaSaoPaulo(iso: string): string | null {
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return null;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(data);
 }
 
 function fmtDataHora(iso: string): string {
@@ -252,26 +222,9 @@ function isoDeData(v: unknown): string | null {
 
 export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): EventoHistoricoDoubleCheck[] {
   const doc = entrada.documento;
-  const dated: EventoHistoricoDoubleCheck[] = [];
-  const depoisLeitura: EventoHistoricoDoubleCheck[] = [];
-  const logoAposCriacao: EventoHistoricoDoubleCheck[] = [];
-
-  const diaCriacao = doc.dataCriacao ? diaSaoPaulo(doc.dataCriacao) : null;
-  const entradaNoMesmoDia = Boolean(doc.dataEntrada && diaCriacao && doc.dataEntrada.slice(0, 10) === diaCriacao);
-  const detalheCriacao = [
-    doc.tipoMovimentacao ? `Tipo de movimentação: ${doc.tipoMovimentacao}.` : null,
-    [doc.numeroNfe ? `NF-e ${doc.numeroNfe}` : null, doc.numeroDocumentoFiscal, doc.nomeParceiro]
-      .filter(Boolean)
-      .join(' · ') || null,
-    doc.dataEmissao ? `Nota emitida em ${fmtDia(doc.dataEmissao)}.` : null,
-    doc.dataCriacao ? `Criação do documento em ${fmtDataHora(doc.dataCriacao)}.` : null,
-    doc.dataEntrada && !entradaNoMesmoDia ? `Entrada no estoque em ${fmtDia(doc.dataEntrada)}.` : null,
-  ]
-    .filter((parte): parte is string => Boolean(parte))
-    .join('\n');
-  if (doc.dataCriacao) {
-    dated.push(
-      evento({
+  const detalheCriacao = doc.tipoMovimentacao ? `Tipo de movimentação: ${doc.tipoMovimentacao}.` : '';
+  const criado: EventoHistoricoDoubleCheck | null = doc.dataCriacao
+    ? evento({
         id: 'criado',
         em: doc.dataCriacao,
         precisao: 'instante',
@@ -281,21 +234,18 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
         ator: doc.nomeUsuarioCriacao,
         fonte: 'Nomus · criação do documento',
       })
-    );
-  } else if (doc.dataEntrada) {
-    dated.push(
-      evento({
-        id: 'criado',
-        em: doc.dataEntrada,
-        precisao: 'dia',
-        tom: 'neutro',
-        titulo: 'Documento criado',
-        detalhe: detalheCriacao || 'O Nomus não guardou a hora da criação. Vale a data de entrada.',
-        ator: doc.nomeUsuarioCriacao,
-        fonte: 'Nomus · data de entrada',
-      })
-    );
-  }
+    : doc.dataEntrada
+      ? evento({
+          id: 'criado',
+          em: doc.dataEntrada,
+          precisao: 'dia',
+          tom: 'neutro',
+          titulo: 'Documento criado',
+          detalhe: detalheCriacao || 'O Nomus não guardou a hora da criação. Vale a data de entrada.',
+          ator: doc.nomeUsuarioCriacao,
+          fonte: 'Nomus · data de entrada',
+        })
+      : null;
 
   const produtoPorItem = new Map<number, { codigo: string | null; descricao: string | null }>();
   for (const item of entrada.itens) {
@@ -323,95 +273,14 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
   }
   for (const linha of entrada.linhasAtuais) vinculosAtuais.add(chaveVinculo(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra));
 
-  const aceitas = new Set(
-    entrada.decisoes
-      .filter((d) => d.decisao === 'aceita' && d.vigente)
-      .map((d) => chaveCampo(d.idItemDocumentoEstoque, d.idItemPedidoCompra, d.campo))
-  );
-
-  const gruposLeitura = new Map<string, SnapshotHistorico[]>();
-  for (const snap of entrada.snapshots) {
-    const chave = snap.apontadoEm.slice(0, 19);
-    const lista = gruposLeitura.get(chave) ?? [];
-    lista.push(snap);
-    gruposLeitura.set(chave, lista);
-  }
-
-  let leituraSeq = 0;
-  for (const [quando, snaps] of [...gruposLeitura.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    leituraSeq += 1;
-    const pedidos = [...new Set(snaps.map((snap) => `${pedidoLabel(snap.nomePedidoCompra, snap.idPedidoCompra)} · ${snap.nomeComprador?.trim() || 'Sem comprador'}`))];
-    const qtde = snaps.length;
-    dated.push(
-      evento({
-        id: `leitura-${leituraSeq}`,
-        em: snaps[0]?.apontadoEm ?? quando,
-        precisao: 'instante',
-        tom: 'atencao',
-        titulo: leituraSeq === 1 ? 'Vinculado ao pedido' : 'Nova leitura do mesmo vínculo',
-        detalhe: `${pedidos.join('\n')}\n${qtde} ${qtde === 1 ? 'divergência na primeira leitura' : 'divergências na primeira leitura'}.`,
-        ator: null,
-        fonte: 'Registro local · primeira leitura do Double Check',
-        abreComparativo: true,
-        origemComparativo: 'leitura',
-      })
-    );
-  }
-
   const desfeitos = new Map<string, SnapshotHistorico[]>();
-  const ajustados: string[] = [];
   for (const snap of entrada.snapshots) {
     const vinculo = chaveVinculo(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra);
     if (!vinculosAtuais.has(vinculo)) {
       const lista = desfeitos.get(vinculo) ?? [];
       lista.push(snap);
       desfeitos.set(vinculo, lista);
-      continue;
     }
-    if (aceitas.has(chaveCampo(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra, snap.campo))) continue;
-    const linha = linhaPorVinculo.get(vinculo);
-    if (linha && !aindaDiverge(linha, snap.campo)) {
-      const prod = produtoPorItem.get(snap.idItemDocumentoEstoque);
-      ajustados.push(
-        `${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedidoLabel(snap.nomePedidoCompra, snap.idPedidoCompra)} · ${labelCampo(snap.campo)} deixou de divergir, sem aceite`
-      );
-    }
-  }
-
-  let desfeitoSeq = 0;
-  for (const snaps of desfeitos.values()) {
-    desfeitoSeq += 1;
-    const base = snaps[0]!;
-    depoisLeitura.push(
-      evento({
-        id: `desfeito-${desfeitoSeq}`,
-        em: null,
-        precisao: 'sem_data',
-        tom: 'atencao',
-        titulo: 'Desvinculado do pedido',
-        detalhe: `${pedidoLabel(base.nomePedidoCompra, base.idPedidoCompra)} · ${base.nomeComprador || 'Sem comprador'}. A hora do desvínculo não ficou registrada.`,
-        ator: null,
-        fonte: 'Retrato local comparado com o vínculo atual do Nomus',
-        abreComparativo: true,
-        origemComparativo: 'leitura',
-      })
-    );
-  }
-
-  if (ajustados.length > 0) {
-    depoisLeitura.push(
-      evento({
-        id: 'ajustado',
-        em: null,
-        precisao: 'sem_data',
-        tom: 'info',
-        titulo: 'Diferença sumiu sem aceite',
-        detalhe: `${ajustados.length} ${ajustados.length === 1 ? 'campo deixou' : 'campos deixaram'} de divergir, sem aceite. A hora do ajuste não ficou registrada.`,
-        ator: null,
-        fonte: 'Retrato local comparado com a leitura atual',
-        abreComparativo: true,
-      })
-    );
   }
 
   const chavesPrimeiroVinculo = new Set(
@@ -428,88 +297,64 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
   const textoPedido = (nome: string | null, id: number | null, comprador: string | null): string =>
     `${pedidoLabel(nome, id)} · ${comprador?.trim() || 'Sem comprador'}`;
   const resumoItens = (itens: ItemHistoricoVinculo[]): string =>
-    [...new Set(itens.map((item) => textoPedido(item.nomePedidoCompra, item.idPedidoCompra, item.nomeComprador)))].join('\n');
-  const qtdeDivergenciasAgora = entrada.linhasAtuais.reduce((total, linha) => {
-    return (
-      total +
-      Number(linha.divergValorUnitario) +
-      Number(linha.divergQtde) +
-      Number(linha.divergIpi) +
-      Number(linha.divergCondicaoPagamento)
+    [...new Set(itens.map((item) => textoPedido(item.nomePedidoCompra, item.idPedidoCompra, item.nomeComprador)))].join(
+      '\n'
     );
-  }, 0);
-  const fraseDivergenciaAtual =
-    qtdeDivergenciasAgora === 0
-      ? 'Nenhuma divergência na leitura atual.'
-      : `${qtdeDivergenciasAgora} ${qtdeDivergenciasAgora === 1 ? 'divergência na leitura atual' : 'divergências na leitura atual'}.`;
+
+  const linhasVinculo: string[] = [];
+  let tomVinculo: TomHistorico = 'neutro';
+  let abreVinculo = false;
+  let origemVinculo: 'leitura' | 'atual' | undefined;
+
+  if (desfeitos.size > 0) {
+    tomVinculo = 'atencao';
+    abreVinculo = true;
+    origemVinculo = 'leitura';
+    for (const snaps of desfeitos.values()) {
+      const base = snaps[0]!;
+      linhasVinculo.push(
+        `Houve desvínculo de ${pedidoLabel(base.nomePedidoCompra, base.idPedidoCompra)} · ${base.nomeComprador?.trim() || 'Sem comprador'}. A hora não ficou registrada.`
+      );
+    }
+  } else if (itensLigados.length > 0) {
+    linhasVinculo.push(`Não houve desvínculo. Pedido atual: ${resumoItens(itensLigados)}.`);
+    abreVinculo = entrada.linhasAtuais.length > 0 || entrada.snapshots.length > 0;
+    origemVinculo = entrada.snapshots.length > 0 ? 'leitura' : 'atual';
+  } else {
+    linhasVinculo.push('Não houve desvínculo. Nenhum item está ligado a um pedido.');
+  }
 
   if (posteriores.length > 0) {
-    depoisLeitura.push(
-      evento({
-        id: 'posterior',
-        em: null,
-        precisao: 'sem_data',
-        tom: 'info',
-        titulo: 'Vinculado depois a outro pedido',
-        detalhe: `${resumoItens(posteriores)}\nEste pedido não estava no primeiro vínculo. A hora desse novo vínculo não ficou registrada.`,
-        ator: null,
-        fonte: 'Vínculo atual do Nomus comparado com o primeiro vínculo lido',
-        abreComparativo: true,
-      })
+    tomVinculo = 'info';
+    abreVinculo = true;
+    origemVinculo = origemVinculo ?? 'atual';
+    linhasVinculo.push(
+      `Depois foi ligado a ${resumoItens(posteriores)}. A hora desse vínculo não ficou registrada.`
     );
   }
 
-  const vinculoPermaneceu =
-    entrada.snapshots.length > 0 && desfeitos.size === 0 && posteriores.length === 0 && itensLigados.length > 0;
-  const houveAndamentoDepois =
-    entrada.decisoes.length > 0 || ajustados.length > 0 || Boolean(entrada.conferencia);
-  if (vinculoPermaneceu && !houveAndamentoDepois) {
-    depoisLeitura.push(
-      evento({
-        id: 'permanece-igual',
-        em: null,
-        precisao: 'sem_data',
-        tom: 'ok',
-        titulo: 'Documento permanece igual',
-        detalhe: '',
-        ator: null,
-        fonte: '',
-        legenda: true,
-      })
+  if (entrada.snapshots.length > 0) {
+    const primeira = [...entrada.snapshots].sort((a, b) => a.apontadoEm.localeCompare(b.apontadoEm))[0]!;
+    const qtde = entrada.snapshots.length;
+    linhasVinculo.push(
+      `Primeira leitura em ${fmtDataHora(primeira.apontadoEm)}: ${qtde} ${qtde === 1 ? 'divergência' : 'divergências'}.`
     );
   }
 
-  if (entrada.snapshots.length === 0 && itensLigados.length > 0) {
-    logoAposCriacao.push(
-      evento({
-        id: 'vinculo-atual',
-        em: null,
-        precisao: 'sem_data',
-        tom: 'info',
-        titulo: 'Vinculado ao pedido',
-        detalhe: `${resumoItens(itensLigados)}\nNão há leitura anterior deste vínculo. A hora em que ele foi feito não ficou registrada.\n${fraseDivergenciaAtual}`,
-        ator: null,
-        fonte: 'Vínculo atual do Nomus',
-        abreComparativo: true,
-      })
-    );
-  }
+  const vinculo = evento({
+    id: desfeitos.size > 0 ? 'desvinculo' : 'sem-desvinculo',
+    em: null,
+    precisao: 'sem_data',
+    tom: tomVinculo,
+    titulo: desfeitos.size > 0 ? 'Desvínculo do pedido' : 'Sem desvínculo',
+    detalhe: linhasVinculo.join('\n'),
+    ator: null,
+    fonte: 'Vínculo do Nomus comparado com a primeira leitura',
+    abreComparativo: abreVinculo,
+    origemComparativo: origemVinculo,
+  });
 
-  if (itensLigados.length === 0 && entrada.snapshots.length === 0) {
-    depoisLeitura.push(
-      evento({
-        id: 'sem-vinculo',
-        em: null,
-        precisao: 'sem_data',
-        tom: 'neutro',
-        titulo: 'Nenhum vínculo com pedido',
-        detalhe: 'O documento foi criado e nenhum item está ligado a pedido. Também não ficou registrado um vínculo anterior.',
-        ator: null,
-        fonte: 'Vínculo atual do Nomus',
-      })
-    );
-  }
-
+  const passos: Array<{ em: string; texto: string }> = [];
   for (const decisao of entrada.decisoes) {
     const prod = produtoPorItem.get(decisao.idItemDocumentoEstoque);
     const linha = linhaPorVinculo.get(chaveVinculo(decisao.idItemDocumentoEstoque, decisao.idItemPedidoCompra));
@@ -523,178 +368,89 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
       snapPedido?.idPedidoCompra ?? null
     );
     const acao = decisao.decisao === 'recusa' ? 'recusou' : 'aceitou';
-    const ciclo = decisao.vigente ? '' : ' Esta gravação é de antes da reabertura e deixou de valer.';
-    dated.push(
-      evento({
-        id: `decisao-${decisao.idItemDocumentoEstoque}-${decisao.idItemPedidoCompra}-${decisao.campo}`,
-        em: decisao.atualizadoEm,
-        precisao: 'instante',
-        tom: decisao.decisao === 'recusa' ? 'atencao' : 'ok',
-        titulo: decisao.decisao === 'recusa' ? 'Divergência recusada' : 'Divergência aceita',
-        detalhe: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${ciclo}`,
-        ator: decisao.usuarioLogin,
-        fonte: 'Registro local · decisão da conferência',
-      })
-    );
-    for (const obs of decisao.observacoes) {
-      dated.push(
-        evento({
-          id: `obs-${decisao.idItemDocumentoEstoque}-${decisao.idItemPedidoCompra}-${decisao.campo}-${obs.criadoEm}`,
-          em: obs.criadoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Observação',
-          detalhe: `${labelCampo(decisao.campo)} · ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)}\n${obs.texto}`,
-          ator: obs.usuarioLogin,
-          fonte: 'Registro local · observação',
-        })
-      );
-    }
+    const ciclo = decisao.vigente ? '' : ' Decisão de antes da reabertura, já não vale.';
+    passos.push({
+      em: decisao.atualizadoEm,
+      texto: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${ciclo}`,
+    });
   }
 
   if (entrada.conferencia) {
     const conf = entrada.conferencia;
-    const reais = conf.totalDivergenciasReaisHistorica;
-    const benignas = conf.totalDivergenciasBenignasHist;
-    dated.push(
-      evento({
-        id: 'conferido',
-        em: conf.conferidoEm,
-        precisao: 'instante',
-        tom: 'ok',
-        titulo: 'Documento conferido',
-        detalhe: `Na hora da conferência havia ${reais} ${reais === 1 ? 'divergência real' : 'divergências reais'} e ${benignas} ${benignas === 1 ? 'benigna' : 'benignas'}.`,
-        ator: conf.usuarioLogin,
-        fonte: 'Registro local · conferência',
-      })
-    );
+    passos.push({
+      em: conf.conferidoEm,
+      texto: `${conf.usuarioLogin} conferiu o documento no Double Check.`,
+    });
     if (conf.reabertoEm) {
-      dated.push(
-        evento({
-          id: 'reaberto',
-          em: conf.reabertoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Conferência reaberta',
-          detalhe: 'As decisões anteriores deixaram de valer. Cada divergência atual precisa ser aceita ou recusada de novo.',
-          ator: conf.reabertoPorLogin,
-          fonte: 'Registro local · reabertura',
-        })
-      );
+      passos.push({
+        em: conf.reabertoEm,
+        texto: `${conf.reabertoPorLogin || 'Alguém'} reabriu a conferência.`,
+      });
     }
   }
 
   if (entrada.recebimento) {
     const rec = entrada.recebimento;
-    dated.push(
-      evento({
-        id: 'recebimento-criado',
-        em: rec.createdAt,
-        precisao: 'instante',
-        tom: 'info',
-        titulo: 'Entrou na conferência às cegas',
-        detalhe: `Situação gravada na abertura: ${labelStatusRecebimento(rec.status)}.`,
-        ator: null,
-        fonte: 'Recebimento · conferência às cegas',
-      })
-    );
-    if (rec.atribuidoEm) {
-      dated.push(
-        evento({
-          id: 'recebimento-atribuido',
-          em: rec.atribuidoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Conferente definido',
-          detalhe: rec.conferenteNome || rec.conferenteLogin || 'Conferente atribuído.',
-          ator: rec.conferenteLogin,
-          fonte: 'Recebimento · atribuição',
-        })
-      );
-    }
-    if (rec.iniciadoEm) {
-      dated.push(
-        evento({
-          id: 'recebimento-inicio',
-          em: rec.iniciadoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Conferência às cegas iniciada',
-          detalhe: 'O conferente começou a contar os itens.',
-          ator: rec.conferenteLogin,
-          fonte: 'Recebimento · início',
-        })
-      );
-    }
+    const quem = rec.conferenteNome || rec.conferenteLogin;
+    const situacao = labelStatusRecebimento(rec.status);
     if (rec.finalizadoEm) {
-      dated.push(
-        evento({
-          id: 'recebimento-fim',
-          em: rec.finalizadoEm,
-          precisao: 'instante',
-          tom: 'ok',
-          titulo: 'Conferência às cegas finalizada',
-          detalhe: `Situação atual do recebimento: ${labelStatusRecebimento(rec.status)}.`,
-          ator: rec.conferenteNome || rec.conferenteLogin,
-          fonte: 'Recebimento · finalização',
-        })
-      );
+      passos.push({
+        em: rec.finalizadoEm,
+        texto: `${quem ? `${quem} concluiu a contagem física. ` : ''}Situação: ${situacao}.`,
+      });
+    } else if (rec.atribuidoEm && quem) {
+      passos.push({
+        em: rec.atribuidoEm,
+        texto: `Contagem física com ${quem}. Situação: ${situacao}.`,
+      });
+    } else {
+      passos.push({
+        em: rec.createdAt,
+        texto: `Contagem física aberta. Situação: ${situacao}.`,
+      });
     }
-    for (const [i, ciclo] of rec.ciclos.entries()) {
-      dated.push(
-        evento({
-          id: `recebimento-ciclo-${i}`,
-          em: ciclo.arquivadoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Ciclo da conferência às cegas arquivado',
-          detalhe: `Voltou para a mesa como ${labelStatusRecebimento(ciclo.statusRetorno)}.`,
-          ator: ciclo.conferenteNome,
-          fonte: 'Recebimento · ciclo arquivado',
-        })
-      );
+    for (const ciclo of rec.ciclos) {
+      passos.push({
+        em: ciclo.arquivadoEm,
+        texto: `Volta anterior de ${ciclo.conferenteNome || 'conferente'} voltou como ${labelStatusRecebimento(ciclo.statusRetorno)}.`,
+      });
     }
     if (rec.mesaAcaoEm && rec.mesaUltimaAcao) {
       const justificativa = rec.mesaAceiteJustificativa?.trim();
-      dated.push(
-        evento({
-          id: 'recebimento-mesa',
-          em: rec.mesaAcaoEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: MESA_ACAO[rec.mesaUltimaAcao] ?? `Ação da mesa: ${rec.mesaUltimaAcao}`,
-          detalhe: justificativa || 'Ação registrada pela mesa.',
-          ator: rec.mesaAcaoPorLogin,
-          fonte: 'Recebimento · mesa',
-        })
-      );
+      const acao = MESA_ACAO[rec.mesaUltimaAcao] ?? rec.mesaUltimaAcao;
+      passos.push({
+        em: rec.mesaAcaoEm,
+        texto: `${rec.mesaAcaoPorLogin ? `${rec.mesaAcaoPorLogin}: ` : ''}${acao}${justificativa ? `. ${justificativa}` : ''}.`,
+      });
     }
     if (rec.devolucaoVinculadaEm) {
-      dated.push(
-        evento({
-          id: 'recebimento-devolucao',
-          em: rec.devolucaoVinculadaEm,
-          precisao: 'instante',
-          tom: 'info',
-          titulo: 'Devolução vinculada',
-          detalhe: [rec.numeroDocumentoDevolucao, rec.numeroNfeDevolucao ? `NF-e ${rec.numeroNfeDevolucao}` : null]
-            .filter(Boolean)
-            .join(' · ') || 'Documento de devolução vinculado.',
-          ator: null,
-          fonte: 'Recebimento · devolução',
-        })
-      );
+      const docDev = [rec.numeroDocumentoDevolucao, rec.numeroNfeDevolucao ? `NF-e ${rec.numeroNfeDevolucao}` : null]
+        .filter(Boolean)
+        .join(' · ');
+      passos.push({
+        em: rec.devolucaoVinculadaEm,
+        texto: docDev ? `Devolução vinculada: ${docDev}.` : 'Devolução vinculada.',
+      });
     }
   }
 
-  dated.sort((a, b) => (a.em ?? '').localeCompare(b.em ?? '') || a.id.localeCompare(b.id));
-  const eventos = [...dated];
-  const idxCriado = eventos.findIndex((item) => item.id === 'criado');
-  if (logoAposCriacao.length > 0) {
-    eventos.splice(idxCriado >= 0 ? idxCriado + 1 : 0, 0, ...logoAposCriacao);
-  }
-  eventos.push(...depoisLeitura);
-  return eventos;
+  passos.sort((a, b) => a.em.localeCompare(b.em));
+  const ultimo = passos[passos.length - 1];
+  const andamento = ultimo
+    ? evento({
+        id: 'ate-agora',
+        em: ultimo.em,
+        precisao: 'instante',
+        tom: 'info',
+        titulo: 'Até o momento',
+        detalhe: passos.map((passo) => `${fmtDataHora(passo.em)} · ${passo.texto}`).join('\n'),
+        ator: null,
+        fonte: 'Registros do documento',
+      })
+    : null;
+
+  return [criado, vinculo, andamento].filter((item): item is EventoHistoricoDoubleCheck => item != null);
+
 }
 
 function toInt(v: unknown): number {
