@@ -75,6 +75,18 @@ export async function fetchDiarioContasPagar(params: {
   };
 }
 
+export async function fetchDiarioVencidosReprogramados(): Promise<DiarioContasPagarResponse> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/vencidos');
+  const body = (await res.json().catch(() => ({}))) as DiarioContasPagarResponse;
+  if (!res.ok) {
+    throw new Error(body.error || `Erro ao carregar vencidos/reprogramados (${res.status})`);
+  }
+  return {
+    ...body,
+    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+  };
+}
+
 export interface ReprogramarContasPagarItem {
   origem: 'Nomus' | 'Shop9';
   id: number;

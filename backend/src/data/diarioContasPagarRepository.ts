@@ -23,10 +23,15 @@ import {
   SHOP9_DESCRICAO_MAX,
   descricaoPrimeiraReprogramacao,
 } from './diarioContasPagarDescricao.js';
-import { aplicarReprogramacoesDiario, gravarReprogramacaoOriginal } from './diarioReprogramacao.js';
+import {
+  aplicarReprogramacoesDiario,
+  extrairReprogramacaoLinha,
+  gravarReprogramacaoOriginal,
+} from './diarioReprogramacao.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_SHOP9 = readFileSync(join(__dirname, 'sql', 'diarioContasPagarShop9.sql'), 'utf-8');
+const SQL_SHOP9_ABERTOS = readFileSync(join(__dirname, 'sql', 'diarioContasPagarShop9Abertos.sql'), 'utf-8');
 
 /** Só Aço (1) e Só Móveis (2), como no recorte do diário. */
 const NOMUS_EMPRESAS = [1, 2];
@@ -135,6 +140,71 @@ WHERE lf.idEmpresa IN (?, ?)
   AND af.id IS NULL
   AND lf.discriminador = 'LP'
   AND DATE(COALESCE(af.dataVencimento, lf.dataLancamento)) BETWEEN ? AND ?
+`.trim();
+
+/** Agendamentos P em aberto, sem recorte de vencimento. Baixados ficam de fora. */
+const SQL_NOMUS_ABERTOS = `
+SELECT
+  COALESCE(lf.idContaBancaria, af.idContaBancaria) AS idContaBancaria,
+  cb.nome AS contaBancaria,
+  af.id AS codigoConta,
+  af.discriminador AS tipoConta,
+  lf.dataLancamento AS dataBaixa,
+  af.dataVencimento AS dataVencimento,
+  af.descricaoLancamento AS descricaoLancamento,
+  CASE
+    WHEN COALESCE(af.descricaoLancamento, lf.descricao) = 'DESCONTO DE DUPLICATAS'
+         AND af.discriminador = 'P'
+      THEN 2
+    ELSE COALESCE(af.idContaFinanceiro, lf.idContaFinanceiro)
+  END AS idPlanoContas,
+  cf.nome AS planoContas,
+  COALESCE(td.comentarios, af.comentarios) AS comentarios,
+  fp.nome AS formaPagamento,
+  af.valorBaixar / COUNT(af.id) OVER (PARTITION BY af.id) AS valorBaixar,
+  lf.valor AS valorBaixado,
+  af.saldoBaixar / COUNT(af.id) OVER (PARTITION BY af.id) AS saldoBaixar,
+  af.idEmpresa AS idEmpresa,
+  emp.nome AS empresa,
+  pe.nomeRazaoSocial AS nomeRazaoSocial,
+  pe.nome AS clienteFornecedor,
+  af.id AS idAgendamento
+FROM agendamentofinanceiro af
+LEFT JOIN lancamentofinanceiro lf
+  ON COALESCE(lf.idAgendamentoPagamento, lf.idAgendamentoRecebimento) = af.id
+LEFT JOIN pessoa pe ON pe.id = af.idPessoa
+LEFT JOIN contafinanceiro cf
+  ON cf.id = CASE
+    WHEN COALESCE(af.descricaoLancamento, lf.descricao) = 'DESCONTO DE DUPLICATAS'
+         AND af.discriminador = 'P'
+      THEN 2
+    ELSE COALESCE(af.idContaFinanceiro, lf.idContaFinanceiro)
+  END
+LEFT JOIN contabancaria cb ON cb.id = COALESCE(lf.idContaBancaria, af.idContaBancaria)
+LEFT JOIN empresa emp ON emp.id = af.idEmpresa
+LEFT JOIN formapagamento fp ON fp.id = af.idFormaPagamento
+LEFT JOIN parcelapagamento pg ON pg.id = af.idParcelaDocumentoSaida
+LEFT JOIN (
+  SELECT DISTINCT
+    idAgendamentoRecebimento,
+    CASE
+      WHEN comentarios LIKE '%DESCONTADO%' THEN 'DESCONTADO ANTECI'
+      ELSE NULL
+    END AS comentarios
+  FROM lancamentofinanceiro
+  WHERE idAgendamentoRecebimento IS NOT NULL
+    AND comentarios LIKE '%DESCONTADO%'
+) td ON td.idAgendamentoRecebimento = af.id
+WHERE af.idEmpresa IN (?, ?)
+  AND af.discriminador = 'P'
+  AND af.idPedidoCompra IS NULL
+  AND COALESCE(td.comentarios, af.comentarios, '') NOT LIKE '%DESCONTADO ANTECI%'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM lancamentofinanceiro lf2
+    WHERE COALESCE(lf2.idAgendamentoPagamento, lf2.idAgendamentoRecebimento) = af.id
+      AND lf2.dataLancamento IS NOT NULL
+  )
 `.trim();
 
 const SQL_NOMUS_DOCUMENTO = `
@@ -563,6 +633,66 @@ function mapItemNomus(row: Record<string, unknown>): DiarioContaPagarItem | null
   return itemPreenchido(item) ? item : null;
 }
 
+async function queryShop9Abertos(): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
+  if (!isShop9Enabled()) return { linhas: [], erro: 'Shop9 não configurado' };
+  const pool = await getShop9Pool();
+  if (!pool) return { linhas: [], erro: 'Shop9: falha ao conectar' };
+  try {
+    const result = await pool.request().query(SQL_SHOP9_ABERTOS);
+    const list = (Array.isArray(result.recordset) ? result.recordset : []) as Record<string, unknown>[];
+    return { linhas: list.map((r) => mapShop9(r)) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] Shop9 abertos:', msg);
+    return { linhas: [], erro: msg };
+  }
+}
+
+async function queryNomusAbertos(): Promise<{ linhas: DiarioContaPagarLinha[]; erro?: string }> {
+  try {
+    const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS_ABERTOS, [...NOMUS_EMPRESAS]);
+    const list = Array.isArray(rows) ? rows : [];
+    return { linhas: list.map((r) => mapNomus(r)) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[diarioContasPagar] Nomus abertos:', msg);
+    return { linhas: [], erro: msg };
+  }
+}
+
+function hojeYmdLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function ehVencidoOuReprogramadoAberto(l: DiarioContaPagarLinha, hoje: string): boolean {
+  if (l.status !== 'Em aberto') return false;
+  const venc = (l.dataVencimento ?? '').slice(0, 10);
+  if (venc && venc < hoje) return true;
+  if (l.reprogramado?.trim()) return true;
+  return extrairReprogramacaoLinha(l.descricao, l.observacao) != null;
+}
+
+function ordenarLinhasDiario(linhas: DiarioContaPagarLinha[]): DiarioContaPagarLinha[] {
+  return [...linhas].sort((a, b) => {
+    const dv = (a.dataVencimento ?? '').localeCompare(b.dataVencimento ?? '');
+    if (dv !== 0) return dv;
+    const fo = (a.fornecedor ?? '').localeCompare(b.fornecedor ?? '', 'pt-BR');
+    if (fo !== 0) return fo;
+    return a.origem.localeCompare(b.origem);
+  });
+}
+
+async function enriquecerLinhasDiario(linhas: DiarioContaPagarLinha[]): Promise<void> {
+  await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
+  const { aplicarAnotacoesDiario } = await import('./diarioAnotacao.js');
+  await aplicarAnotacoesDiario(linhas);
+  await aplicarReprogramacoesDiario(linhas);
+}
+
 async function queryNomus(
   dataInicio: string,
   dataFim: string,
@@ -626,19 +756,27 @@ export async function queryDiarioContasPagar(params: {
     queryShop9(params.dataInicio, params.dataFim, incluirItens),
     queryNomus(params.dataInicio, params.dataFim, incluirItens),
   ]);
-  const linhas = [...shop9.linhas, ...nomus.linhas].sort((a, b) => {
-    const dv = (a.dataVencimento ?? '').localeCompare(b.dataVencimento ?? '');
-    if (dv !== 0) return dv;
-    const fo = (a.fornecedor ?? '').localeCompare(b.fornecedor ?? '', 'pt-BR');
-    if (fo !== 0) return fo;
-    return a.origem.localeCompare(b.origem);
-  });
-  await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
-  const { aplicarAnotacoesDiario } = await import('./diarioAnotacao.js');
-  await aplicarAnotacoesDiario(linhas);
-  await aplicarReprogramacoesDiario(linhas);
+  const linhas = ordenarLinhasDiario([...shop9.linhas, ...nomus.linhas]);
+  await enriquecerLinhasDiario(linhas);
   return {
     linhas,
+    erroShop9: shop9.erro,
+    erroNomus: nomus.erro,
+  };
+}
+
+/** Aba Vencidos/Reprogramados: só em aberto, sem recorte de data. */
+export async function queryDiarioVencidosReprogramados(): Promise<{
+  linhas: DiarioContaPagarLinha[];
+  erroShop9?: string;
+  erroNomus?: string;
+}> {
+  const [shop9, nomus] = await Promise.all([queryShop9Abertos(), queryNomusAbertos()]);
+  const linhas = ordenarLinhasDiario([...shop9.linhas, ...nomus.linhas]);
+  await enriquecerLinhasDiario(linhas);
+  const hoje = hojeYmdLocal();
+  return {
+    linhas: linhas.filter((l) => ehVencidoOuReprogramadoAberto(l, hoje)),
     erroShop9: shop9.erro,
     erroNomus: nomus.erro,
   };
