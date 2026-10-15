@@ -713,7 +713,7 @@ async function aplicarFormaLocalShop9(linhas: DiarioContaPagarLinha[]): Promise<
   }
 }
 
-const MAX_REPROGRAMAR = 400;
+const MAX_REPROGRAMAR = 5000;
 
 export interface ReprogramarVencimentoItem {
   origem: 'Nomus' | 'Shop9';
@@ -1285,12 +1285,7 @@ WHERE af.id = ?
   )
 `;
 
-export async function listarFormasPagamentoDiario(
-  origem: 'Nomus' | 'Shop9',
-): Promise<{ formas: FormaPagamentoOpcao[]; erro?: string }> {
-  if (origem === 'Shop9') {
-    return { formas: formasPagamentoShop9Diario() };
-  }
+async function listarFormasNomus(): Promise<{ formas: FormaPagamentoOpcao[]; erro?: string }> {
   if (!isNomusEnabled()) return { formas: [], erro: 'Nomus não configurado' };
   try {
     const [rows] = await executarQueryNomus<Record<string, unknown>[]>(SQL_NOMUS_FORMAS, []);
@@ -1304,6 +1299,25 @@ export async function listarFormasPagamentoDiario(
     const msg = err instanceof Error ? err.message : String(err);
     return { formas: [], erro: msg };
   }
+}
+
+export async function listarFormasPagamentoDiario(
+  origem: 'Nomus' | 'Shop9',
+): Promise<{ formas: FormaPagamentoOpcao[]; erro?: string }> {
+  if (origem === 'Nomus') return listarFormasNomus();
+  const porNome = new Map<string, FormaPagamentoOpcao>();
+  for (const forma of formasPagamentoShop9Diario()) {
+    porNome.set(forma.nome.trim().toLocaleLowerCase('pt-BR'), forma);
+  }
+  const nomus = await listarFormasNomus();
+  for (const forma of nomus.formas) {
+    const chave = forma.nome.trim().toLocaleLowerCase('pt-BR');
+    if (!porNome.has(chave)) porNome.set(chave, { id: forma.nome.trim(), nome: forma.nome.trim() });
+  }
+  return {
+    formas: [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    erro: nomus.erro,
+  };
 }
 
 async function definirFormaNomus(

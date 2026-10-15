@@ -416,7 +416,7 @@ export async function aplicarCorAnotacoesDiario(input: {
     return true;
   });
   if (itens.length === 0) throw new Error('Selecione ao menos um título.');
-  if (itens.length > 400) throw new Error('É possível colorir no máximo 400 títulos por vez.');
+  if (itens.length > 5000) throw new Error('É possível colorir no máximo 5000 títulos por vez.');
 
   if (!cor) {
     const atuais = await prisma.diarioAnotacao.findMany({
