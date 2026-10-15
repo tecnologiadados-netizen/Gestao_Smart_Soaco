@@ -14,8 +14,8 @@ import {
 } from 'recharts';
 import MultiSelectWithSearch from '../../../components/MultiSelectWithSearch';
 import {
-  fetchDiarioContasPagar,
   fetchDiarioSubclassificacoes,
+  fetchDiarioVencidosReprogramados,
   type DiarioContaPagarLinha,
   type DiarioSubclassificacaoItem,
 } from '../../../api/diarioFinanceiro';
@@ -23,7 +23,6 @@ import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
 
 type Subaba = 'titulos' | 'dashboard';
-type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes' | 'ano';
 
 const FILTRO_INPUT_CLASS =
   'h-8 w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-2.5 text-xs focus:ring-2 focus:ring-primary-600 focus:border-transparent';
@@ -75,31 +74,6 @@ function ymdLocal(d: Date): string {
 
 function hojeYmd(): string {
   return ymdLocal(new Date());
-}
-
-function periodoInicial(): { inicio: string; fim: string } {
-  const fim = new Date();
-  const inicio = new Date(fim);
-  inicio.setFullYear(inicio.getFullYear() - 1);
-  return { inicio: ymdLocal(inicio), fim: ymdLocal(fim) };
-}
-
-function periodoAtalho(atalho: Atalho): { inicio: string; fim: string } {
-  const hoje = new Date();
-  if (atalho === 'hoje' || atalho === 'ontem' || atalho === 'amanha') {
-    const d = new Date(hoje);
-    if (atalho === 'ontem') d.setDate(d.getDate() - 1);
-    if (atalho === 'amanha') d.setDate(d.getDate() + 1);
-    const y = ymdLocal(d);
-    return { inicio: y, fim: y };
-  }
-  if (atalho === 'mes') {
-    return {
-      inicio: ymdLocal(new Date(hoje.getFullYear(), hoje.getMonth(), 1)),
-      fim: ymdLocal(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)),
-    };
-  }
-  return periodoInicial();
 }
 
 function formatData(iso: string | null): string {
@@ -247,17 +221,12 @@ export const DiarioVencidosPainel = forwardRef<
   DiarioVencidosPainelHandle,
   { filtrosVisivel: boolean; ativo?: boolean; onResumo?: (resumo: { linhas: number; selecionadas: number; loading: boolean }) => void }
 >(function DiarioVencidosPainel({ filtrosVisivel, ativo = true, onResumo }, ref) {
-  const inicial = periodoInicial();
-  const [atalho, setAtalho] = useState<Atalho | null>('ano');
-  const [dataInicio, setDataInicio] = useState(inicial.inicio);
-  const [dataFim, setDataFim] = useState(inicial.fim);
   const [fornecedores, setFornecedores] = useState('');
   const [empresas, setEmpresas] = useState('');
   const [planos, setPlanos] = useState('');
   const [subclassificacoes, setSubclassificacoes] = useState('');
   const [grupos, setGrupos] = useState<DiarioSubclassificacaoItem[]>([]);
   const [origens, setOrigens] = useState('');
-  const [situacoes, setSituacoes] = useState('');
   const [observacao, setObservacao] = useState('');
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -267,11 +236,11 @@ export const DiarioVencidosPainel = forwardRef<
   const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: DiarioContaPagarLinha[] } | null>(null);
   const hoje = hojeYmd();
 
-  const carregar = async (inicio: string, fim: string) => {
+  const carregar = async () => {
     setLoading(true);
     setErro(null);
     try {
-      const res = await fetchDiarioContasPagar({ dataInicio: inicio, dataFim: fim, itens: false });
+      const res = await fetchDiarioVencidosReprogramados();
       setLinhas(res.linhas);
       const partes = [res.erroShop9, res.erroNomus].filter(Boolean);
       if (partes.length > 0) setErro(partes.join(' · '));
@@ -290,9 +259,8 @@ export const DiarioVencidosPainel = forwardRef<
   }, [ativo]);
 
   useEffect(() => {
-    void carregar(inicial.inicio, inicial.fim);
+    void carregar();
     void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
-    // carga inicial do último ano
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -308,11 +276,10 @@ export const DiarioVencidosPainel = forwardRef<
     const fPlano = selecionados(planos);
     const fSub = selecionados(subclassificacoes);
     const fOrigem = selecionados(origens);
-    const fSituacao = selecionados(situacoes);
     const casaObs = criarMatcherTextoLivre(observacao);
     return linhas.filter((l) => {
+      if (l.status !== 'Em aberto') return false;
       if (!(ehVencido(l, hoje) || ehReprogramado(l))) return false;
-      if (fSituacao.size > 0 && !fSituacao.has(l.status)) return false;
       if (fOrigem.size > 0 && !fOrigem.has(l.origem)) return false;
       if (fFornecedor.size > 0 && !fFornecedor.has(l.fornecedor ?? '')) return false;
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l))) return false;
@@ -321,7 +288,7 @@ export const DiarioVencidosPainel = forwardRef<
       if (observacao.trim() && !casaObs(`${l.observacao ?? ''} ${l.descricao ?? ''}`)) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, observacao, hoje, mapaSub]);
+  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, observacao, hoje, mapaSub]);
 
   const opcoes = (campo: 'fornecedor' | 'planoContas') => {
     const set = new Set<string>();
@@ -411,29 +378,27 @@ export const DiarioVencidosPainel = forwardRef<
       setPlanos('');
       setSubclassificacoes('');
       setOrigens('');
-      setSituacoes('');
       setObservacao('');
     },
     linhasVisiveis: () => base,
     linhasSelecionadas: () => marcadas,
-    periodo: () => ({ inicio: dataInicio, fim: dataFim }),
+    periodo: () => {
+      const datas = base
+        .map((l) => (l.dataVencimento ?? '').slice(0, 10))
+        .filter(Boolean)
+        .sort();
+      if (datas.length === 0) return { inicio: hoje, fim: hoje };
+      return { inicio: datas[0], fim: datas[datas.length - 1] };
+    },
     recarregar: () => {
       setSelecionadas(new Set());
-      void carregar(dataInicio, dataFim);
+      void carregar();
       void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
     },
-  }), [base, marcadas, dataInicio, dataFim, onResumo]);
+  }), [base, marcadas, hoje, onResumo]);
 
   const abrirDetalhe = (titulo: string, linhasDetalhe: DiarioContaPagarLinha[]) => {
     setDetalhe({ titulo, linhas: linhasDetalhe });
-  };
-
-  const aplicarAtalho = (id: Atalho) => {
-    const p = periodoAtalho(id);
-    setAtalho(id);
-    setDataInicio(p.inicio);
-    setDataFim(p.fim);
-    void carregar(p.inicio, p.fim);
   };
 
   return (
@@ -459,56 +424,19 @@ export const DiarioVencidosPainel = forwardRef<
           ))}
         </div>
         {filtrosVisivel ? <div className="flex flex-wrap items-end gap-2 px-3 py-2">
-          <div>
-            <span className={FILTRO_LABEL_CLASS}>Período</span>
-            <div className="inline-flex h-8 overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">
-              {([
-                ['hoje', 'Hoje'],
-                ['ontem', 'Ontem'],
-                ['amanha', 'Amanhã'],
-                ['mes', 'Este mês'],
-                ['ano', '12 meses'],
-              ] as const).map(([id, label], i) => (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => aplicarAtalho(id)}
-                  className={`inline-flex h-8 items-center px-3 text-xs font-medium disabled:opacity-60 ${
-                    i > 0 ? 'border-l border-slate-300 dark:border-slate-600' : ''
-                  } ${
-                    atalho === id
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="w-[9.25rem]">
-            <label className={FILTRO_LABEL_CLASS}>Vencimento de</label>
-            <input type="date" value={dataInicio} disabled={loading} className={FILTRO_INPUT_CLASS} onChange={(e) => { setAtalho(null); setDataInicio(e.target.value); }} />
-          </div>
-          <div className="w-[9.25rem]">
-            <label className={FILTRO_LABEL_CLASS}>até</label>
-            <input type="date" value={dataFim} disabled={loading} className={FILTRO_INPUT_CLASS} onChange={(e) => { setAtalho(null); setDataFim(e.target.value); }} />
-          </div>
           <FiltroMulti label="Fornecedor" placeholder="Todos" options={opcoes('fornecedor')} value={fornecedores} onChange={setFornecedores} optionLabel="fornecedores" minWidth="150px" disabled={loading} />
           <FiltroMulti label="Empresa" placeholder="Todas" options={opcoesEmpresa} value={empresas} onChange={setEmpresas} optionLabel="empresas" minWidth="140px" disabled={loading} />
           <FiltroMulti label="Plano de contas" placeholder="Todos" options={opcoes('planoContas')} value={planos} onChange={setPlanos} optionLabel="planos" minWidth="160px" disabled={loading} />
           <FiltroMulti label="SubClassificação" placeholder="Todas" options={opcoesSub} value={subclassificacoes} onChange={setSubclassificacoes} optionLabel="subclassificações" minWidth="160px" disabled={loading} />
           <FiltroMulti label="Origem" placeholder="Todas" options={['Nomus', 'Shop9']} value={origens} onChange={setOrigens} optionLabel="origens" minWidth="110px" disabled={loading} />
-          <FiltroMulti label="Situação" placeholder="Todas" options={['Em aberto', 'Baixado']} value={situacoes} onChange={setSituacoes} optionLabel="situações" minWidth="120px" disabled={loading} />
           <div className="w-44">
             <label className={FILTRO_LABEL_CLASS}>Observações</label>
             <input type="search" value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Descrição ou comentário" className={FILTRO_INPUT_CLASS} />
           </div>
           <button
             type="button"
-            disabled={loading || !dataInicio || !dataFim}
-            onClick={() => void carregar(dataInicio, dataFim)}
+            disabled={loading}
+            onClick={() => void carregar()}
             className={`${FILTRO_BTN} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`}
           >
             {loading ? 'Buscando…' : 'Buscar'}
@@ -521,8 +449,7 @@ export const DiarioVencidosPainel = forwardRef<
       ) : null}
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        {base.length.toLocaleString('pt-BR')} título(s): em aberto com vencimento anterior a hoje, ou com reprogramação na descrição, no comentário ou na coluna Reprogramado.
-        O período não tem limite de 365 dias.
+        {base.length.toLocaleString('pt-BR')} título(s) em aberto: vencidos (qualquer data) ou reprogramados (qualquer data). Contas já baixadas não entram.
       </p>
 
       {subaba === 'dashboard' ? (
@@ -663,7 +590,7 @@ export const DiarioVencidosPainel = forwardRef<
             </thead>
             <tbody>
               {base.length === 0 && !loading ? (
-                <tr><td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">Nenhum título vencido ou reprogramado neste recorte.</td></tr>
+                <tr><td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">Nenhum título vencido ou reprogramado em aberto.</td></tr>
               ) : base.map((l, i) => {
                 const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
                 const chave = chaveSelecao(l);

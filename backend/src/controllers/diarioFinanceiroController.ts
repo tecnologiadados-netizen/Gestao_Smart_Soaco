@@ -9,6 +9,7 @@ import {
   listarContasBancariasDiario,
   listarFormasPagamentoDiario,
   queryDiarioContasPagar,
+  queryDiarioVencidosReprogramados,
   reprogramarVencimentoContasPagar,
   type ReprogramarVencimentoItem,
 } from '../data/diarioContasPagarRepository.js';
@@ -52,6 +53,18 @@ export async function getDiarioContasPagar(req: Request, res: Response): Promise
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[getDiarioContasPagar]', msg);
+    res.status(500).json({ error: msg });
+  }
+}
+
+/** GET /api/financeiro/diario/contas-pagar/vencidos */
+export async function getDiarioVencidosReprogramados(_req: Request, res: Response): Promise<void> {
+  try {
+    const resultado = await queryDiarioVencidosReprogramados();
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDiarioVencidosReprogramados]', msg);
     res.status(500).json({ error: msg });
   }
 }
