@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
-import { CalendarRange, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BarChart3, CalendarRange, ChartPie, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -8,6 +9,8 @@ import {
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -37,6 +40,7 @@ const panelSurface =
 const COR_VENCIDO = '#FF6B35';
 const COR_REPROGRAMADO = '#5C92D6';
 const COR_SUB = '#0F766E';
+const CORES_PIZZA = ['#FF6B35', '#5C92D6', '#0F766E', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#3B82F6', '#84CC16'];
 const SEM_SUBCLASSIFICACAO = 'Sem subclassificação';
 const FAIXAS = [
   { id: '1-30', label: '1 a 30 dias', min: 1, max: 30, cor: '#FBBF24' },
@@ -820,47 +824,111 @@ function GraficoEmpresaEmpilhado({
   dados: Array<{ nome: string; vencido: number; reprogramado: number; saldo: number }>;
   onSelecionar: (nome: string) => void;
 }) {
+  const [visao, setVisao] = useState<'barras' | 'pizza'>('barras');
+  const pizza = visao === 'pizza';
+
   return (
-    <div className={`p-4 ${panelSurface}`}>
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Por empresa</h2>
-      <p className="mt-0.5 text-xs text-slate-500">Laranja: vencido. Azul: reprogramado. Clique na barra para ver as contas.</p>
-      <div className="mt-3 h-72">
-        {dados.length === 0 ? <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p> : (
-          <ResponsiveContainer>
-            <BarChart data={dados} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 4 }} style={{ cursor: 'pointer' }}>
-              <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.16)" />
-              <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="nome" width={120} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip
-                formatter={(v, nome) => [formatMoeda(Number(v ?? 0)), String(nome)]}
-                labelFormatter={(label) => String(label)}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar
-                dataKey="vencido"
-                name="Vencido"
-                stackId="saldo"
-                fill={COR_VENCIDO}
-                cursor="pointer"
-                onClick={(item) => {
-                  const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
-                  if (nome) onSelecionar(nome);
-                }}
-              />
-              <Bar
-                dataKey="reprogramado"
-                name="Reprogramado"
-                stackId="saldo"
-                fill={COR_REPROGRAMADO}
-                radius={[0, 6, 6, 0]}
-                cursor="pointer"
-                onClick={(item) => {
-                  const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
-                  if (nome) onSelecionar(nome);
-                }}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+    <div className={`relative p-4 ${panelSurface}`}>
+      <button
+        type="button"
+        aria-label={pizza ? 'Ver gráfico de barras' : 'Ver gráfico de pizza'}
+        title={pizza ? 'Ver barras' : 'Ver pizza'}
+        onClick={() => setVisao((atual) => (atual === 'barras' ? 'pizza' : 'barras'))}
+        className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        {pizza ? <BarChart3 className="h-4 w-4" /> : <ChartPie className="h-4 w-4" />}
+      </button>
+      <h2 className="pr-10 text-sm font-semibold text-slate-900 dark:text-white">Por empresa</h2>
+      <p className="mt-0.5 pr-10 text-xs text-slate-500">
+        {pizza
+          ? 'Cada fatia é uma empresa. Clique para ver as contas.'
+          : 'Laranja: vencido. Azul: reprogramado. Clique na barra para ver as contas.'}
+      </p>
+      <div className="relative mt-3 h-72 overflow-hidden">
+        {dados.length === 0 ? (
+          <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p>
+        ) : (
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={visao}
+              className="absolute inset-0"
+              initial={{ opacity: 0, scale: 0.55, rotate: pizza ? -90 : 90 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.45, rotate: pizza ? 90 : -90 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <ResponsiveContainer>
+                {pizza ? (
+                  <PieChart>
+                    <Tooltip
+                      formatter={(v, _n, item) => {
+                        const bruto = item?.payload as { vencido?: number; reprogramado?: number } | undefined;
+                        return [
+                          `${formatMoeda(Number(v ?? 0))} · venc. ${formatMoeda(bruto?.vencido ?? 0)} · reprog. ${formatMoeda(bruto?.reprogramado ?? 0)}`,
+                          'Saldo',
+                        ];
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Pie
+                      data={dados}
+                      dataKey="saldo"
+                      nameKey="nome"
+                      cx="50%"
+                      cy="46%"
+                      innerRadius={48}
+                      outerRadius={92}
+                      paddingAngle={2}
+                      cornerRadius={6}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { nome?: string }).nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    >
+                      {dados.map((item, idx) => (
+                        <Cell key={item.nome} fill={CORES_PIZZA[idx % CORES_PIZZA.length]} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                ) : (
+                  <BarChart data={dados} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 4 }} style={{ cursor: 'pointer' }}>
+                    <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.16)" />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="nome" width={120} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v, nome) => [formatMoeda(Number(v ?? 0)), String(nome)]}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar
+                      dataKey="vencido"
+                      name="Vencido"
+                      stackId="saldo"
+                      fill={COR_VENCIDO}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    />
+                    <Bar
+                      dataKey="reprogramado"
+                      name="Reprogramado"
+                      stackId="saldo"
+                      fill={COR_REPROGRAMADO}
+                      radius={[0, 6, 6, 0]}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </motion.div>
+          </AnimatePresence>
         )}
       </div>
     </div>
