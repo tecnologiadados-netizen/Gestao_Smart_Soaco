@@ -442,7 +442,9 @@ export const DiarioVencidosPainel = forwardRef<
       fornecedores: [...porFornecedor.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo),
-      empresasMatriz: [...porEmpresa.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      empresasMatriz: [...porEmpresa.values()]
+        .sort((a, b) => (b.vencido + b.reprogramado) - (a.vencido + a.reprogramado) || a.nome.localeCompare(b.nome, 'pt-BR'))
+        .map((item) => item.nome),
       celulas: Object.fromEntries(porCelula),
       subclassificacoes: [...porSub.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
@@ -754,8 +756,8 @@ function ModalDetalheGrafico({
   onClose: () => void;
 }) {
   const saldo = linhas.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
       <div
         role="dialog"
@@ -769,30 +771,30 @@ function ModalDetalheGrafico({
             {linhas.length.toLocaleString('pt-BR')} título(s) · saldo {formatMoeda(saldo)}
           </p>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="min-w-[860px] w-full text-xs uppercase">
-            <thead className="sticky top-0 bg-white text-left text-slate-500 dark:bg-slate-800">
+            <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
                 {['Situação', 'Classificação', 'SubClassificação', 'Vencimento', 'Empresa', 'Pessoa', 'Descrição', 'Saldo a pagar'].map((col) => (
-                  <th key={col} className="py-1.5 pr-3 font-medium whitespace-nowrap">{col}</th>
+                  <th key={col} className={`px-2 py-2 font-medium whitespace-nowrap ${col === 'Saldo a pagar' ? 'text-right' : 'text-left'}`}>{col}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {linhas.length === 0 ? (
-                <tr><td colSpan={8} className="py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
               ) : linhas.map((l, i) => (
                 <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <td className="py-1.5 pr-3 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
-                  <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.planoContas ?? '—'}</td>
-                  <td className="max-w-[12rem] truncate py-1.5 pr-3 normal-case">
+                  <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
+                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
+                  <td className="max-w-[12rem] truncate px-2 py-1.5 normal-case">
                     <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
                   </td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                  <td className="max-w-[12rem] truncate py-1.5 pr-3">{empresaExibida(l)}</td>
-                  <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.fornecedor ?? '—'}</td>
-                  <td className="max-w-[18rem] truncate py-1.5 pr-3"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
-                  <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
+                  <td className="max-w-[12rem] truncate px-2 py-1.5">{empresaExibida(l)}</td>
+                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.fornecedor ?? '—'}</td>
+                  <td className="max-w-[18rem] truncate px-2 py-1.5"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
                 </tr>
               ))}
             </tbody>
@@ -808,7 +810,8 @@ function ModalDetalheGrafico({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1005,20 +1008,20 @@ function RankingFornecedores({
 
       {matrizAberta
         ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
               <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
               <div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="matriz-forn-titulo"
-                className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(96vw,90rem)] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+                className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(98vw,92rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
               >
                 <div className="shrink-0 px-5 pt-5 pb-3">
                   <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
                     Matriz fornecedor × empresa
                   </h2>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Linhas: fornecedores. Colunas: empresas. Clique no valor para ver as contas.
+                    Colunas da maior para a menor. Clique no valor para ver as contas.
                   </p>
                   <input
                     type="search"
@@ -1028,41 +1031,33 @@ function RankingFornecedores({
                     className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
                   />
                 </div>
-                <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
+                <div className="min-h-0 flex-1 overflow-auto">
                   {linhasMatriz.length === 0 || empresas.length === 0 ? (
                     <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
                   ) : (
-                    <table className="min-w-max border-collapse text-xs">
-                      <thead>
+                    <table className="w-full text-xs uppercase">
+                      <thead className="sticky top-0 z-10 bg-primary-600 text-white">
                         <tr>
-                          <th className="sticky left-0 top-0 z-20 min-w-[16rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
+                          <th className="sticky left-0 z-20 bg-primary-600 px-2 py-2 text-left font-medium whitespace-nowrap">
                             Fornecedor
                           </th>
                           {empresas.map((emp) => (
-                            <th
-                              key={emp}
-                              className="sticky top-0 z-10 min-w-[9.5rem] max-w-[11rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-right font-medium leading-tight text-slate-600 dark:border-slate-700 dark:bg-slate-900"
-                            >
-                              <span className="line-clamp-2">{emp}</span>
+                            <th key={emp} className="px-2 py-2 text-right font-medium whitespace-nowrap">
+                              {emp}
                             </th>
                           ))}
-                          <th className="sticky top-0 z-10 min-w-[8rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-right font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                            Total
-                          </th>
+                          <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {linhasMatriz.map((forn) => (
-                          <tr key={forn.nome} className="border-t border-slate-100 dark:border-slate-700">
-                            <th className="sticky left-0 z-10 min-w-[16rem] max-w-[22rem] bg-white px-3 py-2 text-left font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+                          <tr key={forn.nome} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
+                            <th className="sticky left-0 z-10 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap dark:bg-slate-800">
                               <button
                                 type="button"
-                                className="max-w-full truncate text-left hover:underline"
+                                className="max-w-[22rem] truncate text-left hover:underline"
                                 title={forn.nome}
-                                onClick={() => {
-                                  setMatrizAberta(false);
-                                  onSelecionar(forn.nome);
-                                }}
+                                onClick={() => onSelecionar(forn.nome)}
                               >
                                 {forn.nome}
                               </button>
@@ -1070,16 +1065,9 @@ function RankingFornecedores({
                             {empresas.map((emp) => {
                               const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
                               return (
-                                <td key={emp} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                                <td key={emp} className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
                                   {valor > 0 ? (
-                                    <button
-                                      type="button"
-                                      className="hover:underline"
-                                      onClick={() => {
-                                        setMatrizAberta(false);
-                                        onSelecionarCelula(forn.nome, emp);
-                                      }}
-                                    >
+                                    <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(forn.nome, emp)}>
                                       {formatMoeda(valor)}
                                     </button>
                                   ) : (
@@ -1088,7 +1076,7 @@ function RankingFornecedores({
                                 </td>
                               );
                             })}
-                            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                            <td className="px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap">
                               {formatMoeda(forn.saldo)}
                             </td>
                           </tr>
