@@ -14,7 +14,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from docx import Document
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 from docx.shared import Pt
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -262,6 +264,61 @@ def _fmt_solicitacao(sol: dict) -> str:
     return str(num or data or "")
 
 
+def _texto_observacoes(data: dict) -> str:
+    raw = data.get("observacoes")
+    if raw is None:
+        return ""
+    return str(raw).replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _garantir_altura_minima(row) -> None:
+    """Mantém a caixa de observações e deixa a linha crescer se o texto passar da altura."""
+    tr_pr = row._tr.get_or_add_trPr()
+    tr_height = tr_pr.find(qn("w:trHeight"))
+    if tr_height is not None:
+        tr_height.set(qn("w:hRule"), "atLeast")
+
+
+def _preencher_paragrafo(paragraph, line: str) -> None:
+    if paragraph.runs:
+        paragraph.runs[0].text = line
+        for run in paragraph.runs[1:]:
+            run.text = ""
+    else:
+        run = paragraph.add_run(line)
+        run.font.name = FONT_NAME
+        run.font.size = FONT_SIZE
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.paragraph_format.left_indent = HEADER_PAD_LEFT
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    for run in paragraph.runs:
+        run.font.name = FONT_NAME
+        run.font.size = FONT_SIZE
+        run.font.bold = False
+
+
+def _fill_observacoes(table, data: dict) -> None:
+    """Caixa OBSERVAÇÕES = campo Observações da cotação no Nomus."""
+    header_idx = _find_row(table, "observa")
+    if header_idx is None or header_idx + 1 >= len(table.rows):
+        return
+
+    row = table.rows[header_idx + 1]
+    rotulo = _normalize_text(row.cells[0].text)
+    if "documento" in rotulo or "solicita" in rotulo:
+        return
+
+    texto = _texto_observacoes(data)
+    linhas = texto.split("\n") if texto else [""]
+    cell = row.cells[0]
+    _preencher_paragrafo(cell.paragraphs[0], linhas[0])
+    for line in linhas[1:]:
+        _preencher_paragrafo(cell.add_paragraph(), line)
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    _garantir_altura_minima(row)
+
+
 def _fill_solicitacoes(table, solicitacoes: list[dict]) -> None:
     sol_idx = _find_row(table, "data de necessidade")
     if sol_idx is None:
@@ -314,6 +371,7 @@ def _fill_document(data: dict) -> Document:
         )
 
     _fill_solicitacoes(table, data.get("solicitacoes") or [])
+    _fill_observacoes(table, data)
     return doc
 
 
