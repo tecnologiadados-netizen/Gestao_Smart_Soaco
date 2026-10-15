@@ -958,7 +958,7 @@ export default function DoubleCheckInPage() {
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400">
                           {statusLoading ? '…' : '—'}
                         </span>
-                      ) : temFora ? (
+                      ) : temFora && !conferido ? (
                         <span
                           className="dci-status-atencao inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200"
                           title="Há item(ns) com variação acima do limiar"
