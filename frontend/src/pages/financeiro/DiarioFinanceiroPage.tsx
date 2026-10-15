@@ -1356,7 +1356,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       </div>
 
       {vencidosVisitado ? (
-        <div className={aba === 'vencidos' ? 'contents' : 'hidden'}>
+        <div className={aba === 'vencidos' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'hidden'}>
           <DiarioVencidosPainel
             ref={vencidosRef}
             ativo={aba === 'vencidos'}
