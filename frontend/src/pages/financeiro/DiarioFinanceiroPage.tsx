@@ -18,6 +18,7 @@ import {
   DFC_PRIORIDADE_LABEL,
   DFC_PRIORIDADE_LABEL_CURTO,
   DFC_PRIORIDADES,
+  aplicarPrioridadeLancamentosLote,
   listarPrioridadesConta,
   listarPrioridadesLancamento,
   removerPrioridadeLancamento,
@@ -142,6 +143,29 @@ function idReprogramacao(l: DiarioContaPagarLinha): number | null {
 
 function podeReprogramar(l: DiarioContaPagarLinha): boolean {
   return idReprogramacao(l) != null;
+}
+
+function podePriorizar(l: DiarioContaPagarLinha): boolean {
+  return (
+    l.idEmpresa != null
+    && l.idEmpresa > 0
+    && (l.tipoRef === 'A' || l.tipoRef === 'L' || l.tipoRef === 'S')
+    && l.idRef != null
+    && l.idRef > 0
+  );
+}
+
+function dedupePrioridade(linhas: DiarioContaPagarLinha[]): DiarioContaPagarLinha[] {
+  const vistos = new Set<string>();
+  const saida: DiarioContaPagarLinha[] = [];
+  for (const l of linhas) {
+    if (!podePriorizar(l)) continue;
+    const chave = chavePrioridadeLanc(l.idEmpresa as number, l.tipoRef as string, l.idRef as number);
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    saida.push(l);
+  }
+  return saida;
 }
 
 function motivoBloqueio(l: DiarioContaPagarLinha): string | null {
@@ -295,6 +319,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [contasOpcoes, setContasOpcoes] = useState<ContaBancariaOpcao[]>([]);
   const [contaId, setContaId] = useState('');
   const [carregandoContas, setCarregandoContas] = useState(false);
+  const [prioridadeAberta, setPrioridadeAberta] = useState(false);
+  const [prioridadeValor, setPrioridadeValor] = useState('');
   const [formaAberta, setFormaAberta] = useState(false);
   const [subAberta, setSubAberta] = useState(false);
   const [subSugestoes, setSubSugestoes] = useState<string[]>([]);
@@ -629,6 +655,65 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       ? (vencidosRef.current?.linhasSelecionadas() ?? [])
       : linhas.filter((l) => podeReprogramar(l) && selecionadas.has(chaveLinha(l)))
   );
+
+  const abrirPrioridade = () => {
+    const escolhidas = dedupePrioridade(linhasMarcadas());
+    if (escolhidas.length === 0) {
+      setErro('Marque ao menos um título identificado para classificar a prioridade.');
+      return;
+    }
+    setModalLinhas(escolhidas);
+    setPrioridadeValor('');
+    setErroModal(null);
+    setErro(null);
+    setPrioridadeAberta(true);
+  };
+
+  const confirmarPrioridade = async () => {
+    const remover = prioridadeValor === 'remover';
+    const prioNum = Number(prioridadeValor);
+    const prio = ehPrioridade(prioNum) ? prioNum : null;
+    if ((!remover && prio == null) || salvando) return;
+    const itens = modalLinhas.flatMap((l) => {
+      if (!podePriorizar(l)) return [];
+      return [{
+        idEmpresa: l.idEmpresa as number,
+        tipoRef: l.tipoRef as DfcTipoRefLancamento,
+        idRef: l.idRef as number,
+        idContaFinanceiro: l.idContaFinanceiro,
+      }];
+    });
+    if (itens.length === 0) return;
+    setSalvando(true);
+    setErroModal(null);
+    try {
+      const r = await aplicarPrioridadeLancamentosLote({
+        itens,
+        prioridade: remover ? undefined : prio ?? undefined,
+        remover,
+      });
+      if (!r.ok) throw new Error(r.erro || 'Falha ao classificar a prioridade.');
+      const nova: DfcPrioridade | null = remover ? null : prio;
+      setPrioridadeLanc((prev) => {
+        const next = new Map(prev);
+        for (const it of itens) {
+          const chave = chavePrioridadeLanc(it.idEmpresa, it.tipoRef, it.idRef);
+          if (nova == null) next.delete(chave);
+          else next.set(chave, nova);
+        }
+        return next;
+      });
+      setSelecionadas(new Set());
+      setAviso(
+        `${r.afetados.toLocaleString('pt-BR')} título(s) ${remover ? 'sem prioridade' : `classificado(s) como ${prio} — ${DFC_PRIORIDADE_LABEL[prio as DfcPrioridade]}`}.`,
+      );
+      setPrioridadeAberta(false);
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const abrirReprogramar = () => {
     if (!editavel) return;
@@ -1042,6 +1127,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     Reprogramar
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={(aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirPrioridade();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Prioridade
                   </button>
                   <button
                     type="button"
@@ -1515,6 +1612,20 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
       {itensModal ? <ModalItensNota linha={itensModal} onClose={() => setItensModal(null)} /> : null}
 
+      {prioridadeAberta ? (
+        <ModalPrioridadeDiario
+          linhas={modalLinhas}
+          valor={prioridadeValor}
+          onChange={setPrioridadeValor}
+          onClose={() => {
+            if (!salvando) setPrioridadeAberta(false);
+          }}
+          onConfirm={() => void confirmarPrioridade()}
+          salvando={salvando}
+          erro={erroModal}
+        />
+      ) : null}
+
       {modalAberto ? (
         <ModalReprogramar
           linhas={modalLinhas}
@@ -1721,6 +1832,92 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
     <div className="card-panel px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
       <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{valor}</div>
+    </div>
+  );
+}
+
+function ModalPrioridadeDiario({
+  linhas,
+  valor,
+  onChange,
+  onClose,
+  onConfirm,
+  salvando,
+  erro,
+}: {
+  linhas: DiarioContaPagarLinha[];
+  valor: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  salvando: boolean;
+  erro: string | null;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !salvando) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, salvando]);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prioridade-lote-titulo"
+        className="relative z-[81] flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2 id="prioridade-lote-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            Prioridade em massa
+          </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {linhas.length.toLocaleString('pt-BR')} título(s) selecionado(s). A classificação vale no Diário e no DFC.
+          </p>
+        </div>
+        <div className="px-5 pb-4">
+          <label className={FILTRO_LABEL_CLASS} htmlFor="diario-prioridade-lote">
+            Prioridade
+          </label>
+          <select
+            id="diario-prioridade-lote"
+            value={valor}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={salvando}
+            className={FILTRO_INPUT_CLASS}
+          >
+            <option value="">Selecione</option>
+            {DFC_PRIORIDADES.map((p) => (
+              <option key={p} value={String(p)}>
+                {p} — {DFC_PRIORIDADE_LABEL[p]}
+              </option>
+            ))}
+            <option value="remover">Remover prioridade</option>
+          </select>
+          {erro ? <p className="mt-2 text-xs text-red-700 dark:text-red-300">{erro}</p> : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={salvando || !valor}
+            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {salvando ? 'Salvando…' : 'Gravar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
