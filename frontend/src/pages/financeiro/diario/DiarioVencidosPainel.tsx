@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
-import { CalendarRange, Clock3, RefreshCw, Wallet } from 'lucide-react';
+import { CalendarRange, Clock3, ListOrdered, RefreshCw, Wallet } from 'lucide-react';
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -107,6 +108,18 @@ function ehReprogramado(l: DiarioContaPagarLinha): boolean {
   return Boolean(l.reprogramado?.trim())
     || temMarcadorReprogramado(l.descricao)
     || temMarcadorReprogramado(l.observacao);
+}
+
+function passaSituacao(l: DiarioContaPagarLinha, filtro: Set<string>, hoje: string): boolean {
+  const vencido = ehVencido(l, hoje);
+  const reprogramado = ehReprogramado(l);
+  if (filtro.size === 0) return vencido || reprogramado;
+  return (filtro.has('Vencidos') && vencido) || (filtro.has('Reprogramados') && reprogramado);
+}
+
+/** Reprogramado prevalece para o saldo da barra não duplicar título que é as duas coisas. */
+function fatiaSaldo(l: DiarioContaPagarLinha): 'vencido' | 'reprogramado' {
+  return ehReprogramado(l) ? 'reprogramado' : 'vencido';
 }
 
 function podeAlterar(l: DiarioContaPagarLinha): boolean {
@@ -228,6 +241,7 @@ export const DiarioVencidosPainel = forwardRef<
   const [subclassificacoes, setSubclassificacoes] = useState('');
   const [grupos, setGrupos] = useState<DiarioSubclassificacaoItem[]>([]);
   const [origens, setOrigens] = useState('');
+  const [situacoes, setSituacoes] = useState('');
   const [observacao, setObservacao] = useState('');
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -277,10 +291,11 @@ export const DiarioVencidosPainel = forwardRef<
     const fPlano = selecionados(planos);
     const fSub = selecionados(subclassificacoes);
     const fOrigem = selecionados(origens);
+    const fSituacao = selecionados(situacoes);
     const casaObs = criarMatcherTextoLivre(observacao);
     return linhas.filter((l) => {
       if (l.status !== 'Em aberto') return false;
-      if (!(ehVencido(l, hoje) || ehReprogramado(l))) return false;
+      if (!passaSituacao(l, fSituacao, hoje)) return false;
       if (fOrigem.size > 0 && !fOrigem.has(l.origem)) return false;
       if (fFornecedor.size > 0 && !fFornecedor.has(l.fornecedor ?? '')) return false;
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l))) return false;
@@ -289,7 +304,7 @@ export const DiarioVencidosPainel = forwardRef<
       if (observacao.trim() && !casaObs(`${l.observacao ?? ''} ${l.descricao ?? ''}`)) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, observacao, hoje, mapaSub]);
+  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, observacao, hoje, mapaSub]);
 
   const opcoes = (campo: 'fornecedor' | 'planoContas') => {
     const set = new Set<string>();
@@ -313,22 +328,26 @@ export const DiarioVencidosPainel = forwardRef<
     const reprogramados = base.filter(ehReprogramado);
     const soma = (lista: DiarioContaPagarLinha[]) => lista.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
     const porMes = new Map<string, { mes: string; vencido: number; reprogramado: number }>();
-    const porEmpresa = new Map<string, number>();
+    const porEmpresa = new Map<string, { nome: string; vencido: number; reprogramado: number }>();
     const porFornecedor = new Map<string, number>();
     const porSub = new Map<string, number>();
     const faixas = FAIXAS.map((f) => ({ ...f, qtd: 0, saldo: 0 }));
     for (const l of base) {
+      const saldo = Number(l.saldo) || 0;
       const mes = (l.dataVencimento ?? '').slice(0, 7) || 'sem data';
       const ponto = porMes.get(mes) ?? { mes, vencido: 0, reprogramado: 0 };
-      if (ehVencido(l, hoje)) ponto.vencido += Number(l.saldo) || 0;
-      if (ehReprogramado(l)) ponto.reprogramado += Number(l.saldo) || 0;
+      if (ehVencido(l, hoje)) ponto.vencido += saldo;
+      if (ehReprogramado(l)) ponto.reprogramado += saldo;
       porMes.set(mes, ponto);
-      const emp = empresaExibida(l);
-      porEmpresa.set(emp, (porEmpresa.get(emp) ?? 0) + (Number(l.saldo) || 0));
+      const empNome = empresaExibida(l);
+      const emp = porEmpresa.get(empNome) ?? { nome: empNome, vencido: 0, reprogramado: 0 };
+      if (fatiaSaldo(l) === 'reprogramado') emp.reprogramado += saldo;
+      else emp.vencido += saldo;
+      porEmpresa.set(empNome, emp);
       const forn = (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR');
-      porFornecedor.set(forn, (porFornecedor.get(forn) ?? 0) + (Number(l.saldo) || 0));
+      porFornecedor.set(forn, (porFornecedor.get(forn) ?? 0) + saldo);
       const sub = nomeSubclassificacao(l, mapaSub);
-      porSub.set(sub, (porSub.get(sub) ?? 0) + (Number(l.saldo) || 0));
+      porSub.set(sub, (porSub.get(sub) ?? 0) + saldo);
       const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
       if (dias != null) {
         const faixa = faixas.find((f) => dias >= f.min && dias <= f.max);
@@ -338,11 +357,6 @@ export const DiarioVencidosPainel = forwardRef<
         }
       }
     }
-    const top = (mapa: Map<string, number>) =>
-      [...mapa.entries()]
-        .map(([nome, saldo]) => ({ nome, saldo }))
-        .sort((a, b) => b.saldo - a.saldo)
-        .slice(0, 8);
     return {
       qtdVencidos: vencidos.length,
       saldoVencidos: soma(vencidos),
@@ -352,8 +366,13 @@ export const DiarioVencidosPainel = forwardRef<
         ...p,
         label: p.mes === 'sem data' ? 'Sem data' : `${p.mes.slice(5)}/${p.mes.slice(0, 4)}`,
       })),
-      empresas: top(porEmpresa),
-      fornecedores: top(porFornecedor),
+      empresas: [...porEmpresa.values()]
+        .map((item) => ({ ...item, saldo: item.vencido + item.reprogramado }))
+        .sort((a, b) => b.saldo - a.saldo)
+        .slice(0, 10),
+      fornecedores: [...porFornecedor.entries()]
+        .map(([nome, saldo]) => ({ nome, saldo }))
+        .sort((a, b) => b.saldo - a.saldo),
       subclassificacoes: [...porSub.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo)
@@ -379,6 +398,7 @@ export const DiarioVencidosPainel = forwardRef<
       setPlanos('');
       setSubclassificacoes('');
       setOrigens('');
+      setSituacoes('');
       setObservacao('');
     },
     linhasVisiveis: () => base,
@@ -433,6 +453,7 @@ export const DiarioVencidosPainel = forwardRef<
           <FiltroMulti label="Plano de contas" placeholder="Todos" options={opcoes('planoContas')} value={planos} onChange={setPlanos} optionLabel="planos" minWidth="160px" disabled={loading} />
           <FiltroMulti label="SubClassificação" placeholder="Todas" options={opcoesSub} value={subclassificacoes} onChange={setSubclassificacoes} optionLabel="subclassificações" minWidth="160px" disabled={loading} />
           <FiltroMulti label="Origem" placeholder="Todas" options={['Nomus', 'Shop9']} value={origens} onChange={setOrigens} optionLabel="origens" minWidth="110px" disabled={loading} />
+          <FiltroMulti label="Situação" placeholder="Todas" options={['Vencidos', 'Reprogramados']} value={situacoes} onChange={setSituacoes} optionLabel="situações" minWidth="150px" disabled={loading} />
           <div className="w-44">
             <label className={FILTRO_LABEL_CLASS}>Observações</label>
             <input type="search" value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Descrição ou comentário" className={FILTRO_INPUT_CLASS} />
@@ -498,16 +519,12 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <Ranking
-              titulo="Por empresa"
+            <GraficoEmpresaEmpilhado
               dados={resumo.empresas}
-              cor={COR_REPROGRAMADO}
               onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => empresaExibida(l) === nome))}
             />
-            <Ranking
-              titulo="Por fornecedor"
+            <RankingFornecedores
               dados={resumo.fornecedores}
-              cor={COR_VENCIDO}
               onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR') === nome))}
             />
           </div>
@@ -699,6 +716,144 @@ function ModalDetalheGrafico({
             Fechar
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const OPCOES_TOPO_RANKING = [
+  { id: 5, label: 'Top 5' },
+  { id: 10, label: 'Top 10' },
+  { id: 20, label: 'Top 20' },
+  { id: 0, label: 'Todos' },
+] as const;
+
+function GraficoEmpresaEmpilhado({
+  dados,
+  onSelecionar,
+}: {
+  dados: Array<{ nome: string; vencido: number; reprogramado: number; saldo: number }>;
+  onSelecionar: (nome: string) => void;
+}) {
+  return (
+    <div className={`p-4 ${panelSurface}`}>
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Por empresa</h2>
+      <p className="mt-0.5 text-xs text-slate-500">Laranja: vencido. Azul: reprogramado. Clique na barra para ver as contas.</p>
+      <div className="mt-3 h-72">
+        {dados.length === 0 ? <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p> : (
+          <ResponsiveContainer>
+            <BarChart data={dados} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 4 }} style={{ cursor: 'pointer' }}>
+              <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.16)" />
+              <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="nome" width={120} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v, nome) => [formatMoeda(Number(v ?? 0)), String(nome)]}
+                labelFormatter={(label) => String(label)}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar
+                dataKey="vencido"
+                name="Vencido"
+                stackId="saldo"
+                fill={COR_VENCIDO}
+                cursor="pointer"
+                onClick={(item) => {
+                  const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                  if (nome) onSelecionar(nome);
+                }}
+              />
+              <Bar
+                dataKey="reprogramado"
+                name="Reprogramado"
+                stackId="saldo"
+                fill={COR_REPROGRAMADO}
+                radius={[0, 6, 6, 0]}
+                cursor="pointer"
+                onClick={(item) => {
+                  const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                  if (nome) onSelecionar(nome);
+                }}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RankingFornecedores({
+  dados,
+  onSelecionar,
+}: {
+  dados: Array<{ nome: string; saldo: number }>;
+  onSelecionar: (nome: string) => void;
+}) {
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [topN, setTopN] = useState(10);
+  const visiveis = topN > 0 ? dados.slice(0, topN) : dados;
+  const max = visiveis[0]?.saldo || 1;
+  const recorte = topN > 0 ? `Top ${topN}` : `Todos (${dados.length})`;
+
+  return (
+    <div className={`relative p-4 ${panelSurface}`}>
+      <button
+        type="button"
+        aria-label="Recorte do ranking"
+        title="Escolher recorte do ranking"
+        onClick={() => setMenuAberto((v) => !v)}
+        className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        <ListOrdered className="h-4 w-4" />
+      </button>
+      {menuAberto ? (
+        <div className="absolute left-3 top-12 z-20 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+          {OPCOES_TOPO_RANKING.map((opcao) => (
+            <button
+              key={opcao.label}
+              type="button"
+              onClick={() => {
+                setTopN(opcao.id);
+                setMenuAberto(false);
+              }}
+              className={`flex w-full px-3 py-1.5 text-left text-xs ${
+                topN === opcao.id
+                  ? 'bg-primary-50 font-medium text-primary-700 dark:bg-primary-950/40 dark:text-primary-200'
+                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {opcao.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <h2 className="pl-10 text-sm font-semibold text-slate-900 dark:text-white">Ranking de fornecedores</h2>
+      <p className="mt-0.5 pl-10 text-xs text-slate-500">
+        {recorte} por saldo. Clique em uma linha para ver as contas.
+      </p>
+      <div className="mt-3 max-h-72 space-y-1.5 overflow-auto pr-1">
+        {visiveis.length === 0 ? (
+          <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p>
+        ) : visiveis.map((item, idx) => {
+          const pct = Math.max(2, Math.round((item.saldo / max) * 100));
+          return (
+            <button
+              key={item.nome}
+              type="button"
+              onClick={() => onSelecionar(item.nome)}
+              className="flex w-full flex-col gap-0.5 rounded-lg px-1 py-1 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-6 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">{idx + 1}º</span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">{item.nome}</span>
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{formatMoeda(item.saldo)}</span>
+              </div>
+              <div className="ml-8 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: COR_VENCIDO }} />
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
