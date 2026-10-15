@@ -1707,6 +1707,7 @@ export type DoubleCheckInComparativoDecisao = {
   justificativaCodigo: string;
   justificativaLabel: string;
   observacao: string | null;
+  numeroSolicitacaoOtimiza?: number | null;
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
@@ -1769,10 +1770,19 @@ export async function excluirDoubleCheckInJustificativa(id: number): Promise<{ o
   return { ok: true };
 }
 
+export type DoubleCheckInSolicitacaoOtimiza = {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  numero: number;
+};
+
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
+  solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
   pendentes: number;
   erro?: string;
 }> {
@@ -1781,6 +1791,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     linhas?: DoubleCheckInComparativoLinha[];
     decisoes?: DoubleCheckInComparativoDecisao[];
     justificativas?: DoubleCheckInJustificativaOpcao[];
+    solicitacoesOtimiza?: DoubleCheckInSolicitacaoOtimiza[];
     pendentes?: number;
     erro?: string;
     error?: string;
@@ -1790,6 +1801,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
       linhas: [],
       decisoes: [],
       justificativas: [],
+      solicitacoesOtimiza: [],
       pendentes: 0,
       erro: body.erro ?? body.error ?? res.statusText,
     };
@@ -1798,6 +1810,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     linhas: Array.isArray(body.linhas) ? body.linhas : [],
     decisoes: Array.isArray(body.decisoes) ? body.decisoes : [],
     justificativas: Array.isArray(body.justificativas) ? body.justificativas : [],
+    solicitacoesOtimiza: Array.isArray(body.solicitacoesOtimiza) ? body.solicitacoesOtimiza : [],
     pendentes: typeof body.pendentes === 'number' ? body.pendentes : 0,
   };
 }
@@ -1824,6 +1837,37 @@ export async function fetchDoubleCheckInPrimeiraLeitura(idDocumento: number): Pr
     aviso: body.aviso ?? null,
     origem: body.origem ?? null,
     erro: body.erro,
+  };
+}
+
+export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
+  idDocumento: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  numero: number;
+  aplicarNasDemais?: boolean;
+}): Promise<{
+  ok: boolean;
+  solicitacao?: DoubleCheckInSolicitacaoOtimiza;
+  replicadas?: DoubleCheckInSolicitacaoOtimiza[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/solicitacao-otimiza', {
+    method: 'PUT',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    solicitacao?: DoubleCheckInSolicitacaoOtimiza;
+    replicadas?: DoubleCheckInSolicitacaoOtimiza[];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return {
+    ok: true,
+    solicitacao: body.solicitacao,
+    replicadas: Array.isArray(body.replicadas) ? body.replicadas : [],
   };
 }
 

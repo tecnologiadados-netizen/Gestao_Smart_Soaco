@@ -85,6 +85,7 @@ export type DecisaoHistorico = {
   campo: string;
   decisao: string;
   justificativaLabel: string;
+  numeroSolicitacaoOtimiza?: number | null;
   usuarioLogin: string;
   atualizadoEm: string;
   vigente: boolean;
@@ -369,9 +370,13 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
     );
     const acao = decisao.decisao === 'recusa' ? 'recusou' : 'aceitou';
     const ciclo = decisao.vigente ? '' : ' Decisão de antes da reabertura, já não vale.';
+    const otimiza =
+      decisao.decisao !== 'recusa' && decisao.numeroSolicitacaoOtimiza
+        ? ` Solicitação Otimiza nº ${decisao.numeroSolicitacaoOtimiza}.`
+        : '';
     passos.push({
       em: decisao.atualizadoEm,
-      texto: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${ciclo}`,
+      texto: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${otimiza}${ciclo}`,
     });
   }
 
@@ -621,6 +626,7 @@ export async function carregarHistoricoDoubleCheck(
       campo: decisao.campo,
       decisao: decisao.decisao,
       justificativaLabel: decisao.justificativaLabel,
+      numeroSolicitacaoOtimiza: decisao.numeroSolicitacaoOtimiza,
       usuarioLogin: decisao.usuarioLogin,
       atualizadoEm: decisao.atualizadoEm,
       vigente: decisao.vigente,

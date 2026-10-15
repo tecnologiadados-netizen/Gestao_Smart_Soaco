@@ -68,9 +68,11 @@ function decisao(
     justificativaCodigo: 'x',
     justificativaLabel,
     observacao: null,
+    numeroSolicitacaoOtimiza: null,
     usuarioId: 1,
     usuarioLogin: 'luisa',
     atualizadoEm: '2026-09-22T14:51:00.000Z',
+    vigente: true,
     historicoObservacoes: [],
   };
 }
