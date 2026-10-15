@@ -24,10 +24,15 @@ export default function ModalGerarOrdem({
   salvando: boolean;
   erro: string | null;
   onClose: () => void;
-  onConfirmar: (body: { quantidade: number; observacao: string }) => void;
+  onConfirmar: (body: {
+    quantidade: number;
+    observacao: string;
+    pecas: { medidaCorte: string; observacao: string }[];
+  }) => void;
 }) {
   const [cadastro, setCadastro] = useState<DecomposicaoPaiCadastro | null>(null);
   const [detalhe, setDetalhe] = useState<DecomposicaoDetalhe | null>(null);
+  const [anotacoes, setAnotacoes] = useState<{ medidaCorte: string; observacao: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
 
@@ -39,6 +44,7 @@ export default function ModalGerarOrdem({
       .then(([cad, det]) => {
         if (!ativo) return;
         setCadastro(cad);
+        setAnotacoes((cad.pecas ?? []).map(() => ({ medidaCorte: '', observacao: '' })));
         setDetalhe(det.pai);
         if (!det.carteiraDisponivel) {
           setErroCarga(det.carteiraErro || 'A carteira não pôde ser lida. A quantidade sugerida pode ficar incompleta.');
@@ -67,22 +73,26 @@ export default function ModalGerarOrdem({
     };
   });
 
+  const alterarAnotacao = (index: number, campo: 'medidaCorte' | 'observacao', valor: string) => {
+    setAnotacoes((atual) => atual.map((item, i) => (i === index ? { ...item, [campo]: valor } : item)));
+  };
+
   const confirmar = () => {
-    onConfirmar({ quantidade: qtd, observacao: '' });
+    onConfirmar({ quantidade: qtd, observacao: '', pecas: anotacoes });
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-800"
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{nomeGrupo(pai.grupo)}</p>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Gerar ordem de serviço</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {pai.codigo} — {pai.nome}. Na etapa seguinte você informa a quantidade a produzir, já sugerida pelo saldo
-            em aberto dos filhos.
+            {pai.codigo} — {pai.nome}. Nada é gravado nesta etapa. Na seguinte você informa a quantidade, imprime e
+            só então salva a ordem.
           </p>
         </div>
 
@@ -104,7 +114,7 @@ export default function ModalGerarOrdem({
             <>
               {(cadastro?.pecas.length ?? 0) > 0 && (
                 <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                  <table className="w-full min-w-[720px] text-left text-sm">
+                  <table className="w-full min-w-[1080px] text-left text-sm">
                     <thead className="bg-primary-600 text-white">
                       <tr>
                         <th className="px-4 py-3 font-semibold">Componente / peça</th>
@@ -113,6 +123,8 @@ export default function ModalGerarOrdem({
                         <th className="px-4 py-3 font-semibold">L (mm)</th>
                         <th className="px-4 py-3 font-semibold">A (mm)</th>
                         <th className="px-4 py-3 font-semibold">Matéria-prima</th>
+                        <th className="px-4 py-3 font-semibold">Medida de corte</th>
+                        <th className="px-4 py-3 font-semibold">Observação</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -126,6 +138,22 @@ export default function ModalGerarOrdem({
                           <td className="px-4 py-2">{peca.medidaL || '—'}</td>
                           <td className="px-4 py-2">{peca.medidaA || '—'}</td>
                           <td className="px-4 py-2">{peca.materiaPrima || '—'}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              className="w-full min-w-[8rem] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                              value={anotacoes[index]?.medidaCorte ?? ''}
+                              maxLength={80}
+                              onChange={(e) => alterarAnotacao(index, 'medidaCorte', e.target.value)}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              className="w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                              value={anotacoes[index]?.observacao ?? ''}
+                              maxLength={240}
+                              onChange={(e) => alterarAnotacao(index, 'observacao', e.target.value)}
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -187,7 +215,7 @@ export default function ModalGerarOrdem({
               salvando || carregando || !cadastro || (cadastro.filhos.length === 0 && (cadastro.pecas ?? []).length === 0)
             }
           >
-            {salvando ? 'Gerando…' : 'Gerar ordem'}
+            Continuar
           </button>
         </div>
       </div>

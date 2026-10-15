@@ -6,7 +6,9 @@ import {
   detalharDecomposicao,
   atualizarQuantidadeOrdem,
   emitirOrdemDecomposicao,
+  excluirOrdemDecomposicao,
   listarAlocacoesDaOrdem,
+  marcarAlocacaoNaProximaOrdem,
   criarSetorDecomposicao,
   excluirProdutoPai,
   excluirSetorDecomposicao,
@@ -15,6 +17,7 @@ import {
   listarOrdensDecomposicao,
   listarSetoresDecomposicao,
   obterOrdemDecomposicao,
+  preverAlocacoesDoPai,
   obterProdutoPai,
 } from '../data/decomposicaoRepository.js';
 
@@ -146,6 +149,23 @@ export async function getDecomposicaoOrdem(req: Request, res: Response): Promise
   }
 }
 
+export async function getDecomposicaoAlocacoesPrevia(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await preverAlocacoesDoPai(idParam(req));
+    if (!data) {
+      res.status(404).json({ error: 'Produto pai não encontrado.' });
+      return;
+    }
+    if (!data.disponivel) {
+      res.status(503).json({ alocacoes: [], saldo: 0, error: data.erro ?? 'NOMUS indisponível' });
+      return;
+    }
+    res.json({ alocacoes: data.alocacoes, saldo: data.saldo });
+  } catch (err) {
+    res.status(400).json({ error: mensagem(err) });
+  }
+}
+
 export async function getDecomposicaoOrdemAlocacoes(req: Request, res: Response): Promise<void> {
   try {
     const data = await listarAlocacoesDaOrdem(idParam(req));
@@ -163,6 +183,18 @@ export async function getDecomposicaoOrdemAlocacoes(req: Request, res: Response)
   }
 }
 
+export async function putDecomposicaoOrdemAlocacao(req: Request, res: Response): Promise<void> {
+  try {
+    const idItem = Number(req.params.idItem);
+    const bruto = req.body && typeof req.body === 'object' ? (req.body as { apareceNaProxima?: unknown }) : {};
+    const marcada = await marcarAlocacaoNaProximaOrdem(idParam(req), idItem, bruto.apareceNaProxima === true);
+    res.json(marcada);
+  } catch (err) {
+    const msg = mensagem(err);
+    res.status(msg.includes('não encontrado') ? 404 : 400).json({ error: msg });
+  }
+}
+
 export async function putDecomposicaoOrdemQuantidade(req: Request, res: Response): Promise<void> {
   try {
     const bruto = req.body && typeof req.body === 'object' ? (req.body as { quantidade?: unknown }) : {};
@@ -171,6 +203,19 @@ export async function putDecomposicaoOrdemQuantidade(req: Request, res: Response
   } catch (err) {
     const msg = mensagem(err);
     res.status(msg.includes('não encontrada') ? 404 : 400).json({ error: msg });
+  }
+}
+
+export async function deleteDecomposicaoOrdem(req: Request, res: Response): Promise<void> {
+  try {
+    const ok = await excluirOrdemDecomposicao(idParam(req));
+    if (!ok) {
+      res.status(404).json({ error: 'Ordem não encontrada.' });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: mensagem(err) });
   }
 }
 

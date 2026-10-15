@@ -868,10 +868,12 @@ model DecomposicaoOrdem {
   quantidade     Float
   observacao     String?
   criadoPorLogin String?
+  alocacoesFixadas Boolean                 @default(false)
   createdAt      DateTime                 @default(now())
   pai            DecomposicaoProdutoPai?  @relation(fields: [paiId], references: [id], onDelete: SetNull)
   itens          DecomposicaoOrdemItem[]
   pecas          DecomposicaoOrdemPeca[]
+  alocacoes      DecomposicaoOrdemAlocacao[]
 
   @@index([grupo])
   @@index([paiId])
@@ -905,11 +907,36 @@ model DecomposicaoOrdemPeca {
   medidaL         String            @default("")
   medidaA         String            @default("")
   materiaPrima    String            @default("")
+  medidaCorte     String            @default("")
+  observacao      String            @default("")
   sortOrder       Int               @default(0)
   ordem           DecomposicaoOrdem @relation(fields: [ordemId], references: [id], onDelete: Cascade)
 
   @@index([ordemId])
   @@map("decomposicao_ordem_peca")
+}
+
+/// Item de pedido da carteira que entrou nesta ordem.
+/// Desmarcado, não volta na próxima ordem do mesmo pai.
+model DecomposicaoOrdemAlocacao {
+  id               Int               @id @default(autoincrement())
+  ordemId          Int
+  idItem           Int
+  idPedido         Int
+  numeroPedido     String            @default("")
+  cliente          String            @default("")
+  codigoFilho      String            @default("")
+  descricaoFilho   String            @default("")
+  statusItem       Int
+  qtdePedida       Float             @default(0)
+  saldo            Float             @default(0)
+  apareceNaProxima Boolean           @default(false)
+  ordem            DecomposicaoOrdem @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@unique([ordemId, idItem])
+  @@index([ordemId])
+  @@index([idItem])
+  @@map("decomposicao_ordem_alocacao")
 }
 
 // --- SycroOrder (migrado do sincroorder-crm): pedidos, histórico e notificações ---

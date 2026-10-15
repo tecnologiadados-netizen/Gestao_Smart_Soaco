@@ -494,6 +494,16 @@ export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[
         if (podeAcessarSequenciamentoCarradas(hasPermission)) filtered.push(entry);
         continue;
       }
+      if (entry.to === '/pedidos/decomposicao') {
+        if (
+          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_VER) ||
+          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR) ||
+          hasPermission(PERMISSOES.PCP_TOTAL)
+        ) {
+          filtered.push(entry);
+        }
+        continue;
+      }
       if (podeGerenciador) filtered.push(entry);
       continue;
     }

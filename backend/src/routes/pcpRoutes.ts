@@ -23,12 +23,14 @@ import {
   postRegraDataEntregaVersao,
 } from '../controllers/regrasDataEntregaController.js';
 import {
+  deleteDecomposicaoOrdem,
   deleteDecomposicaoPai,
   deleteDecomposicaoSetor,
   getDecomposicaoCadastros,
   getDecomposicaoDetalhe,
   getDecomposicaoGrade,
   getDecomposicaoMateriasPrimasPp,
+  getDecomposicaoAlocacoesPrevia,
   getDecomposicaoOrdem,
   getDecomposicaoOrdemAlocacoes,
   getDecomposicaoOrdens,
@@ -38,6 +40,7 @@ import {
   postDecomposicaoOrdem,
   postDecomposicaoPai,
   postDecomposicaoSetor,
+  putDecomposicaoOrdemAlocacao,
   putDecomposicaoOrdemQuantidade,
   putDecomposicaoPai,
 } from '../controllers/decomposicaoController.js';
@@ -63,9 +66,14 @@ const podeAcompanhamentoSolicitacao = requirePermission(
 );
 
 const podeDecomposicao = requirePermission(
-  PERMISSOES.PCP_VER_TELA,
-  PERMISSOES.PCP_TOTAL,
-  PERMISSOES.PEDIDOS_VER
+  PERMISSOES.PCP_ORDEM_PRODUCAO_VER,
+  PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR,
+  PERMISSOES.PCP_TOTAL
+);
+
+const podeGerarOrdem = requirePermission(
+  PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR,
+  PERMISSOES.PCP_TOTAL
 );
 
 const podeVerRegrasEntrega = requirePermission(
@@ -166,11 +174,19 @@ router.delete('/decomposicao/setores/:id', validateCsrf, podeDecomposicao, async
 router.get('/decomposicao/cadastros', podeDecomposicao, async503(getDecomposicaoCadastros));
 router.get('/decomposicao/ordens', podeDecomposicao, async503(getDecomposicaoOrdens));
 router.get('/decomposicao/ordens/:id/alocacoes', podeDecomposicao, async503(getDecomposicaoOrdemAlocacoes));
+router.put(
+  '/decomposicao/ordens/:id/alocacoes/:idItem',
+  validateCsrf,
+  podeGerarOrdem,
+  async503(putDecomposicaoOrdemAlocacao)
+);
 router.get('/decomposicao/ordens/:id', podeDecomposicao, async503(getDecomposicaoOrdem));
-router.put('/decomposicao/ordens/:id', validateCsrf, podeDecomposicao, async503(putDecomposicaoOrdemQuantidade));
-router.post('/decomposicao/ordens', validateCsrf, podeDecomposicao, async503(postDecomposicaoOrdem));
+router.put('/decomposicao/ordens/:id', validateCsrf, podeGerarOrdem, async503(putDecomposicaoOrdemQuantidade));
+router.delete('/decomposicao/ordens/:id', validateCsrf, podeGerarOrdem, async503(deleteDecomposicaoOrdem));
+router.post('/decomposicao/ordens', validateCsrf, podeGerarOrdem, async503(postDecomposicaoOrdem));
 router.get('/decomposicao', podeDecomposicao, async503(getDecomposicaoGrade));
 router.get('/decomposicao/:id', podeDecomposicao, async503(getDecomposicaoProduto));
+router.get('/decomposicao/:id/alocacoes-previa', podeDecomposicao, async503(getDecomposicaoAlocacoesPrevia));
 router.get('/decomposicao/:id/detalhe', podeDecomposicao, async503(getDecomposicaoDetalhe));
 router.post('/decomposicao', validateCsrf, podeDecomposicao, async503(postDecomposicaoPai));
 router.put('/decomposicao/:id', validateCsrf, podeDecomposicao, async503(putDecomposicaoPai));

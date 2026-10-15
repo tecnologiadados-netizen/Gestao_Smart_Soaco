@@ -5,7 +5,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'o-que-e',
     titulo: 'O que esta tela faz',
     oQueE:
-      'Esta tela gera a ordem de produção de qualquer produto do catálogo. O setor é livre, como no sistema de exemplo: não fica preso a gôndola ou porta-pallet. Ela fica à parte da Programação de produção (Recurso 1000).',
+      'Esta tela gera a ordem de produção de qualquer produto do catálogo. O setor é livre, como no sistema de exemplo: não fica preso a gôndola ou porta-pallet. Ela fica à parte da Programação de produção (Recurso 1000). Visualizar abre a tela e o histórico. Visualizar e gerar também cria a ordem e altera a quantidade na impressão. A permissão total do PCP cobre as duas.',
     comoLe:
       'A tela tem duas guias. Produtos pai lista o catálogo: a linha verde tem saldo em aberto para produzir. Cada coluna tem o filtro da grade. Em cada pai, Editar abre as peças e os filhos. Gerar ordem abre a quantidade a produzir. Histórico lista as ordens já geradas, com a data, o usuário e o PDF.',
   },
@@ -13,9 +13,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'ordem',
     titulo: 'Ordem de serviço',
     oQueE:
-      'Gerar ordem grava a quantidade a produzir do pai e multiplica a quantidade de cada peça. Ver lista os pedidos de venda em que os filhos estão alocados e deixa ajustar a quantidade antes de imprimir. O papel é a ordem de serviço industrial: cabeçalho com a logo Só Aço, produto, quantidade a produzir e o detalhamento das peças com a quantidade total.',
+      'Gerar ordem abre a conferência sem gravar. A ordem só entra no histórico depois de imprimir e apertar Salvar. Ver, numa ordem já salva, lista os pedidos de venda em que os filhos estão alocados. O papel é a ordem de serviço industrial: cabeçalho com a logo Só Aço, produto, quantidade a produzir e o detalhamento das peças com a quantidade total.',
     comoLe:
-      'Gerar ordem abre o resumo. Todo filho vinculado aparece na lista. A linha verde é a que ainda tem saldo. Filho sem saldo continua na tabela, sem destaque. A quantidade a produzir fica na tela seguinte, já preenchida com o saldo em aberto: Liberado e Atendido parcialmente, só o que ainda falta atender. Dá para digitar outra quantidade antes de imprimir. No papel, a qtd total de cada peça é a qtd da peça vezes a quantidade informada. L e A não se multiplicam.',
+      'Gerar ordem abre o resumo e ainda não grava nada. Todo filho vinculado aparece na lista. A linha verde é a que ainda tem saldo. Filho sem saldo continua na tabela, sem destaque. Em cada peça dá para digitar a medida de corte e a observação: o PDF leva esses textos para as colunas de mesmo nome. Célula vazia sai como traço. A tela seguinte lista os pedidos em aberto que entram nesta ordem. A caixa Próxima ordem nasce desmarcada: o item não volta na ordem seguinte deste pai. Marque a caixa para ele aparecer de novo. Fechar essa tela descarta a ordem. A quantidade a produzir já vem com a soma desses saldos. Dá para digitar outra quantidade antes de imprimir. No papel, a qtd total de cada peça é a qtd da peça vezes a quantidade informada. L e A não se multiplicam. Depois de imprimir, Salvar grava a ordem, fecha a tela e mostra ela no Histórico. No Histórico, Excluir apaga a ordem e zera a regra da próxima ordem: os pedidos dela voltam a poder entrar na próxima.',
   },
   {
     id: 'cadastros',
@@ -23,7 +23,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Cadastros guarda os setores, os pais e as peças de corte. O catálogo já começa com os produtos pai e as peças do sistema de exemplo. O setor é um nome livre. Em cada pai dá para incluir peças (quantidade, L, A e matéria-prima) e vincular filhos do NOMUS.',
     comoLe:
-      'Na grade, Editar abre aquele pai. Em Cadastros, Vínculos faz o mesmo. No detalhamento, altere, inclua ou remova peças. Abaixo, busque o produto do NOMUS para vincular ou retirar um filho. A ordem sai quando houver ao menos uma peça ou um filho.',
+      'Na grade, Editar abre aquele pai. Em Cadastros, Vínculos faz o mesmo. No detalhamento, altere, inclua ou remova peças. Abaixo, busque no NOMUS, marque um ou vários produtos e use Vincular selecionados. A ordem sai quando houver ao menos uma peça ou um filho.',
     detalhes: [
       {
         titulo: 'Peças do sistema de exemplo',
@@ -43,7 +43,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A carteira é a do Gerenciador de Pedidos: itens com status Liberado ou Atendido parcialmente, das empresas que entram nessa tela. Cada item conta uma vez, pela qtde pedida.',
     comoLe:
-      'Qtde pedida é o que foi vendido no item. O saldo é o que ainda está em aberto nesse item. A quantidade do pai soma o saldo dos filhos em Liberado e Atendido parcialmente.',
+      'Qtde pedida é o que foi vendido no item. O saldo é o que ainda está em aberto nesse item. A quantidade do pai soma o saldo dos filhos em Liberado e Atendido parcialmente, menos o item que já entrou numa ordem deste pai com a caixa Próxima ordem desmarcada.',
     detalhes: [
       {
         titulo: 'O que fica de fora',

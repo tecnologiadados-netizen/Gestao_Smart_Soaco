@@ -31,6 +31,7 @@ import { backfillAguardaRespostaLabelsForPendingOrders } from './services/sycroO
 import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycroOrderEscopoWhatsAppSync.js';
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { ensureDoubleCheckInPermissao } from './config/ensureDoubleCheckInPermissao.js';
+import { ensureOrdemProducaoPermissao } from './config/ensureOrdemProducaoPermissao.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 import { migrateLegacyRhUploads, rhUploadRoot } from './rh/utils/rhUpload.js';
 import {
@@ -118,6 +119,11 @@ async function ensureDbReady(): Promise<void> {
     await ensureDoubleCheckInPermissao();
   } catch (e) {
     console.warn('[startup] ensureDoubleCheckInPermissao:', (e as Error)?.message ?? e);
+  }
+  try {
+    await ensureOrdemProducaoPermissao();
+  } catch (e) {
+    console.warn('[startup] ensureOrdemProducaoPermissao:', (e as Error)?.message ?? e);
   }
   try {
     const { ensureDoubleCheckInNfPcWhatsappTipo, ensureDoubleCheckInJustificativaOpcoes } =

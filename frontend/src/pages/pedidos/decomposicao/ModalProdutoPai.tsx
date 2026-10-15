@@ -100,12 +100,14 @@ export default function ModalProdutoPai({
   const [pecas, setPecas] = useState<LinhaPeca[]>(() => pecasDe(pai));
   const [busca, setBusca] = useState('');
   const [opcoes, setOpcoes] = useState<ProdutoNomusOpcao[]>([]);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [erroBusca, setErroBusca] = useState<string | null>(null);
   const [erroLocal, setErroLocal] = useState<string | null>(null);
 
   useEffect(() => {
     const termo = busca.trim();
+    setSelecionados([]);
     if (termo.length < 2) {
       setOpcoes([]);
       setErroBusca(null);
@@ -133,21 +135,36 @@ export default function ModalProdutoPai({
     }))
   );
 
-  const adicionar = (produto: ProdutoNomusOpcao) => {
+  const jaNestePai = (codigo: string) => linhas.some((linha) => codigoIgual(linha.codigoNomus, codigo));
+
+  const opcoesLivres = opcoes.filter((opcao) => !jaNestePai(opcao.codigo));
+  const todosMarcados = opcoesLivres.length > 0 && opcoesLivres.every((opcao) => selecionados.includes(opcao.codigo));
+
+  const alternar = (codigo: string) => {
+    if (jaNestePai(codigo)) return;
+    setSelecionados((atual) => (atual.includes(codigo) ? atual.filter((item) => item !== codigo) : [...atual, codigo]));
+  };
+
+  const alternarTodos = () => {
+    setSelecionados(todosMarcados ? [] : opcoesLivres.map((opcao) => opcao.codigo));
+  };
+
+  const adicionarSelecionados = () => {
+    const escolhidos = opcoes.filter((opcao) => selecionados.includes(opcao.codigo) && !jaNestePai(opcao.codigo));
+    if (escolhidos.length === 0) return;
     setErroLocal(null);
     setLinhas((atual) => {
-      if (atual.some((l) => codigoIgual(l.codigoNomus, produto.codigo))) return atual;
+      const novas = escolhidos.filter((produto) => !atual.some((linha) => codigoIgual(linha.codigoNomus, produto.codigo)));
       return [
         ...atual,
-        {
+        ...novas.map((produto) => ({
           key: novaChave(),
           codigoNomus: produto.codigo,
           descricao: produto.descricao || produto.codigo,
-        },
+        })),
       ];
     });
-    setBusca('');
-    setOpcoes([]);
+    setSelecionados([]);
   };
 
   const salvar = () => {
@@ -394,28 +411,60 @@ export default function ModalProdutoPai({
             {buscando && <p className="mt-1 text-xs text-slate-500">Buscando no NOMUS…</p>}
             {erroBusca && <p className="mt-1 text-xs text-red-600">{erroBusca}</p>}
             {opcoes.length > 0 && (
-              <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
-                {opcoes.map((opcao) => {
-                  const jaEm = paisComFilho(opcao.codigo, outrosPais);
-                  return (
-                    <li key={opcao.codigo}>
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
-                        onClick={() => adicionar(opcao)}
-                      >
-                        <span className="font-semibold text-slate-800 dark:text-slate-100">{opcao.codigo}</span>
-                        <span className="ml-2 text-slate-500">{opcao.descricao}</span>
-                        {jaEm.length > 0 && (
-                          <span className="mt-0.5 block text-xs font-medium text-amber-700 dark:text-amber-300">
-                            Já vinculado a {jaEm.map(rotuloPai).join('; ')}
+              <div className="mt-1 rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-600">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary-600"
+                      checked={todosMarcados}
+                      disabled={opcoesLivres.length === 0}
+                      onChange={alternarTodos}
+                    />
+                    Selecionar todos
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                    disabled={selecionados.length === 0}
+                    onClick={adicionarSelecionados}
+                  >
+                    Vincular selecionados{selecionados.length > 0 ? ` (${selecionados.length})` : ''}
+                  </button>
+                </div>
+                <ul className="max-h-48 overflow-y-auto">
+                  {opcoes.map((opcao) => {
+                    const jaEm = paisComFilho(opcao.codigo, outrosPais);
+                    const nestePai = jaNestePai(opcao.codigo);
+                    const marcado = nestePai || selecionados.includes(opcao.codigo);
+                    return (
+                      <li key={opcao.codigo} className="border-t border-slate-100 first:border-t-0 dark:border-slate-700">
+                        <label className="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 accent-primary-600"
+                            checked={marcado}
+                            disabled={nestePai}
+                            onChange={() => alternar(opcao.codigo)}
+                          />
+                          <span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-100">{opcao.codigo}</span>
+                            <span className="ml-2 text-slate-500">{opcao.descricao}</span>
+                            {nestePai && (
+                              <span className="mt-0.5 block text-xs font-medium text-slate-500">Já vinculado neste pai</span>
+                            )}
+                            {jaEm.length > 0 && (
+                              <span className="mt-0.5 block text-xs font-medium text-amber-700 dark:text-amber-300">
+                                Já vinculado a {jaEm.map(rotuloPai).join('; ')}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
           </div>
 
@@ -445,7 +494,7 @@ export default function ModalProdutoPai({
                 {linhas.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
-                      Nenhum filho ainda. Use a busca acima para vincular um produto do NOMUS.
+                      Nenhum filho ainda. Busque no NOMUS, marque os produtos e use Vincular selecionados.
                     </td>
                   </tr>
                 )}

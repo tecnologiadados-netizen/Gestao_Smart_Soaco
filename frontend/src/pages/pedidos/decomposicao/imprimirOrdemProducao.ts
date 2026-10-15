@@ -29,8 +29,8 @@ function corpoDetalhado(ordem: OrdemProducao, pecas: OrdemProducaoPeca[]): strin
         <td style="padding: 10px; border: 1.5px solid #000; text-align: center; color: #c2410c;">${textoOuTraco(peca.medidaL)}</td>
         <td style="padding: 10px; border: 1.5px solid #000; text-align: center; color: #c2410c;">${textoOuTraco(peca.medidaA)}</td>
         <td style="padding: 10px; border: 1.5px solid #000; text-align: left;">${textoOuTraco(peca.materiaPrima)}</td>
-        <td style="padding: 10px; border: 1.5px solid #000; text-align: center; font-weight: 900; color: #002855;">-</td>
-        <td style="padding: 10px; border: 1.5px solid #000; text-align: left; font-size: 11px; color: #475569; font-weight: normal;">-</td>
+        <td style="padding: 10px; border: 1.5px solid #000; text-align: center; font-weight: 900; color: #002855;">${textoOuTraco(peca.medidaCorte ?? '')}</td>
+        <td style="padding: 10px; border: 1.5px solid #000; text-align: left; font-size: 11px; color: #475569; font-weight: normal;">${textoOuTraco(peca.observacao ?? '')}</td>
       </tr>`
     )
     .join('');

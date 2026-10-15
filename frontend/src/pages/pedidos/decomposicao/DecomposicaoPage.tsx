@@ -12,12 +12,14 @@ import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../../
 import {
   detalharDecomposicao,
   emitirOrdemProducao,
+  excluirOrdemProducao,
   listarCadastrosDecomposicao,
   listarDecomposicao,
   listarOrdensProducao,
   listarSetoresProducao,
   obterDecomposicaoPai,
   salvarDecomposicaoPai,
+  type AlocacaoPedido,
   type DecomposicaoCadastroResumo,
   type DecomposicaoDetalhe,
   type DecomposicaoFilhoCadastro,
@@ -28,11 +30,11 @@ import {
   type SetorProducao,
 } from '../../../api/decomposicao';
 import DecomposicaoAjudaModal from './DecomposicaoAjudaModal';
+import ModalVerOrdem, { type RascunhoOrdem } from './ModalVerOrdem';
 import ModalCadastrosDecomposicao from './ModalCadastrosDecomposicao';
 import ModalDetalheDecomposicao from './ModalDetalheDecomposicao';
 import ModalGerarOrdem from './ModalGerarOrdem';
 import ModalProdutoPai from './ModalProdutoPai';
-import ModalVerOrdem from './ModalVerOrdem';
 import { imprimirOrdemProducao } from './imprimirOrdemProducao';
 
 function fmt(valor: number | null): string {
@@ -80,10 +82,10 @@ function valorOrdenacaoPai(pai: DecomposicaoPaiGrade, columnId: string): string 
 
 export default function DecomposicaoPage() {
   const { hasPermission } = useAuth();
+  const podeGerar =
+    hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR) || hasPermission(PERMISSOES.PCP_TOTAL);
   const podeVer =
-    hasPermission(PERMISSOES.PCP_VER_TELA) ||
-    hasPermission(PERMISSOES.PCP_TOTAL) ||
-    hasPermission(PERMISSOES.PEDIDOS_VER);
+    podeGerar || hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_VER);
 
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -92,7 +94,9 @@ export default function DecomposicaoPage() {
   const [ordens, setOrdens] = useState<OrdemProducao[]>([]);
   const [paiOrdem, setPaiOrdem] = useState<DecomposicaoPaiGrade | null>(null);
   const [ordemAberta, setOrdemAberta] = useState<OrdemProducao | null>(null);
+  const [rascunho, setRascunho] = useState<RascunhoOrdem | null>(null);
   const [gerando, setGerando] = useState(false);
+  const [excluindoOrdemId, setExcluindoOrdemId] = useState<number | null>(null);
   const [erroGerar, setErroGerar] = useState<string | null>(null);
   const [setores, setSetores] = useState<SetorProducao[]>([]);
   const [setorFiltro, setSetorFiltro] = useState('');
@@ -118,10 +122,14 @@ export default function DecomposicaoPage() {
     setErro(null);
     detalheCacheRef.current.clear();
     try {
-      const data = await listarDecomposicao();
+      const [data, ordensLista, setoresLista] = await Promise.all([
+        listarDecomposicao(),
+        listarOrdensProducao().catch(() => []),
+        listarSetoresProducao().catch(() => []),
+      ]);
       setPais(data.pais);
-      setOrdens(await listarOrdensProducao().catch(() => []));
-      setSetores(await listarSetoresProducao().catch(() => []));
+      setOrdens(ordensLista);
+      setSetores(setoresLista);
       setAvisoCarteira(
         data.carteiraDisponivel
           ? null
@@ -208,17 +216,55 @@ export default function DecomposicaoPage() {
     }
   };
 
-  const confirmarOrdem = async (body: { quantidade: number; observacao: string }) => {
-    if (!paiOrdem) return;
-    setGerando(true);
-    setErroGerar(null);
+  const excluirOrdem = async (ordem: OrdemProducao) => {
+    if (!window.confirm(`Excluir a ordem ${ordem.numero}? Os pedidos dela voltam a poder entrar na próxima ordem deste pai.`)) {
+      return;
+    }
+    setExcluindoOrdemId(ordem.id);
+    setErro(null);
     try {
-      const ordem = await emitirOrdemProducao({ paiId: paiOrdem.id, ...body });
-      setPaiOrdem(null);
-      setOrdemAberta(ordem);
+      await excluirOrdemProducao(ordem.id);
+      if (ordemAberta?.id === ordem.id) setOrdemAberta(null);
       await carregar(true);
     } catch (e) {
-      setErroGerar(e instanceof Error ? e.message : 'Erro ao gerar a ordem.');
+      setErro(e instanceof Error ? e.message : 'Não foi possível excluir a ordem.');
+    } finally {
+      setExcluindoOrdemId(null);
+    }
+  };
+
+  const confirmarOrdem = (body: {
+    quantidade: number;
+    observacao: string;
+    pecas: { medidaCorte: string; observacao: string }[];
+  }) => {
+    if (!paiOrdem) return;
+    setErroGerar(null);
+    setOrdemAberta(null);
+    setRascunho({
+      paiId: paiOrdem.id,
+      grupo: paiOrdem.grupo,
+      codigo: paiOrdem.codigo,
+      nome: paiOrdem.nome,
+      pecas: body.pecas,
+    });
+    setPaiOrdem(null);
+  };
+
+  const salvarRascunho = async (body: {
+    paiId: number;
+    quantidade: number;
+    observacao: string;
+    numero: string;
+    pecas: { medidaCorte: string; observacao: string }[];
+    alocacoes: AlocacaoPedido[];
+  }) => {
+    setGerando(true);
+    try {
+      await emitirOrdemProducao(body);
+      setRascunho(null);
+      setAba('historico');
+      await carregar(true);
     } finally {
       setGerando(false);
     }
@@ -355,7 +401,11 @@ export default function DecomposicaoPage() {
         )}
       </div>
 
-      {!carregando && filtrados.length === 0 ? (
+      {carregando ? (
+        <p className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+          Carregando o catálogo de produtos pai…
+        </p>
+      ) : filtrados.length === 0 ? (
         <MensagemSemRegistros />
       ) : (
         <div
@@ -429,16 +479,18 @@ export default function DecomposicaoPage() {
                     >
                       {abrindoEdicao === pai.id ? 'Abrindo…' : 'Editar'}
                     </button>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-primary-700"
-                      onClick={() => {
-                        setErroGerar(null);
-                        setPaiOrdem(pai);
-                      }}
-                    >
-                      Gerar ordem
-                    </button>
+                    {podeGerar && (
+                      <button
+                        type="button"
+                        className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-primary-700"
+                        onClick={() => {
+                          setErroGerar(null);
+                          setPaiOrdem(pai);
+                        }}
+                      >
+                        Gerar ordem
+                      </button>
+                    )}
                   </td>
                 </tr>
                 );
@@ -511,7 +563,10 @@ export default function DecomposicaoPage() {
                       <button
                         type="button"
                         className="mr-3 text-sm font-medium text-slate-700 hover:underline dark:text-slate-200"
-                        onClick={() => setOrdemAberta(ordem)}
+                        onClick={() => {
+                          setRascunho(null);
+                          setOrdemAberta(ordem);
+                        }}
                       >
                         Ver
                       </button>
@@ -522,6 +577,16 @@ export default function DecomposicaoPage() {
                       >
                         PDF
                       </button>
+                      {podeGerar && (
+                        <button
+                          type="button"
+                          className="ml-3 text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
+                          disabled={excluindoOrdemId === ordem.id}
+                          onClick={() => void excluirOrdem(ordem)}
+                        >
+                          {excluindoOrdemId === ordem.id ? 'Excluindo…' : 'Excluir'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -557,10 +622,22 @@ export default function DecomposicaoPage() {
         />
       )}
 
-      {ordemAberta && (
+      {(ordemAberta || rascunho) && (
         <ModalVerOrdem
+          key={ordemAberta ? `ordem-${ordemAberta.id}` : `rascunho-${rascunho?.paiId}`}
           ordem={ordemAberta}
-          onClose={() => setOrdemAberta(null)}
+          rascunho={ordemAberta ? null : rascunho}
+          salvando={gerando}
+          podeGerar={podeGerar}
+          onClose={() => {
+            setOrdemAberta(null);
+            setRascunho(null);
+          }}
+          onSalvar={() => {
+            setOrdemAberta(null);
+            setAba('historico');
+          }}
+          onSalvarRascunho={salvarRascunho}
           onAtualizada={(ordem) => {
             setOrdemAberta(ordem);
             setOrdens((lista) => lista.map((item) => (item.id === ordem.id ? ordem : item)));

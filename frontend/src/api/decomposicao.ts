@@ -216,6 +216,8 @@ export type OrdemProducaoPeca = {
   medidaL: string;
   medidaA: string;
   materiaPrima: string;
+  medidaCorte?: string;
+  observacao?: string;
 };
 
 export async function listarOrdensProducao(): Promise<OrdemProducao[]> {
@@ -234,13 +236,33 @@ export type AlocacaoPedido = {
   statusNome: string;
   qtdePedida: number;
   saldo: number;
+  apareceNaProxima?: boolean;
 };
+
+export async function preverAlocacoesPai(paiId: number): Promise<{ alocacoes: AlocacaoPedido[]; saldo: number }> {
+  const res = await apiFetch(`/api/pcp/decomposicao/${paiId}/alocacoes-previa`);
+  if (!res.ok) await lerErro(res, 'Não foi possível ler os pedidos dos filhos.');
+  const data = (await res.json()) as { alocacoes: AlocacaoPedido[]; saldo: number };
+  return { alocacoes: data.alocacoes ?? [], saldo: Number(data.saldo) || 0 };
+}
 
 export async function listarAlocacoesOrdem(ordemId: number): Promise<{ alocacoes: AlocacaoPedido[]; saldo: number }> {
   const res = await apiFetch(`/api/pcp/decomposicao/ordens/${ordemId}/alocacoes`);
   if (!res.ok) await lerErro(res, 'Não foi possível ler os pedidos dos filhos.');
   const data = (await res.json()) as { alocacoes: AlocacaoPedido[]; saldo: number };
   return { alocacoes: data.alocacoes ?? [], saldo: Number(data.saldo) || 0 };
+}
+
+export async function marcarAlocacaoNaProximaOrdem(
+  ordemId: number,
+  idItem: number,
+  apareceNaProxima: boolean
+): Promise<void> {
+  const res = await apiFetch(`/api/pcp/decomposicao/ordens/${ordemId}/alocacoes/${idItem}`, {
+    method: 'PUT',
+    body: { apareceNaProxima },
+  });
+  if (!res.ok) await lerErro(res, 'Não foi possível gravar a opção da próxima ordem.');
 }
 
 export async function atualizarQuantidadeOrdem(ordemId: number, quantidade: number): Promise<OrdemProducao> {
@@ -257,11 +279,19 @@ export async function emitirOrdemProducao(body: {
   paiId: number;
   quantidade: number;
   observacao: string;
+  numero?: string;
+  pecas?: { medidaCorte: string; observacao: string }[];
+  alocacoes?: AlocacaoPedido[];
 }): Promise<OrdemProducao> {
   const res = await apiFetch('/api/pcp/decomposicao/ordens', { method: 'POST', body });
   if (!res.ok) await lerErro(res, 'Não foi possível gerar a ordem.');
   const data = (await res.json()) as { ordem: OrdemProducao };
   return data.ordem;
+}
+
+export async function excluirOrdemProducao(id: number): Promise<void> {
+  const res = await apiFetch(`/api/pcp/decomposicao/ordens/${id}`, { method: 'DELETE' });
+  if (!res.ok) await lerErro(res, 'Não foi possível excluir a ordem.');
 }
 
 export async function excluirDecomposicaoPai(id: number): Promise<void> {
