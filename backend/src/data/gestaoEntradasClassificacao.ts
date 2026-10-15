@@ -2,6 +2,7 @@
  * Gestão entradas — classificação da nota conferida e agregação do painel.
  * Decisão em nota ainda não conferida não entra no ranking (conferência incompleta).
  */
+import { textoReaisCasasUtilizadas } from './doubleCheckInPeso.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import { regimeConferenciaPorDataEntrada } from '../services/doubleCheckInConferenciaPeriodo.js';
 import {
@@ -329,8 +330,12 @@ export type LinhaComparativoDia = {
   descontoPC?: number;
   valorUnitarioNF?: number;
   valorUnitarioPC?: number;
+  entradaPorPeso?: boolean;
   valorIpiNF?: number;
   valorIpiPC?: number;
+  aliquotaIpiNF?: number;
+  aliquotaIpiPC?: number;
+  conferenciaIpi?: 'valor' | 'percentual';
   condicaoPagamentoNF?: string | null;
   regraPagamentoNF?: string | null;
   condicaoPagamentoPC?: string | null;
@@ -375,7 +380,17 @@ function chaveCampo(idItemNf: number, idItemPc: number, campo: string): string {
 }
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const nfBrl4 = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+});
 const nfQtde = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
+
+function fmtAliquotaIpi(n: number): string {
+  return `${nfQtde.format(n)}%`;
+}
 
 function num(v: number | undefined): number {
   return Number.isFinite(v) ? Number(v) : 0;
@@ -431,6 +446,14 @@ export function textoComparativoCampo(
     };
   }
   if (campo === 'ipi') {
+    if (linha.conferenciaIpi === 'percentual') {
+      return {
+        nf: fmtAliquotaIpi(num(linha.aliquotaIpiNF)),
+        pc: fmtAliquotaIpi(num(linha.aliquotaIpiPC)),
+        detalheNf: null,
+        detalhePc: null,
+      };
+    }
     return {
       nf: nfBrl.format(num(linha.valorIpiNF)),
       pc: nfBrl.format(num(linha.valorIpiPC)),
@@ -442,6 +465,19 @@ export function textoComparativoCampo(
     const nf = fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF, linha.prazosLabelNF);
     const pc = fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC, linha.prazosLabelPC);
     return { nf: nf.principal, pc: pc.principal, detalheNf: nf.detalhe, detalhePc: pc.detalhe };
+  }
+  if (linha.entradaPorPeso) {
+    const nfValor = num(linha.valorUnitarioNF);
+    const pcValor = num(linha.valorUnitarioPC);
+    const nfCompleto = textoReaisCasasUtilizadas(nfValor);
+    const pcCompleto = textoReaisCasasUtilizadas(pcValor);
+    const alemDe4 = (texto: string) => (texto.split(',')[1]?.length ?? 0) > 4;
+    return {
+      nf: nfBrl4.format(nfValor),
+      pc: nfBrl4.format(pcValor),
+      detalheNf: alemDe4(nfCompleto) ? nfCompleto : null,
+      detalhePc: alemDe4(pcCompleto) ? pcCompleto : null,
+    };
   }
   const nf = fmtUnitario(
     num(linha.valorUnitarioNF),

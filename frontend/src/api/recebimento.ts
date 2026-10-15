@@ -290,6 +290,7 @@ export type RecebimentoProdutoConferente = {
   idItem: number;
   idProduto: number;
   codigoProduto: string | null;
+  codigoFornecedor: string | null;
   descricaoProduto: string | null;
   unidadeMedida: string | null;
   tentativasUsadas: number;

@@ -1643,8 +1643,15 @@ export type DoubleCheckInComparativoLinha = {
   /** Unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
+  /** Quantidade em massa: unitário exato, card com 4 casas e popup com o valor completo. */
+  entradaPorPeso?: boolean;
   valorIpiNF: number;
   valorIpiPC: number;
+  /** Alíquota de IPI do item, em percentual. */
+  aliquotaIpiNF?: number;
+  aliquotaIpiPC?: number;
+  /** valor = reais; percentual = alíquota exata, nas entradas a partir de 15/10/2026. */
+  conferenciaIpi?: 'valor' | 'percentual';
   condicaoPagamentoNF: string | null;
   regraPagamentoNF: string | null;
   condicaoPagamentoPC: string | null;

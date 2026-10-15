@@ -3,6 +3,8 @@
  * O payload gravado é este objeto — a página não depende do Nomus depois.
  */
 
+import { arredondarAliquotaIpi } from '../data/doubleCheckInIpi.js';
+import { normalizarUnitarioExato, textoReaisCasasUtilizadas } from '../data/doubleCheckInPeso.js';
 import type { DoubleCheckInComparativoLinha } from '../data/doubleCheckInRepository.js';
 import type {
   DoubleCheckInCampoComparativo,
@@ -91,8 +93,21 @@ function fmtBrl(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function fmtBrl4(n: number): string {
+  return n.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  });
+}
+
 function fmtNum(n: number): string {
   return n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+}
+
+function fmtPct(n: number): string {
+  return `${fmtNum(arredondarAliquotaIpi(n))}%`;
 }
 
 function descUnit(total: number, qtde: number): number {
@@ -105,6 +120,13 @@ function diffDinheiro(nf: number, pc: number): { texto: string; sinal: SinalDif 
   const d = Math.round((nf - pc) * 100) / 100;
   if (d === 0) return { texto: fmtBrl(0), sinal: 'zero' };
   const abs = fmtBrl(Math.abs(d));
+  return d > 0 ? { texto: `+${abs}`, sinal: 'pos' } : { texto: `−${abs}`, sinal: 'neg' };
+}
+
+function diffPct(nf: number, pc: number): { texto: string; sinal: SinalDif } {
+  const d = arredondarAliquotaIpi(arredondarAliquotaIpi(nf) - arredondarAliquotaIpi(pc));
+  if (d === 0) return { texto: fmtPct(0), sinal: 'zero' };
+  const abs = fmtPct(Math.abs(d));
   return d > 0 ? { texto: `+${abs}`, sinal: 'pos' } : { texto: `−${abs}`, sinal: 'neg' };
 }
 
@@ -170,6 +192,28 @@ function montarCampo(
     detalhe: null as string | null,
     descontoWhatsApp: null as string | null,
   };
+  if (campo === 'valor_unitario' && linha.entradaPorPeso) {
+    const delta = normalizarUnitarioExato(
+      normalizarUnitarioExato(linha.valorUnitarioNF) - normalizarUnitarioExato(linha.valorUnitarioPC)
+    );
+    const dif =
+      delta === 0
+        ? { texto: textoReaisCasasUtilizadas(0), sinal: 'zero' as const }
+        : delta > 0
+          ? { texto: `+${textoReaisCasasUtilizadas(delta)}`, sinal: 'pos' as const }
+          : { texto: `−${textoReaisCasasUtilizadas(Math.abs(delta))}`, sinal: 'neg' as const };
+    const extra = detalhePreco(linha);
+    const completo = `Valor usado na comparação: NF ${textoReaisCasasUtilizadas(linha.valorUnitarioNF)} · PC ${textoReaisCasasUtilizadas(linha.valorUnitarioPC)}.`;
+    return {
+      ...base,
+      nf: fmtBrl4(linha.valorUnitarioNF),
+      pc: fmtBrl4(linha.valorUnitarioPC),
+      diferenca: dif.texto,
+      sinal: dif.sinal,
+      detalhe: extra.detalhe ? `${extra.detalhe} ${completo}` : completo,
+      descontoWhatsApp: extra.descontoWhatsApp,
+    };
+  }
   if (campo === 'valor_unitario') {
     const dif = diffDinheiro(linha.valorUnitarioNF, linha.valorUnitarioPC);
     const extra = detalhePreco(linha);
@@ -190,6 +234,17 @@ function montarCampo(
       ...base,
       nf: `${fmtNum(linha.qtdeNF)}${linha.umNF ? ` ${linha.umNF}` : um}`,
       pc: `${fmtNum(linha.qtdePC)}${linha.umPC ? ` ${linha.umPC}` : um}`,
+      diferenca: dif.texto,
+      sinal: dif.sinal,
+    };
+  }
+  if (campo === 'ipi' && linha.conferenciaIpi === 'percentual') {
+    const dif = diffPct(linha.aliquotaIpiNF, linha.aliquotaIpiPC);
+    return {
+      ...base,
+      titulo: 'IPI %',
+      nf: fmtPct(linha.aliquotaIpiNF),
+      pc: fmtPct(linha.aliquotaIpiPC),
       diferenca: dif.texto,
       sinal: dif.sinal,
     };

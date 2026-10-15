@@ -606,6 +606,7 @@ type ProdutoConferenteDto = {
   idItem: number;
   idProduto: number;
   codigoProduto: string | null;
+  codigoFornecedor: string | null;
   descricaoProduto: string | null;
   unidadeMedida: string | null;
   tentativasUsadas: number;
@@ -620,6 +621,7 @@ function produtoParaConferente(
     idItem: number;
     idProduto: number;
     codigoProduto: string | null;
+    codigoFornecedor: string | null;
     descricaoProduto: string | null;
     unidadeMedida: string | null;
   },
@@ -632,6 +634,7 @@ function produtoParaConferente(
     idItem: item.idItem,
     idProduto: item.idProduto,
     codigoProduto: item.codigoProduto,
+    codigoFornecedor: item.codigoFornecedor,
     descricaoProduto: item.descricaoProduto,
     unidadeMedida: item.unidadeMedida,
     tentativasUsadas,

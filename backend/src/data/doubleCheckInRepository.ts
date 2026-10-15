@@ -4,6 +4,8 @@
 
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
+import { aliquotasIpiIguais, conferenciaIpiPorDataEntrada, type ConferenciaIpi } from './doubleCheckInIpi.js';
+import { entradaPorPeso, normalizarUnitarioExato, unitariosExatosIguais } from './doubleCheckInPeso.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
 /** Tipos de movimentação do SQL de negócio (entradas a conferir). */
@@ -693,8 +695,15 @@ export type DoubleCheckInComparativoLinha = {
   /** Valor unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
+  /** Quantidade em massa: o unitário é comparado sem tolerância de centavos. */
+  entradaPorPeso: boolean;
   valorIpiNF: number;
   valorIpiPC: number;
+  /** Alíquota de IPI do item (%). Base da comparação nas entradas a partir de 15/10/2026. */
+  aliquotaIpiNF: number;
+  aliquotaIpiPC: number;
+  /** valor = reais do IPI; percentual = alíquota exata do item. */
+  conferenciaIpi: ConferenciaIpi;
   condicaoPagamentoNF: string | null;
   regraPagamentoNF: string | null;
   condicaoPagamentoPC: string | null;
@@ -911,6 +920,9 @@ SELECT
   ipc.valorTotalComDesconto AS valorTotalComDescontoPC,
   IFNULL(tde.valorIPI, 0) AS valorIpiNF,
   IFNULL(tpc.valorIPI, 0) AS valorIpiPC,
+  IFNULL(tde.aliquotaIPI, 0) AS aliquotaIpiNF,
+  IFNULL(tpc.aliquotaIPI, 0) AS aliquotaIpiPC,
+  DATE(de.dataEntrada) AS dataEntradaDocumento,
   cpde.nome AS condicaoPagamentoNF,
   cpde.regra AS regraPagamentoNF,
   cppc.nome AS condicaoPagamentoPC,
@@ -1040,6 +1052,9 @@ function montarLinhaComparativo(
   });
   const valorIpiNF = toNum(r.valorIpiNF);
   const valorIpiPC = toNum(r.valorIpiPC);
+  const aliquotaIpiNF = toNum(r.aliquotaIpiNF);
+  const aliquotaIpiPC = toNum(r.aliquotaIpiPC);
+  const conferenciaIpi = conferenciaIpiPorDataEntrada(formatSqlDateYmd(r.dataEntradaDocumento));
   const condicaoPagamentoNF = strOrNull(r.condicaoPagamentoNF);
   const regraPagamentoNF = strOrNull(r.regraPagamentoNF);
   const condicaoPagamentoPC = strOrNull(r.condicaoPagamentoPC);
@@ -1062,9 +1077,15 @@ function montarLinhaComparativo(
   const prazosDiasPC = parcelasPC.map((p) => p.dias).filter((d): d is number => d != null);
   const prazosLabelNF = labelPrazosDias(prazosDiasNF);
   const prazosLabelPC = labelPrazosDias(prazosDiasPC);
-  const divergValorUnitario = !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
+  const porPeso = entradaPorPeso(strOrNull(r.umNF), strOrNull(r.umPC));
+  const divergValorUnitario = porPeso
+    ? !unitariosExatosIguais(valorUnitarioNF, valorUnitarioPC)
+    : !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
   const divergQtde = !valoresIguaisComparativo(qtdeNF, qtdePC, 4);
-  const divergIpi = !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
+  const divergIpi =
+    conferenciaIpi === 'percentual'
+      ? !aliquotasIpiIguais(aliquotaIpiNF, aliquotaIpiPC)
+      : !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
   const naoGeraContasPagar = toInt(r.geraAgendamentoFinanceiro) === 0;
   const divergCondicaoPagamento = naoGeraContasPagar
     ? false
@@ -1092,10 +1113,18 @@ function montarLinhaComparativo(
     valorUnitarioBrutoPC: arredondarComparativo(valorUnitarioBrutoPC, 2),
     descontoNF: arredondarComparativo(descontoNF, 2),
     descontoPC: arredondarComparativo(descontoPC, 2),
-    valorUnitarioNF: arredondarComparativo(valorUnitarioNF, 2),
-    valorUnitarioPC: arredondarComparativo(valorUnitarioPC, 2),
+    valorUnitarioNF: porPeso
+      ? normalizarUnitarioExato(valorUnitarioNF)
+      : arredondarComparativo(valorUnitarioNF, 2),
+    valorUnitarioPC: porPeso
+      ? normalizarUnitarioExato(valorUnitarioPC)
+      : arredondarComparativo(valorUnitarioPC, 2),
+    entradaPorPeso: porPeso,
     valorIpiNF: arredondarComparativo(valorIpiNF, 2),
     valorIpiPC: arredondarComparativo(valorIpiPC, 2),
+    aliquotaIpiNF,
+    aliquotaIpiPC,
+    conferenciaIpi,
     condicaoPagamentoNF,
     regraPagamentoNF,
     condicaoPagamentoPC,

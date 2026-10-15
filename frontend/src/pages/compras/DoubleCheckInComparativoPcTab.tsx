@@ -13,7 +13,30 @@ import {
 import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const nfBrl4 = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+});
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
+
+/** Mesma leitura do backend: 10 casas na comparação, no mínimo 4 no popup. */
+function textoReaisCasasUtilizadas(n: number | null | undefined): string {
+  const v = Number(n);
+  const valor = Number.isFinite(v) ? Math.round((v + Number.EPSILON) * 1e10) / 1e10 : 0;
+  const negativo = valor < 0;
+  const abs = Math.abs(valor);
+  const [inteiro, fracaoBruta = ''] = abs.toFixed(10).split('.');
+  const fracao = fracaoBruta.replace(/0+$/, '').padEnd(4, '0');
+  const intFmt = Number(inteiro).toLocaleString('pt-BR');
+  return `${negativo ? '−' : ''}R$ ${intFmt},${fracao}`;
+}
+
+function fmtAliquotaIpi(n: number | null | undefined): string {
+  const v = Number(n);
+  return `${nfNum.format(Number.isFinite(v) ? v : 0)}%`;
+}
 
 const inputClass =
   'rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 w-full';
@@ -96,16 +119,17 @@ function fmtUnitarioLinha(
   liquido: number,
   bruto: number,
   descontoTotal: number,
-  qtde: number
+  qtde: number,
+  formato: Intl.NumberFormat = nfBrl
 ): { principal: string; detalhe: string | null } {
   if (descontoTotal > 0) {
     const descUn = descontoUnitario(descontoTotal, qtde);
     return {
-      principal: `${nfBrl.format(liquido)} líq.`,
-      detalhe: `bruto ${nfBrl.format(bruto)} · −desc. un. ${nfBrl.format(descUn)}`,
+      principal: `${formato.format(liquido)} líq.`,
+      detalhe: `bruto ${formato.format(bruto)} · −desc. un. ${nfBrl.format(descUn)}`,
     };
   }
-  return { principal: nfBrl.format(liquido), detalhe: null };
+  return { principal: formato.format(liquido), detalhe: null };
 }
 
 function valoresExibicao(
@@ -116,10 +140,36 @@ function valoresExibicao(
   pc: string;
   nfDetalhe?: string | null;
   pcDetalhe?: string | null;
+  nfTitle?: string;
+  pcTitle?: string;
   prazosClicavel?: boolean;
 } {
   switch (c.id) {
     case 'valor_unitario': {
+      if (linha.entradaPorPeso) {
+        const nf = fmtUnitarioLinha(
+          linha.valorUnitarioNF,
+          linha.valorUnitarioBrutoNF,
+          linha.descontoNF,
+          linha.qtdeNF,
+          nfBrl4
+        );
+        const pc = fmtUnitarioLinha(
+          linha.valorUnitarioPC,
+          linha.valorUnitarioBrutoPC,
+          linha.descontoPC,
+          linha.qtdePC,
+          nfBrl4
+        );
+        return {
+          nf: nf.principal,
+          pc: pc.principal,
+          nfDetalhe: nf.detalhe,
+          pcDetalhe: pc.detalhe,
+          nfTitle: textoReaisCasasUtilizadas(linha.valorUnitarioNF),
+          pcTitle: textoReaisCasasUtilizadas(linha.valorUnitarioPC),
+        };
+      }
       const nf = fmtUnitarioLinha(
         linha.valorUnitarioNF,
         linha.valorUnitarioBrutoNF,
@@ -140,6 +190,12 @@ function valoresExibicao(
         pc: `${nfNum.format(linha.qtdePC)} ${linha.umPC ?? ''}`.trim(),
       };
     case 'ipi':
+      if (linha.conferenciaIpi === 'percentual') {
+        return {
+          nf: fmtAliquotaIpi(linha.aliquotaIpiNF),
+          pc: fmtAliquotaIpi(linha.aliquotaIpiPC),
+        };
+      }
       return { nf: nfBrl.format(linha.valorIpiNF), pc: nfBrl.format(linha.valorIpiPC) };
     case 'condicao_pagamento': {
       const nf = fmtCondicao(linha.condicaoPagamentoNF, linha.regraPagamentoNF, linha.prazosLabelNF);
@@ -490,7 +546,7 @@ export default function DoubleCheckInComparativoPcTab({
                     <div className="mb-1 flex items-center justify-between gap-1">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          {c.label}
+                          {c.id === 'ipi' && linha.conferenciaIpi === 'percentual' ? 'IPI %' : c.label}
                         </span>
                         {diverg && natureza ? (
                           <span
@@ -522,7 +578,7 @@ export default function DoubleCheckInComparativoPcTab({
                         <span className="min-w-0 text-right">
                           <span
                             className="block font-medium text-slate-800 dark:text-slate-100 break-words"
-                            title={vals.nf}
+                            title={vals.nfTitle ?? vals.nf}
                           >
                             {vals.nf}
                           </span>
@@ -549,7 +605,7 @@ export default function DoubleCheckInComparativoPcTab({
                         <span className="min-w-0 text-right">
                           <span
                             className="block font-medium text-slate-800 dark:text-slate-100 break-words"
-                            title={vals.pc}
+                            title={vals.pcTitle ?? vals.pc}
                           >
                             {vals.pc}
                           </span>

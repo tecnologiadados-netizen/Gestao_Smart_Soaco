@@ -5,6 +5,21 @@ import {
 } from './doubleCheckInNatureza.js';
 
 describe('classificarNaturezaDivergencia', () => {
+  it('no peso, trata diferença além dos centavos como real quando a nota é maior', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, valorUnitarioNF: 8.904, valorUnitarioPC: 8.901 },
+        campo: 'valor_unitario',
+      })
+    ).toBe('real');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, valorUnitarioNF: 8.901, valorUnitarioPC: 8.904 },
+        campo: 'valor_unitario',
+      })
+    ).toBe('benigna');
+  });
+
   it('considera preço menor na NF como benigno e preço maior como real', () => {
     expect(
       classificarNaturezaDivergencia({
@@ -31,6 +46,33 @@ describe('classificarNaturezaDivergencia', () => {
       classificarNaturezaDivergencia({
         linha: { qtdeNF: 10, qtdePC: 20 },
         campo: 'qtde',
+      })
+    ).toBe('real');
+  });
+
+  it('considera alíquota menor benigna e alíquota maior real, sem tolerância', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          conferenciaIpi: 'percentual',
+          aliquotaIpiNF: 3.25,
+          aliquotaIpiPC: 5,
+          valorIpiNF: 500,
+          valorIpiPC: 0,
+        },
+        campo: 'ipi',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          conferenciaIpi: 'percentual',
+          aliquotaIpiNF: 5,
+          aliquotaIpiPC: 3.25,
+          valorIpiNF: 0,
+          valorIpiPC: 500,
+        },
+        campo: 'ipi',
       })
     ).toBe('real');
   });

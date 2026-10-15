@@ -219,6 +219,7 @@ export default function DigitacaoConferenciaPage() {
         fornecedor: modalDoc.nomeParceiro,
         itens: produtos.map((item) => ({
           codigo: item.codigoProduto ?? '',
+          codigoFornecedor: item.codigoFornecedor ?? '',
           descricao: item.descricaoProduto ?? '',
         })),
       });
@@ -604,6 +605,7 @@ export default function DigitacaoConferenciaPage() {
                   <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
                     <tr>
                       <th className="px-2 py-2">Código</th>
+                      <th className="px-2 py-2">Cód. fornecedor</th>
                       <th className="px-2 py-2">Material</th>
                       <th className="px-2 py-2">UM</th>
                       <th className="px-2 py-2">Andamento</th>
@@ -613,7 +615,7 @@ export default function DigitacaoConferenciaPage() {
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                     {produtos.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-2 py-6 text-center text-slate-500">
+                        <td colSpan={6} className="px-2 py-6 text-center text-slate-500">
                           {detalheLoading ? 'Carregando…' : 'Nenhum item neste documento.'}
                         </td>
                       </tr>
@@ -621,6 +623,7 @@ export default function DigitacaoConferenciaPage() {
                       produtos.map((it) => (
                         <tr key={it.idItem}>
                           <td className="px-2 py-2 font-mono font-medium">{it.codigoProduto ?? '—'}</td>
+                          <td className="px-2 py-2 font-mono">{it.codigoFornecedor ?? '—'}</td>
                           <td className="px-2 py-2 text-slate-700 dark:text-slate-200">
                             {it.descricaoProduto ?? '—'}
                           </td>

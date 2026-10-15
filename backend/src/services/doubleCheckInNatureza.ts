@@ -1,3 +1,6 @@
+import type { ConferenciaIpi } from '../data/doubleCheckInIpi.js';
+import { aliquotaIpiNfMaior } from '../data/doubleCheckInIpi.js';
+import { unitarioExatoNfMaior } from '../data/doubleCheckInPeso.js';
 import type { DoubleCheckInCampoComparativo } from '../data/doubleCheckInLocalRepository.js';
 import { isFeriadoNacional } from '../data/crmFinanceiro/feriadosNacionais.js';
 import { parseLocalDate } from '../data/crmFinanceiro/datasLocais.js';
@@ -13,10 +16,14 @@ type ParcelaPrazo = {
 export type LinhaClassificavel = {
   valorUnitarioNF?: number;
   valorUnitarioPC?: number;
+  entradaPorPeso?: boolean;
   qtdeNF?: number;
   qtdePC?: number;
   valorIpiNF?: number;
   valorIpiPC?: number;
+  aliquotaIpiNF?: number;
+  aliquotaIpiPC?: number;
+  conferenciaIpi?: ConferenciaIpi;
   parcelasNF?: ParcelaPrazo[];
   parcelasPC?: ParcelaPrazo[];
   prazosDiasNF?: number[];
@@ -175,18 +182,20 @@ export function classificarNaturezaDivergencia(params: {
 
   const { linha, campo } = params;
   if (campo === 'valor_unitario') {
-    return centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC)
-      ? 'benigna'
-      : 'real';
+    if (linha.entradaPorPeso) {
+      return unitarioExatoNfMaior(linha.valorUnitarioNF, linha.valorUnitarioPC) ? 'real' : 'benigna';
+    }
+    return centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC) ? 'benigna' : 'real';
   }
 
   // Quantidade diferente exige avaliação, inclusive em entrega parcial.
   if (campo === 'qtde') return 'real';
 
   if (campo === 'ipi') {
-    return centavos(linha.valorIpiNF) <= centavos(linha.valorIpiPC)
-      ? 'benigna'
-      : 'real';
+    if (linha.conferenciaIpi === 'percentual') {
+      return aliquotaIpiNfMaior(linha.aliquotaIpiNF, linha.aliquotaIpiPC) ? 'real' : 'benigna';
+    }
+    return centavos(linha.valorIpiNF) <= centavos(linha.valorIpiPC) ? 'benigna' : 'real';
   }
 
   if (ehAjusteDiaUtilPagamento(linha)) return 'benigna';

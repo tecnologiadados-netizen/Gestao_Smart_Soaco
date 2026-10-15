@@ -7,6 +7,7 @@ import {
 import { JUSTIFICATIVA_SEED } from '../data/doubleCheckInJustificativas.js';
 import type { DoubleCheckInCampoComparativo } from '../data/doubleCheckInLocalRepository.js';
 import type { CampoRelato, RelatoConferencia } from './doubleCheckInConferenciaRelato.js';
+import { textoContemUnidadePeso } from '../data/doubleCheckInPeso.js';
 import {
   classificarNaturezaDivergencia,
   justificativaIndicaDivergenciaBenigna,
@@ -42,12 +43,16 @@ function codigoJustificativa(campo: CampoRelato): string | null {
   return CODIGO_POR_LABEL.get(normalizarLabel(campo.justificativa)) ?? null;
 }
 
-function classificarCampoRelato(campo: CampoRelato): NaturezaDivergencia {
+function classificarCampoRelato(campo: CampoRelato, entradaPorPeso = false): NaturezaDivergencia {
   const linha: {
     valorUnitarioNF?: number;
     valorUnitarioPC?: number;
+    entradaPorPeso?: boolean;
     valorIpiNF?: number;
     valorIpiPC?: number;
+    aliquotaIpiNF?: number;
+    aliquotaIpiPC?: number;
+    conferenciaIpi?: 'valor' | 'percentual';
     qtdeNF?: number;
     qtdePC?: number;
     prazosDiasNF?: number[];
@@ -57,9 +62,17 @@ function classificarCampoRelato(campo: CampoRelato): NaturezaDivergencia {
   if (campo.campo === 'valor_unitario') {
     linha.valorUnitarioNF = parseNumeroPtBr(campo.nf) ?? 1;
     linha.valorUnitarioPC = parseNumeroPtBr(campo.pc) ?? 0;
+    linha.entradaPorPeso = entradaPorPeso;
   } else if (campo.campo === 'ipi') {
-    linha.valorIpiNF = parseNumeroPtBr(campo.nf) ?? 1;
-    linha.valorIpiPC = parseNumeroPtBr(campo.pc) ?? 0;
+    const percentual = /%/.test(campo.nf) || /%/.test(campo.pc);
+    if (percentual) {
+      linha.conferenciaIpi = 'percentual';
+      linha.aliquotaIpiNF = parseNumeroPtBr(campo.nf) ?? 0;
+      linha.aliquotaIpiPC = parseNumeroPtBr(campo.pc) ?? 0;
+    } else {
+      linha.valorIpiNF = parseNumeroPtBr(campo.nf) ?? 1;
+      linha.valorIpiPC = parseNumeroPtBr(campo.pc) ?? 0;
+    }
   } else if (campo.campo === 'qtde') {
     linha.qtdeNF = parseNumeroPtBr(campo.nf) ?? 0;
     linha.qtdePC = parseNumeroPtBr(campo.pc) ?? 0;
@@ -105,24 +118,31 @@ function pagamentoAindaDivergeNoRelato(campo: CampoRelato): boolean {
 }
 
 export function reclassificarRelatoHistorico(relato: RelatoConferencia): RelatoConferencia {
-  const reclassificarCampo = (campo: CampoRelato): CampoRelato => ({
+  const reclassificarCampo = (campo: CampoRelato, porPeso: boolean): CampoRelato => ({
     ...campo,
-    natureza: classificarCampoRelato(campo),
+    natureza: classificarCampoRelato(campo, porPeso && campo.campo === 'valor_unitario'),
     justificativaCodigo: codigoJustificativa(campo) ?? undefined,
   });
   const pagamentoComum =
     relato.pagamentoComum && pagamentoAindaDivergeNoRelato(relato.pagamentoComum)
-      ? reclassificarCampo(relato.pagamentoComum)
+      ? reclassificarCampo(relato.pagamentoComum, false)
       : null;
-  const produtos = relato.produtos.map((produto) => ({
-    ...produto,
-    campos: produto.campos
-      .filter(
-        (campo) =>
-          campo.campo !== 'condicao_pagamento' || pagamentoAindaDivergeNoRelato(campo)
-      )
-      .map(reclassificarCampo),
-  }));
+  const produtos = relato.produtos.map((produto) => {
+    const porPeso = produto.campos.some(
+      (campo) =>
+        campo.campo === 'qtde' &&
+        (textoContemUnidadePeso(campo.nf) || textoContemUnidadePeso(campo.pc))
+    );
+    return {
+      ...produto,
+      campos: produto.campos
+        .filter(
+          (campo) =>
+            campo.campo !== 'condicao_pagamento' || pagamentoAindaDivergeNoRelato(campo)
+        )
+        .map((campo) => reclassificarCampo(campo, porPeso)),
+    };
+  });
   const campos = [
     ...(pagamentoComum ? [pagamentoComum] : []),
     ...produtos.flatMap((produto) => produto.campos),

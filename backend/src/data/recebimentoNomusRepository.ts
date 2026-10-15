@@ -72,6 +72,8 @@ export type RecebimentoDocumentoItem = {
   idItem: number;
   idProduto: number;
   codigoProduto: string | null;
+  /** Código do item no fornecedor: o da NF, ou o cadastro do produto nesse parceiro. */
+  codigoFornecedor: string | null;
   descricaoProduto: string | null;
   unidadeMedida: string | null;
   qtde: number;
@@ -145,6 +147,22 @@ SELECT
   ide.id AS idItem,
   ide.idProduto AS idProduto,
   p.nome AS codigoProduto,
+  COALESCE(
+    NULLIF(TRIM(ide.cProdXml), ''),
+    (
+      SELECT cpe.codigo
+      FROM codigoprodutoexterno cpe
+      WHERE cpe.idProduto = ide.idProduto
+        AND cpe.idPessoa = de.idParceiro
+        AND NULLIF(TRIM(cpe.codigo), '') IS NOT NULL
+      ORDER BY
+        CASE
+          WHEN cpe.idUnidadeMedida = COALESCE(ide.idUnidadeMedida, p.idUnidadeMedida) THEN 0
+          ELSE 1
+        END
+      LIMIT 1
+    )
+  ) AS codigoFornecedor,
   p.descricao AS descricaoProduto,
   um.nome AS unidadeMedida,
   ide.qtde AS qtde,
@@ -352,6 +370,7 @@ export async function queryItensDocumentoPreEntradaNomus(
         idItem: toInt(r.idItem),
         idProduto: toInt(r.idProduto),
         codigoProduto: strOrNull(r.codigoProduto),
+        codigoFornecedor: strOrNull(r.codigoFornecedor),
         descricaoProduto: strOrNull(r.descricaoProduto),
         unidadeMedida: strOrNull(r.unidadeMedida),
         qtde: toNum(r.qtde),

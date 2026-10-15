@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 
 export type ItemImpressaoConferencia = {
   codigo: string;
+  codigoFornecedor: string;
   descricao: string;
 };
 
@@ -37,19 +38,28 @@ function montarPdf(input: ImprimirItensConferenciaInput): jsPDF {
   doc.text(`NF-e ${nfe} · ${fornecedor}`, margem, 22);
   doc.setFontSize(8);
   doc.setTextColor(80);
-  doc.text('Lista só com código e descrição, para o conferente levar ao local da contagem.', margem, 28);
+  doc.text(
+    'Lista com o código interno, o código do item no fornecedor e a descrição.',
+    margem,
+    28,
+  );
   doc.setTextColor(0);
 
   autoTable(doc, {
     startY: 32,
     margin: { left: margem, right: margem },
-    head: [['Código', 'Descrição']],
-    body: input.itens.map((item) => [item.codigo || '—', item.descricao || '—']),
+    head: [['Código', 'Cód. fornecedor', 'Descrição']],
+    body: input.itens.map((item) => [
+      item.codigo || '—',
+      item.codigoFornecedor || '—',
+      item.descricao || '—',
+    ]),
     styles: { font: 'helvetica', fontSize: 10, cellPadding: 2.2, textColor: 20 },
     headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 42, fontStyle: 'bold' },
-      1: { cellWidth: 'auto' },
+      0: { cellWidth: 36, fontStyle: 'bold' },
+      1: { cellWidth: 40 },
+      2: { cellWidth: 'auto' },
     },
   });
 
