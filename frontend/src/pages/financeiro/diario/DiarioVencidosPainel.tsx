@@ -402,8 +402,8 @@ export const DiarioVencidosPainel = forwardRef<
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="card-panel overflow-visible">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+      <div className="card-panel shrink-0 overflow-visible">
         <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-slate-700">
           {([
             ['titulos', 'Títulos'],
@@ -445,13 +445,14 @@ export const DiarioVencidosPainel = forwardRef<
       </div>
 
       {erro ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">{erro}</div>
+        <div className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">{erro}</div>
       ) : null}
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
         {base.length.toLocaleString('pt-BR')} título(s) em aberto: vencidos (qualquer data) ou reprogramados (qualquer data). Contas já baixadas não entram.
       </p>
 
+      <div className="min-h-0 flex-1 overflow-auto pb-4">
       {subaba === 'dashboard' ? (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -552,7 +553,7 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
         </div>
       ) : (
-        <div className="card-panel min-h-0 max-h-[calc(100svh-22rem)] overflow-auto !p-0">
+        <div className="card-panel min-h-0 overflow-auto !p-0">
           <table className="min-w-[1100px] w-full text-xs uppercase">
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
@@ -625,6 +626,7 @@ export const DiarioVencidosPainel = forwardRef<
           </table>
         </div>
       )}
+      </div>
       {detalhe ? <ModalDetalheGrafico titulo={detalhe.titulo} linhas={detalhe.linhas} mapaSub={mapaSub} onClose={() => setDetalhe(null)} /> : null}
     </div>
   );
