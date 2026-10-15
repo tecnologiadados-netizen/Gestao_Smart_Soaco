@@ -37,6 +37,7 @@ import {
 } from "@qualidade/lib/utils/status-labels";
 import { formatarData, formatarDataHora } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
+import { montarAtualizacoesExternas } from "@qualidade/lib/documents/historico-atualizacoes";
 import {
   labelResponsavel,
   labelResponsavelPosse,
@@ -266,39 +267,19 @@ function DocumentoConsultaDetalheDialogImpl({
   );
   const atualizacoesExternas = useMemo(() => {
     if (!doc || doc.origem !== "externo") return [];
-    type Item = {
-      key: string;
-      nome: string;
-      dataPublicacao?: string;
-      dataUrl?: string;
-      storagePath?: string;
-    };
-    const items: Item[] = [];
-    for (const [idx, h] of (doc.externoRegistro?.historicoAtualizacoes ?? []).entries()) {
-      if (!h.nome?.trim()) continue;
-      items.push({
-        key: `hist-${idx}-${h.nome}`,
-        nome: h.nome,
-        dataPublicacao: h.dataPublicacao,
-        dataUrl: h.dataUrl,
-        storagePath: h.storagePath,
-      });
-    }
-    for (const ver of versoes) {
-      if (ver.versao === doc.versaoAtual) continue;
-      const arquivos = arquivosDaVersao(ver, doc);
-      for (const [idx, arquivo] of arquivos.entries()) {
-        items.push({
-          key: `ver-${ver.id}-${idx}`,
-          nome: arquivo.nome,
-          dataPublicacao: ver.dataAprovacao || ver.dataElaboracao,
-          dataUrl: arquivo.dataUrl,
-          storagePath: arquivo.storagePath,
-        });
-      }
-    }
-    return items;
-  }, [doc, versoes]);
+    return montarAtualizacoesExternas({
+      versaoAtual: doc.versaoAtual,
+      vigentes: arquivosVigentes,
+      historico: doc.externoRegistro?.historicoAtualizacoes ?? [],
+      versoes: versoes.map((ver) => ({
+        id: ver.id,
+        versao: ver.versao,
+        dataAprovacao: ver.dataAprovacao,
+        dataElaboracao: ver.dataElaboracao,
+        arquivos: arquivosDaVersao(ver, doc),
+      })),
+    });
+  }, [arquivosVigentes, doc, versoes]);
   const temArquivo = arquivosVigentes.some((a) => arquivoTemConteudo(a));
   const revalidacoes = documentId
     ? getRevalidacoesByDocumentId(documentId)
