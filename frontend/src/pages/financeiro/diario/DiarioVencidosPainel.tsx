@@ -552,14 +552,6 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          <Ranking
-            titulo="Por subclassificação"
-            detalhe="Clique em uma barra para ver as contas desse agrupamento."
-            dados={resumo.subclassificacoes}
-            cor={COR_SUB}
-            onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => nomeSubclassificacao(l, mapaSub) === nome))}
-          />
         <div className="card-panel min-h-0 max-h-[calc(100svh-22rem)] overflow-auto !p-0">
           <table className="min-w-[1100px] w-full text-xs uppercase">
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
@@ -631,7 +623,6 @@ export const DiarioVencidosPainel = forwardRef<
               })}
             </tbody>
           </table>
-        </div>
         </div>
       )}
       {detalhe ? <ModalDetalheGrafico titulo={detalhe.titulo} linhas={detalhe.linhas} mapaSub={mapaSub} onClose={() => setDetalhe(null)} /> : null}
