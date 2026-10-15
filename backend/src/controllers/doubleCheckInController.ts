@@ -29,6 +29,8 @@ import {
   getDoubleCheckInLimiarPct,
   getOrCreateDoubleCheckInAlertaDesdeYmd,
   listarDecisoesComparativo,
+  listarSolicitacoesOtimiza,
+  gravarSolicitacaoOtimiza,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
@@ -358,10 +360,11 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
   }
   try {
     await ensureDoubleCheckInJustificativaOpcoes();
-    const [{ linhas, erro }, decisoes, justificativas, dataDocumento] = await Promise.all([
+    const [{ linhas, erro }, decisoes, justificativas, solicitacoesOtimiza, dataDocumento] = await Promise.all([
       queryDoubleCheckInComparativoPc({ idDocumento }),
       listarDecisoesComparativo(idDocumento),
       listarJustificativaOpcoes(true),
+      listarSolicitacoesOtimiza(idDocumento),
       queryDoubleCheckInDataEntrada(idDocumento),
     ]);
     if (erro) {
@@ -376,6 +379,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
       linhas: linhasComNatureza(linhas, decisoes),
       decisoes,
       justificativas,
+      solicitacoesOtimiza,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
       idDocumento,
     });
@@ -383,6 +387,147 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[getDoubleCheckInComparativoPc]', msg);
     res.status(503).json({ error: msg });
+  }
+}
+
+/**
+ * PUT /api/compras/double-checkin/solicitacao-otimiza
+ * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo, numero }
+ * Grava a solicitação antes de liberar o aceite da divergência.
+ */
+export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Response): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const idItemDocumentoEstoque = Math.trunc(Number(req.body?.idItemDocumentoEstoque));
+  const idItemPedidoCompra = Math.trunc(Number(req.body?.idItemPedidoCompra));
+  const campo = String(req.body?.campo ?? '').trim() as DoubleCheckInCampoComparativo;
+  const numero = Number(typeof req.body?.numero === 'string' ? req.body.numero.trim() : req.body?.numero);
+  const aplicarNasDemais = req.body?.aplicarNasDemais === true;
+
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemDocumentoEstoque) || idItemDocumentoEstoque <= 0) {
+    res.status(400).json({ error: 'idItemDocumentoEstoque inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemPedidoCompra) || idItemPedidoCompra <= 0) {
+    res.status(400).json({ error: 'idItemPedidoCompra inválido.' });
+    return;
+  }
+  if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
+    res.status(400).json({ error: 'campo inválido.' });
+    return;
+  }
+
+  try {
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) !== 'completa') {
+      res.status(400).json({
+        error: 'Para entradas anteriores a 21/09/2026, o comparativo NF × PC é somente leitura.',
+      });
+      return;
+    }
+    const usuario = await prisma.usuario.findUnique({
+      where: { login },
+      select: { id: true, login: true },
+    });
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    const ja = await getDocumentoConferido(idDocumento);
+    if (ja) {
+      const decisoesAntes = await listarDecisoesComparativo(idDocumento);
+      const decisaoExistente = decisoesAntes.find(
+        (item) =>
+          item.vigente !== false &&
+          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          item.idItemPedidoCompra === idItemPedidoCompra &&
+          item.campo === campo
+      );
+      if (decisaoExistente) {
+        res.status(400).json({
+          error: 'Esta divergência já possui decisão. Reabra a conferência para alterá-la.',
+        });
+        return;
+      }
+    }
+
+    const base = {
+      idDocumentoEstoque: idDocumento,
+      campo,
+      numero,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    };
+    const solicitacao = await gravarSolicitacaoOtimiza({
+      ...base,
+      idItemDocumentoEstoque,
+      idItemPedidoCompra,
+    });
+    const replicadas = [];
+    if (aplicarNasDemais || campo === 'condicao_pagamento') {
+      const { linhas } = await queryDoubleCheckInComparativoPc({ idDocumento });
+      const decisoesVigentes = await listarDecisoesComparativo(idDocumento);
+      const jaDecidido = (idItemDoc: number, idItemPc: number, campoAlvo: string) =>
+        decisoesVigentes.some(
+          (item) =>
+            item.vigente !== false &&
+            item.idItemDocumentoEstoque === idItemDoc &&
+            item.idItemPedidoCompra === idItemPc &&
+            item.campo === campoAlvo
+        );
+      const origem = linhas.find(
+        (l) =>
+          l.idItemDocumentoEstoque === idItemDocumentoEstoque && l.idItemPedidoCompra === idItemPedidoCompra
+      );
+      const idPc = origem?.idPedidoCompra ?? null;
+      for (const linha of linhas) {
+        const alvos: { campo: DoubleCheckInCampoComparativo; divergente: boolean }[] = aplicarNasDemais
+          ? [
+              { campo: 'valor_unitario', divergente: linha.divergValorUnitario },
+              { campo: 'qtde', divergente: linha.divergQtde },
+              { campo: 'ipi', divergente: linha.divergIpi },
+              { campo: 'condicao_pagamento', divergente: linha.divergCondicaoPagamento },
+            ]
+          : linha.idPedidoCompra === idPc
+            ? [{ campo: 'condicao_pagamento', divergente: linha.divergCondicaoPagamento }]
+            : [];
+        for (const alvo of alvos) {
+          if (!alvo.divergente) continue;
+          if (
+            linha.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+            linha.idItemPedidoCompra === idItemPedidoCompra &&
+            alvo.campo === campo
+          ) {
+            continue;
+          }
+          if (jaDecidido(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, alvo.campo)) continue;
+          replicadas.push(
+            await gravarSolicitacaoOtimiza({
+              ...base,
+              campo: alvo.campo,
+              idItemDocumentoEstoque: linha.idItemDocumentoEstoque,
+              idItemPedidoCompra: linha.idItemPedidoCompra,
+            })
+          );
+        }
+      }
+    }
+    res.json({ ok: true, solicitacao, replicadas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
   }
 }
 
@@ -520,6 +665,17 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
                 item.campo === campo
             );
           if (irmaoJaDecidido) continue;
+          if (decisaoRaw === 'aceita' && decisao.numeroSolicitacaoOtimiza) {
+            await gravarSolicitacaoOtimiza({
+              idDocumentoEstoque: idDocumento,
+              idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,
+              idItemPedidoCompra: irmao.idItemPedidoCompra,
+              campo,
+              numero: decisao.numeroSolicitacaoOtimiza,
+              usuarioId: usuario.id,
+              usuarioLogin: usuario.login,
+            });
+          }
           const d = await upsertDecisaoComparativo({
             ...baseParams,
             idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,

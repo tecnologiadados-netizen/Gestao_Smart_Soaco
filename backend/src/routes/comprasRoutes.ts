@@ -31,6 +31,7 @@ import {
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
+  putDoubleCheckInSolicitacaoOtimiza,
   postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
@@ -478,6 +479,11 @@ router.get(
   '/double-checkin/notas/:idDocumento/comparativo-pc',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInComparativoPc)
+);
+router.put(
+  '/double-checkin/solicitacao-otimiza',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(putDoubleCheckInSolicitacaoOtimiza)
 );
 router.put(
   '/double-checkin/comparativo-decisao',

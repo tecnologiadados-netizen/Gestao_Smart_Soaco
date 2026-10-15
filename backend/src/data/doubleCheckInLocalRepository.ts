@@ -21,6 +21,7 @@ import {
   DOUBLE_CHECKIN_CONFERENCIA_NF_PC_DESDE,
   ehConferenciaNfPcValida,
 } from '../services/doubleCheckInConferenciaPeriodo.js';
+import { numeroSolicitacaoOtimizaValido } from './doubleCheckInOtimiza.js';
 
 export const DOUBLE_CHECKIN_WA_CODE = 'compras_double_checkin';
 /** Alerta ao confirmar conferência quando há divergência NF × Pedido de compra. */
@@ -249,6 +250,7 @@ export type DoubleCheckInComparativoDecisaoRow = {
   justificativaCodigo: string;
   justificativaLabel: string;
   observacao: string | null;
+  numeroSolicitacaoOtimiza: number | null;
   usuarioId: number;
   usuarioLogin: string;
   atualizadoEm: string;
@@ -311,6 +313,7 @@ function mapDecisao(
     decisao: string;
     justificativaOpcaoId: number;
     observacao: string | null;
+    numeroSolicitacaoOtimiza?: number | null;
     usuarioId: number;
     usuarioLogin: string;
     atualizadoEm: Date;
@@ -330,6 +333,7 @@ function mapDecisao(
     justificativaCodigo: r.justificativaOpcao.codigo,
     justificativaLabel: r.justificativaOpcao.label,
     observacao: r.observacao,
+    numeroSolicitacaoOtimiza: r.numeroSolicitacaoOtimiza ?? null,
     usuarioId: r.usuarioId,
     usuarioLogin: r.usuarioLogin,
     atualizadoEm: r.atualizadoEm.toISOString(),
@@ -485,6 +489,79 @@ export async function listarDecisoesComparativo(
   });
 }
 
+export type DoubleCheckInSolicitacaoOtimizaRow = {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  numero: number;
+};
+
+export async function listarSolicitacoesOtimiza(
+  idDocumentoEstoque: number
+): Promise<DoubleCheckInSolicitacaoOtimizaRow[]> {
+  const rows = await prisma.doubleCheckInSolicitacaoOtimiza.findMany({
+    where: { idDocumentoEstoque },
+    orderBy: { id: 'asc' },
+  });
+  return rows.map((r) => ({
+    idDocumentoEstoque: r.idDocumentoEstoque,
+    idItemDocumentoEstoque: r.idItemDocumentoEstoque,
+    idItemPedidoCompra: r.idItemPedidoCompra,
+    campo: r.campo as DoubleCheckInCampoComparativo,
+    numero: r.numero,
+  }));
+}
+
+export async function gravarSolicitacaoOtimiza(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  numero: number;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<DoubleCheckInSolicitacaoOtimizaRow> {
+  if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
+    throw new Error(`Campo inválido: ${params.campo}`);
+  }
+  const numero = numeroSolicitacaoOtimizaValido(params.numero);
+  if (numero == null) {
+    throw new Error('Informe o número inteiro da solicitação no Otimiza.');
+  }
+  const row = await prisma.doubleCheckInSolicitacaoOtimiza.upsert({
+    where: {
+      idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+        idItemPedidoCompra: params.idItemPedidoCompra,
+        campo: params.campo,
+      },
+    },
+    create: {
+      idDocumentoEstoque: params.idDocumentoEstoque,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+      numero,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+    update: {
+      numero,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+  });
+  return {
+    idDocumentoEstoque: row.idDocumentoEstoque,
+    idItemDocumentoEstoque: row.idItemDocumentoEstoque,
+    idItemPedidoCompra: row.idItemPedidoCompra,
+    campo: row.campo as DoubleCheckInCampoComparativo,
+    numero: row.numero,
+  };
+}
+
 export async function upsertDecisaoComparativo(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
@@ -518,6 +595,25 @@ export async function upsertDecisaoComparativo(params: {
     throw new Error('Informe a observação quando a justificativa for "Outros".');
   }
 
+  const solicitacao =
+    params.decisao === 'aceita'
+      ? await prisma.doubleCheckInSolicitacaoOtimiza.findUnique({
+          where: {
+            idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+              idDocumentoEstoque: params.idDocumentoEstoque,
+              idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+              idItemPedidoCompra: params.idItemPedidoCompra,
+              campo: params.campo,
+            },
+          },
+        })
+      : null;
+  const numeroSolicitacaoOtimiza =
+    params.decisao === 'aceita' ? numeroSolicitacaoOtimizaValido(solicitacao?.numero) : null;
+  if (params.decisao === 'aceita' && numeroSolicitacaoOtimiza == null) {
+    throw new Error('Grave o número da solicitação no Otimiza antes de aceitar a divergência.');
+  }
+
   const obsTrim = params.observacao?.trim() || null;
   const row = await prisma.doubleCheckInComparativoDecisao.upsert({
     where: {
@@ -536,6 +632,7 @@ export async function upsertDecisaoComparativo(params: {
       decisao: params.decisao,
       justificativaOpcaoId: params.justificativaOpcaoId,
       observacao: obsTrim,
+      numeroSolicitacaoOtimiza,
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },
@@ -543,6 +640,7 @@ export async function upsertDecisaoComparativo(params: {
       decisao: params.decisao,
       justificativaOpcaoId: params.justificativaOpcaoId,
       observacao: obsTrim,
+      numeroSolicitacaoOtimiza,
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },

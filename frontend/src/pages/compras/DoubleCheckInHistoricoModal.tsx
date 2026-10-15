@@ -10,6 +10,7 @@ import {
   type DoubleCheckInHistoricoEvento,
   type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInNota,
+  type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
 import DoubleCheckInComparativoPcTab from './DoubleCheckInComparativoPcTab';
 
@@ -56,6 +57,7 @@ function ComparativoHistoricoModal({
   const [linhas, setLinhas] = useState<DoubleCheckInComparativoLinha[]>([]);
   const [decisoes, setDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [justificativas, setJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
+  const [solicitacoesOtimiza, setSolicitacoesOtimiza] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,6 +81,7 @@ function ComparativoHistoricoModal({
             linhas: r.linhas,
             decisoes: [] as DoubleCheckInComparativoDecisao[],
             justificativas: [] as DoubleCheckInJustificativaOpcao[],
+            solicitacoesOtimiza: [] as DoubleCheckInSolicitacaoOtimiza[],
             aviso: r.aviso,
             origem: r.origem,
             erro: r.erro ?? null,
@@ -87,6 +90,7 @@ function ComparativoHistoricoModal({
             linhas: r.linhas,
             decisoes: r.decisoes,
             justificativas: r.justificativas,
+            solicitacoesOtimiza: r.solicitacoesOtimiza,
             aviso: null as string | null,
             origem: null as 'retrato' | 'nao_gravada' | null,
             erro: r.erro ?? null,
@@ -96,6 +100,7 @@ function ComparativoHistoricoModal({
       setLinhas(r.linhas);
       setDecisoes(r.decisoes);
       setJustificativas(r.justificativas);
+      setSolicitacoesOtimiza(r.solicitacoesOtimiza);
       setAviso(r.aviso);
       setOrigem(r.origem);
       setErro(r.erro);
@@ -160,9 +165,11 @@ function ComparativoHistoricoModal({
                 linhas={linhas}
                 decisoes={decisoes}
                 justificativas={justificativas}
+                solicitacoesOtimiza={solicitacoesOtimiza}
                 loading={loading}
                 erro={erro}
                 onDecisoesChange={setDecisoes}
+                onSolicitacoesChange={setSolicitacoesOtimiza}
               />
             </>
           )}

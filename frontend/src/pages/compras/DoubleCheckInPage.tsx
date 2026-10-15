@@ -21,6 +21,7 @@ import {
   saveDoubleCheckInParametros,
   syncDoubleCheckIn,
   type DoubleCheckInComparativoDecisao,
+  type DoubleCheckInSolicitacaoOtimiza,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInItem,
   type DoubleCheckInJustificativaOpcao,
@@ -88,6 +89,7 @@ type ComparativoCache = {
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
+  solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
 };
 
 type FiltroSituacao =
@@ -166,6 +168,7 @@ export default function DoubleCheckInPage() {
   const [compLinhas, setCompLinhas] = useState<DoubleCheckInComparativoLinha[]>([]);
   const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
+  const [compSolicitacoes, setCompSolicitacoes] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
   const [compBloqueioMsg, setCompBloqueioMsg] = useState<string | null>(null);
   const [reabrindoConferencia, setReabrindoConferencia] = useState(false);
 
@@ -303,6 +306,7 @@ export default function DoubleCheckInPage() {
     setDetalheItens([]);
     setCompLinhas([]);
     setCompDecisoes([]);
+    setCompSolicitacoes([]);
     try {
       const r = await fetchDoubleCheckInItens(nota.idDocumento);
       if (r.erro) {
@@ -332,6 +336,7 @@ export default function DoubleCheckInPage() {
       setCompLinhas(cached.linhas);
       setCompDecisoes(cached.decisoes);
       setCompJustificativas(cached.justificativas);
+      setCompSolicitacoes(cached.solicitacoesOtimiza ?? []);
       setCompErro(null);
       return;
     }
@@ -343,6 +348,7 @@ export default function DoubleCheckInPage() {
         setCompErro(r.erro);
         setCompLinhas([]);
         setCompDecisoes([]);
+        setCompSolicitacoes([]);
         setCompJustificativas(r.justificativas);
         return;
       }
@@ -350,11 +356,13 @@ export default function DoubleCheckInPage() {
         linhas: r.linhas,
         decisoes: r.decisoes,
         justificativas: r.justificativas,
+        solicitacoesOtimiza: r.solicitacoesOtimiza,
       };
       comparativoCacheRef.current.set(idDocumento, payload);
       setCompLinhas(payload.linhas);
       setCompDecisoes(payload.decisoes);
       setCompJustificativas(payload.justificativas);
+      setCompSolicitacoes(payload.solicitacoesOtimiza);
     } catch (e) {
       setCompErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -395,6 +403,7 @@ export default function DoubleCheckInPage() {
       comparativoCacheRef.current.delete(modalNota.idDocumento);
       setCompLinhas([]);
       setCompDecisoes([]);
+      setCompSolicitacoes([]);
       setModalAba('nf_pc');
       await carregarComparativo(modalNota.idDocumento);
     } finally {
@@ -619,11 +628,13 @@ export default function DoubleCheckInPage() {
           linhas: r.linhas,
           decisoes: r.decisoes,
           justificativas: r.justificativas,
+          solicitacoesOtimiza: r.solicitacoesOtimiza,
         };
         comparativoCacheRef.current.set(modalNota.idDocumento, payload);
         setCompLinhas(payload.linhas);
         setCompDecisoes(payload.decisoes);
         setCompJustificativas(payload.justificativas);
+        setCompSolicitacoes(payload.solicitacoesOtimiza);
         linhas = payload.linhas;
         decisoes = payload.decisoes;
       } finally {
@@ -641,7 +652,7 @@ export default function DoubleCheckInPage() {
     if (regimeConferencia === 'completa' && pendentes > 0) {
       setModalAba('nf_pc');
       setCompBloqueioMsg(
-        `Há ${pendentes} divergência(s) NF × PC sem decisão (aceitar/recusar + justificativa).`
+        `Há ${pendentes} divergência(s) NF × PC sem decisão. Para aceitar, grave antes a solicitação no Otimiza.`
       );
       return;
     }
@@ -1262,8 +1273,19 @@ export default function DoubleCheckInPage() {
                       linhas={compLinhas}
                       decisoes={compDecisoes}
                       justificativas={compJustificativas}
+                      solicitacoesOtimiza={compSolicitacoes}
                       loading={compLoading}
                       erro={compErro}
+                      onSolicitacoesChange={(next) => {
+                        setCompSolicitacoes(next);
+                        const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                        if (prev) {
+                          comparativoCacheRef.current.set(modalNota.idDocumento, {
+                            ...prev,
+                            solicitacoesOtimiza: next,
+                          });
+                        }
+                      }}
                       onDecisoesChange={(next) => {
                         setCompDecisoes(next);
                         setCompBloqueioMsg(null);

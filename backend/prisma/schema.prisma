@@ -285,6 +285,8 @@ model DoubleCheckInComparativoDecisao {
   decisao                String
   justificativaOpcaoId   Int
   observacao             String?
+  /// Número da solicitação no Otimiza, exigido para aceitar a divergência.
+  numeroSolicitacaoOtimiza Int?
   usuarioId              Int
   usuarioLogin           String
   atualizadoEm           DateTime @default(now()) @updatedAt
@@ -294,6 +296,23 @@ model DoubleCheckInComparativoDecisao {
   @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
   @@index([idDocumentoEstoque])
   @@map("double_checkin_comparativo_decisao")
+}
+
+/// Comunicação prévia no Otimiza, gravada antes de aceitar a divergência.
+model DoubleCheckInSolicitacaoOtimiza {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  campo                  String
+  numero                 Int
+  usuarioId              Int
+  usuarioLogin           String
+  atualizadoEm           DateTime @default(now()) @updatedAt
+
+  @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo])
+  @@index([idDocumentoEstoque])
+  @@map("double_checkin_solicitacao_otimiza")
 }
 
 /// Primeira leitura em que a NF vinculada ao pedido divergiu. Permanece se o vínculo for desfeito.

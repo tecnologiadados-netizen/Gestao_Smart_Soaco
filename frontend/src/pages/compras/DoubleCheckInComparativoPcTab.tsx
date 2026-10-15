@@ -4,11 +4,13 @@ import { Check, CheckCircle2, MessageSquarePlus, X, XCircle } from 'lucide-react
 import {
   addDoubleCheckInComparativoObservacao,
   saveDoubleCheckInComparativoDecisao,
+  saveDoubleCheckInSolicitacaoOtimiza,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInComparativoObsHist,
   type DoubleCheckInJustificativaOpcao,
+  type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
 import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
 
@@ -259,9 +261,11 @@ type Props = {
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
+  solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
   loading: boolean;
   erro: string | null;
   onDecisoesChange: (next: DoubleCheckInComparativoDecisao[]) => void;
+  onSolicitacoesChange: (next: DoubleCheckInSolicitacaoOtimiza[]) => void;
 };
 
 export function contarPendentesComparativo(
@@ -281,14 +285,20 @@ export default function DoubleCheckInComparativoPcTab({
   linhas,
   decisoes,
   justificativas,
+  solicitacoesOtimiza,
   loading,
   erro,
   onDecisoesChange,
+  onSolicitacoesChange,
 }: Props) {
   const [draft, setDraft] = useState<DraftJustif | null>(null);
   const [opcaoId, setOpcaoId] = useState<number | ''>('');
   const [obs, setObs] = useState('');
+  const [numeroOtimiza, setNumeroOtimiza] = useState('');
+  const [numeroGravado, setNumeroGravado] = useState<number | null>(null);
+  const [aplicouNasDemais, setAplicouNasDemais] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoNumero, setSalvandoNumero] = useState(false);
   const [justErro, setJustErro] = useState<string | null>(null);
 
   const [draftObs, setDraftObs] = useState<DraftObs | null>(null);
@@ -296,6 +306,14 @@ export default function DoubleCheckInComparativoPcTab({
   const [salvandoObs, setSalvandoObs] = useState(false);
   const [obsErro, setObsErro] = useState<string | null>(null);
   const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
+
+  const solicitacaoMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of solicitacoesOtimiza) {
+      m.set(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo), s.numero);
+    }
+    return m;
+  }, [solicitacoesOtimiza]);
 
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
@@ -336,9 +354,15 @@ export default function DoubleCheckInComparativoPcTab({
     );
     // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
     if (conferido && existente?.vigente !== false) return;
+    const numeroSalvo = solicitacaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
+    );
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
+    setNumeroOtimiza(numeroSalvo != null ? String(numeroSalvo) : '');
+    setNumeroGravado(numeroSalvo ?? null);
+    setAplicouNasDemais(false);
     setJustErro(null);
   };
 
@@ -356,8 +380,81 @@ export default function DoubleCheckInComparativoPcTab({
     setObsErro(null);
   };
 
+  const aceiteLiberado =
+    draft?.decisao !== 'aceita' ||
+    (numeroGravado != null && numeroOtimiza.trim() === String(numeroGravado));
+
+  const outrasDivergenciasAbertas = useMemo(() => {
+    if (!draft || draft.decisao !== 'aceita') return 0;
+    const atual = chaveDecisao(
+      draft.linha.idItemDocumentoEstoque,
+      draft.linha.idItemPedidoCompra,
+      draft.campo
+    );
+    let total = 0;
+    for (const linha of linhas) {
+      for (const c of CAMPOS) {
+        if (!linha[c.divergKey]) continue;
+        const chave = chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id);
+        if (chave === atual) continue;
+        const dec = decisaoMap.get(chave);
+        if (dec && dec.vigente !== false) continue;
+        total += 1;
+      }
+    }
+    return total;
+  }, [draft, linhas, decisaoMap]);
+
+  const gravarNumeroOtimiza = async (aplicarNasDemais = false) => {
+    if (!draft || draft.decisao !== 'aceita') return;
+    if (!/^\d+$/.test(numeroOtimiza.trim())) {
+      setJustErro('Informe o número inteiro da solicitação no Otimiza.');
+      return;
+    }
+    const numero = Number(numeroOtimiza.trim());
+    if (!Number.isInteger(numero) || numero <= 0) {
+      setJustErro('Informe o número inteiro da solicitação no Otimiza.');
+      return;
+    }
+    setSalvandoNumero(true);
+    setJustErro(null);
+    try {
+      const r = await saveDoubleCheckInSolicitacaoOtimiza({
+        idDocumento,
+        idItemDocumentoEstoque: draft.linha.idItemDocumentoEstoque,
+        idItemPedidoCompra: draft.linha.idItemPedidoCompra,
+        campo: draft.campo,
+        numero,
+        aplicarNasDemais,
+      });
+      if (r.erro || !r.solicitacao) {
+        setJustErro(r.erro ?? 'Não foi possível gravar a solicitação.');
+        return;
+      }
+      const aplicadas = [r.solicitacao, ...(r.replicadas ?? [])];
+      const keys = new Set(
+        aplicadas.map((s) => chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
+      );
+      onSolicitacoesChange([
+        ...solicitacoesOtimiza.filter(
+          (s) => !keys.has(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
+        ),
+        ...aplicadas,
+      ]);
+      setNumeroGravado(r.solicitacao.numero);
+      setNumeroOtimiza(String(r.solicitacao.numero));
+      setAplicouNasDemais(aplicarNasDemais);
+    } finally {
+      setSalvandoNumero(false);
+    }
+  };
+
   const salvarJustificativa = async () => {
     if (!draft) return;
+    if (draft.decisao === 'aceita' && !aceiteLiberado) {
+      setJustErro('Grave o número da solicitação no Otimiza antes de aceitar.');
+      return;
+    }
     if (!opcaoId) {
       setJustErro('Selecione a justificativa.');
       return;
@@ -641,14 +738,24 @@ export default function DoubleCheckInComparativoPcTab({
                             title={dec?.justificativaLabel ?? ''}
                           >
                             {dec
-                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
-                              : 'Divergente'}
+                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}${
+                                  dec.decisao === 'aceita' && dec.numeroSolicitacaoOtimiza
+                                    ? ` · Otimiza nº ${dec.numeroSolicitacaoOtimiza}`
+                                    : ''
+                                }: ${dec.justificativaLabel}`
+                              : solicitacaoMap.get(
+                                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+                                  )
+                                ? `Otimiza nº ${solicitacaoMap.get(
+                                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+                                  )} gravada`
+                                : 'Divergente'}
                           </span>
                           {!somenteLeitura && (!conferido || !decVigente) && (
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
-                                title="Aceitar divergência (com justificativa/observação)"
+                                title="Aceitar divergência (exige solicitação no Otimiza)"
                                 className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
                               >
@@ -720,21 +827,69 @@ export default function DoubleCheckInComparativoPcTab({
             className="fixed inset-0 z-[10070] flex items-center justify-center p-4 bg-slate-900/55"
             role="dialog"
             aria-modal="true"
-            onClick={() => !salvando && setDraft(null)}
+            onClick={() => !salvando && !salvandoNumero && setDraft(null)}
           >
             <div
               className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Justificativa da divergência
+                {draft.decisao === 'aceita' ? 'Aceitar divergência' : 'Recusar divergência'}
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                {draft.decisao === 'aceita' ? 'Aceitar' : 'Recusar'} ·{' '}
                 {CAMPOS.find((c) => c.id === draft.campo)?.label} ·{' '}
                 {draft.linha.codigoProduto ?? draft.linha.idProduto}
               </p>
               <div className="mt-4 space-y-3">
+                {draft.decisao === 'aceita' && (
+                  <div>
+                    <label className={labelClass}>Nº da solicitação no Otimiza *</label>
+                    <div className="flex gap-2">
+                      <input
+                        className={inputClass}
+                        inputMode="numeric"
+                        value={numeroOtimiza}
+                        onChange={(e) => setNumeroOtimiza(e.target.value.replace(/[^\d]/g, ''))}
+                        placeholder="Número inteiro"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className={`${btnPrimary} shrink-0`}
+                        disabled={
+                          salvandoNumero ||
+                          salvando ||
+                          !numeroOtimiza.trim() ||
+                          numeroOtimiza.trim() === String(numeroGravado ?? '')
+                        }
+                        onClick={() => void gravarNumeroOtimiza()}
+                      >
+                        {salvandoNumero ? 'Gravando…' : numeroGravado ? 'Atualizar' : 'Gravar'}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {aceiteLiberado
+                        ? aplicouNasDemais
+                          ? `Solicitação ${numeroGravado} gravada nesta e nas outras divergências em aberto. Agora informe a justificativa.`
+                          : `Solicitação ${numeroGravado} gravada. Agora informe a justificativa.`
+                        : 'Grave o número da solicitação aberta no Otimiza. A justificativa só libera depois disso.'}
+                    </p>
+                    {outrasDivergenciasAbertas > 0 && (
+                      <button
+                        type="button"
+                        className={`${btnSecondary} mt-2 w-full`}
+                        disabled={salvandoNumero || salvando || !numeroOtimiza.trim()}
+                        onClick={() => void gravarNumeroOtimiza(true)}
+                      >
+                        {salvandoNumero
+                          ? 'Gravando…'
+                          : `Vale para as demais divergências (${outrasDivergenciasAbertas})`}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {aceiteLiberado && (
+                <>
                 <div>
                   <label className={labelClass}>Justificativa</label>
                   <select
@@ -769,6 +924,8 @@ export default function DoubleCheckInComparativoPcTab({
                     }
                   />
                 </div>
+                </>
+                )}
                 {justErro && <p className="text-sm text-rose-600">{justErro}</p>}
               </div>
               <div className="mt-5 flex justify-end gap-2">
@@ -785,6 +942,8 @@ export default function DoubleCheckInComparativoPcTab({
                   className={btnPrimary}
                   disabled={
                     salvando ||
+                    salvandoNumero ||
+                    !aceiteLiberado ||
                     !opcaoId ||
                     (draft.decisao === 'aceita' && !obs.trim())
                   }

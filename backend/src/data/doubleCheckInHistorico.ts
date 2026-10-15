@@ -85,6 +85,7 @@ export type DecisaoHistorico = {
   campo: string;
   decisao: string;
   justificativaLabel: string;
+  numeroSolicitacaoOtimiza?: number | null;
   usuarioLogin: string;
   atualizadoEm: string;
   vigente: boolean;
@@ -531,7 +532,7 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
         precisao: 'instante',
         tom: decisao.decisao === 'recusa' ? 'atencao' : 'ok',
         titulo: decisao.decisao === 'recusa' ? 'Divergência recusada' : 'Divergência aceita',
-        detalhe: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${ciclo}`,
+        detalhe: `${decisao.usuarioLogin} ${acao} ${labelCampo(decisao.campo)} de ${produtoLabel(prod?.codigo ?? null, prod?.descricao ?? null)} · ${pedido}. Motivo: ${decisao.justificativaLabel || '—'}.${decisao.decisao !== 'recusa' && decisao.numeroSolicitacaoOtimiza ? ` Solicitação Otimiza nº ${decisao.numeroSolicitacaoOtimiza}.` : ''}${ciclo}`,
         ator: decisao.usuarioLogin,
         fonte: 'Registro local · decisão da conferência',
       })
@@ -865,6 +866,7 @@ export async function carregarHistoricoDoubleCheck(
       campo: decisao.campo,
       decisao: decisao.decisao,
       justificativaLabel: decisao.justificativaLabel,
+      numeroSolicitacaoOtimiza: decisao.numeroSolicitacaoOtimiza,
       usuarioLogin: decisao.usuarioLogin,
       atualizadoEm: decisao.atualizadoEm,
       vigente: decisao.vigente,
