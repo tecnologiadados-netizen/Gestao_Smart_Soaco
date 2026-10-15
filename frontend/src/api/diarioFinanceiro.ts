@@ -273,8 +273,14 @@ export interface DiarioSubclassificacaoItem {
 
 export async function fetchDiarioSubclassificacoes(): Promise<DiarioSubclassificacaoItem[]> {
   const res = await apiFetch('/api/financeiro/diario/subclassificacoes');
-  const body = (await res.json().catch(() => ({}))) as { itens?: DiarioSubclassificacaoItem[]; error?: string };
-  if (!res.ok) throw new Error(body.error || `Erro ao carregar subclassificações (${res.status})`);
+  const body = (await res.json().catch(() => ({}))) as
+    | DiarioSubclassificacaoItem[]
+    | { itens?: DiarioSubclassificacaoItem[]; error?: string };
+  if (!res.ok) {
+    const erro = !Array.isArray(body) ? body.error : undefined;
+    throw new Error(erro || `Erro ao carregar subclassificações (${res.status})`);
+  }
+  if (Array.isArray(body)) return body;
   return Array.isArray(body.itens) ? body.itens : [];
 }
 
