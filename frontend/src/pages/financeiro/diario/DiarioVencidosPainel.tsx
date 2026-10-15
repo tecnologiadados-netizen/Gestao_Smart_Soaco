@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, CalendarRange, ChartPie, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
 import {
@@ -1002,97 +1003,114 @@ function RankingFornecedores({
         })}
       </div>
 
-      {matrizAberta ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="matriz-forn-titulo"
-            className="relative z-[81] flex max-h-[90vh] w-full max-w-[95vw] flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
-          >
-            <div className="px-5 pt-5 pb-3">
-              <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                Matriz fornecedor × empresa
-              </h2>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Linhas: fornecedores. Colunas: empresas. Clique no valor para ver as contas.
-              </p>
-              <input
-                type="search"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar fornecedor"
-                className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
-              />
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
-              {linhasMatriz.length === 0 || empresas.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
-              ) : (
-                <table className="min-w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-900">
-                      <th className="sticky left-0 top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-left font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
-                        Fornecedor
-                      </th>
-                      {empresas.map((emp) => (
-                        <th key={emp} className="sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-right font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
-                          {emp}
-                        </th>
-                      ))}
-                      <th className="sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-right font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {linhasMatriz.map((forn) => (
-                      <tr key={forn.nome} className="border-t border-slate-100 dark:border-slate-700">
-                        <th className="sticky left-0 z-10 max-w-[16rem] truncate bg-white px-2 py-1.5 text-left font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100">
-                          <button type="button" className="truncate text-left hover:underline" onClick={() => onSelecionar(forn.nome)}>
-                            {forn.nome}
-                          </button>
-                        </th>
-                        {empresas.map((emp) => {
-                          const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
-                          return (
-                            <td key={emp} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                              {valor > 0 ? (
-                                <button
-                                  type="button"
-                                  className="hover:underline"
-                                  onClick={() => onSelecionarCelula(forn.nome, emp)}
-                                >
-                                  {formatMoeda(valor)}
-                                </button>
-                              ) : (
-                                <span className="text-slate-300 dark:text-slate-600">—</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                          {formatMoeda(forn.saldo)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="flex justify-end px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setMatrizAberta(false)}
-                className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+      {matrizAberta
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
+              <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="matriz-forn-titulo"
+                className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(96vw,90rem)] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
               >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                <div className="shrink-0 px-5 pt-5 pb-3">
+                  <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                    Matriz fornecedor × empresa
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Linhas: fornecedores. Colunas: empresas. Clique no valor para ver as contas.
+                  </p>
+                  <input
+                    type="search"
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Buscar fornecedor"
+                    className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
+                  />
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
+                  {linhasMatriz.length === 0 || empresas.length === 0 ? (
+                    <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
+                  ) : (
+                    <table className="min-w-max border-collapse text-xs">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 top-0 z-20 min-w-[16rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
+                            Fornecedor
+                          </th>
+                          {empresas.map((emp) => (
+                            <th
+                              key={emp}
+                              className="sticky top-0 z-10 min-w-[9.5rem] max-w-[11rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-right font-medium leading-tight text-slate-600 dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              <span className="line-clamp-2">{emp}</span>
+                            </th>
+                          ))}
+                          <th className="sticky top-0 z-10 min-w-[8rem] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-right font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                            Total
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {linhasMatriz.map((forn) => (
+                          <tr key={forn.nome} className="border-t border-slate-100 dark:border-slate-700">
+                            <th className="sticky left-0 z-10 min-w-[16rem] max-w-[22rem] bg-white px-3 py-2 text-left font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+                              <button
+                                type="button"
+                                className="max-w-full truncate text-left hover:underline"
+                                title={forn.nome}
+                                onClick={() => {
+                                  setMatrizAberta(false);
+                                  onSelecionar(forn.nome);
+                                }}
+                              >
+                                {forn.nome}
+                              </button>
+                            </th>
+                            {empresas.map((emp) => {
+                              const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
+                              return (
+                                <td key={emp} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                                  {valor > 0 ? (
+                                    <button
+                                      type="button"
+                                      className="hover:underline"
+                                      onClick={() => {
+                                        setMatrizAberta(false);
+                                        onSelecionarCelula(forn.nome, emp);
+                                      }}
+                                    >
+                                      {formatMoeda(valor)}
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                              {formatMoeda(forn.saldo)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setMatrizAberta(false)}
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
