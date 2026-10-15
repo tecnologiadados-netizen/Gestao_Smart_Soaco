@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable, { type CellHookData } from 'jspdf-autotable';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 import { baixarWorkbook, MONEY_FMT, styleHeader } from '../exportFinanceiroXlsxShared';
+import { hexObservacaoDiario } from './coresObservacaoDiario';
 import { trechosDescricaoReprogramada, type TrechoDescricao } from './descricaoReprogramada';
 
 const COLUNAS = [
@@ -25,7 +26,21 @@ const COLUNAS = [
 ] as const;
 
 const COL_DESCRICAO = 9;
+const COL_ANOTACAO = 12;
 const COL_SALDO = 14;
+
+function argbDeHex(hex: string): string {
+  return `FF${hex.replace('#', '').toUpperCase()}`;
+}
+
+function corTextoSobreFundo(hex: string): string {
+  const n = hex.replace('#', '');
+  const r = parseInt(n.slice(0, 2), 16);
+  const g = parseInt(n.slice(2, 4), 16);
+  const b = parseInt(n.slice(4, 6), 16);
+  const luma = (r * 299 + g * 587 + b * 114) / 1000;
+  return luma < 140 ? 'FFFFFFFF' : 'FF1E293B';
+}
 
 function maiusculo(valor: string | null | undefined): string {
   return (valor ?? '').toLocaleUpperCase('pt-BR');
@@ -141,6 +156,21 @@ export async function exportarDiarioContasPagarExcel(opts: {
     row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
     row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
+    const fundo = hexObservacaoDiario(l.anotacaoCor);
+    if (fundo) {
+      const fill = {
+        type: 'pattern' as const,
+        pattern: 'solid' as const,
+        fgColor: { argb: argbDeHex(fundo) },
+      };
+      const fonte = corTextoSobreFundo(fundo);
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = fill;
+        cell.font = { ...(cell.font ?? {}), color: { argb: fonte }, name: 'Calibri', size: 10 };
+      });
+      const celulaObs = row.getCell(COL_ANOTACAO);
+      celulaObs.fill = fill;
+    }
   }
 
   const total = ws.addRow([

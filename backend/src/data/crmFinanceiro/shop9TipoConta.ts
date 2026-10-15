@@ -19,17 +19,54 @@ export function sqlShop9ExcluirTipoOperacional(alias = 'fc'): string {
   return `AND UPPER(LTRIM(RTRIM(ISNULL(${alias}.Tipo_Conta, '')))) NOT IN (${lista})`;
 }
 
-/** Opções do ajuste em massa do Diário. O código é o Tipo_Conta do Shop9. */
+/** Formas usadas no contas a pagar (o Tipo_Conta do Shop9 quase não aparece em aberto). */
+const SHOP9_FORMAS_DIARIO_EXTRA: { id: string; nome: string }[] = [
+  { id: 'PIX', nome: 'PIX' },
+  { id: 'TB', nome: 'Transferência bancária' },
+  { id: 'B', nome: 'Boleto Bancário' },
+  { id: 'D', nome: 'Dinheiro' },
+  { id: 'DBT', nome: 'Dinheiro/Transferência' },
+  { id: 'CC', nome: 'Cartão de Crédito' },
+  { id: 'CD', nome: 'Cartão de Débito' },
+  { id: 'DC', nome: 'Débito em conta' },
+  { id: 'CR', nome: 'Crédito em conta' },
+  { id: 'CH', nome: 'Cheque' },
+  { id: 'N', nome: 'Conta bancária' },
+  { id: 'GU', nome: 'Guia' },
+  { id: 'C', nome: 'Carteira' },
+  { id: 'T', nome: 'Carnê' },
+  { id: 'O', nome: 'Outro' },
+];
+
+function chaveNomeForma(nome: string): string {
+  return nome.trim().toLocaleLowerCase('pt-BR');
+}
+
+/** Opções do ajuste em massa do Diário. Tipo_Conta operacional (troco/crédito) fica de fora. */
 export function formasPagamentoShop9Diario(): { id: string; nome: string }[] {
-  return Object.entries(SHOP9_TIPO_CONTA_LEGENDA)
-    .map(([id, nome]) => ({ id, nome }))
-    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const porNome = new Map<string, { id: string; nome: string }>();
+  for (const forma of SHOP9_FORMAS_DIARIO_EXTRA) {
+    porNome.set(chaveNomeForma(forma.nome), forma);
+  }
+  for (const [id, nome] of Object.entries(SHOP9_TIPO_CONTA_LEGENDA)) {
+    if ((SHOP9_TIPO_CONTA_EXCLUIR_CRM as readonly string[]).includes(id)) continue;
+    const chave = chaveNomeForma(nome);
+    if (!porNome.has(chave)) porNome.set(chave, { id, nome });
+  }
+  return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
 export function formaPagamentoShop9Diario(codigo: string | null | undefined): { id: string; nome: string } | null {
-  const id = (codigo ?? '').trim().toUpperCase();
-  const nome = SHOP9_TIPO_CONTA_LEGENDA[id];
-  return nome ? { id, nome } : null;
+  const bruto = (codigo ?? '').trim();
+  if (!bruto) return null;
+  const id = bruto.toUpperCase();
+  const extra = SHOP9_FORMAS_DIARIO_EXTRA.find(
+    (f) => f.id.toUpperCase() === id || chaveNomeForma(f.nome) === chaveNomeForma(bruto),
+  );
+  if (extra) return extra;
+  const nomeTipo = SHOP9_TIPO_CONTA_LEGENDA[id];
+  if (nomeTipo) return { id, nome: nomeTipo };
+  return { id: bruto, nome: bruto };
 }
 
 export function nomeShop9TipoConta(codigo: string | null | undefined): string {
