@@ -13,6 +13,7 @@ function chaveClassificacao(texto: string): string {
   return texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
     .toLocaleUpperCase('pt-BR')
     .replace(/\s+/g, ' ')
     .trim();

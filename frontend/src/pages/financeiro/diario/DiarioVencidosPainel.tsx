@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
-import { CalendarRange, Clock3, ListOrdered, RefreshCw, Wallet } from 'lucide-react';
+import { CalendarRange, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -161,18 +161,78 @@ function chaveClassificacao(texto: string): string {
   return texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
     .toLocaleUpperCase('pt-BR')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function montarMapaSubclassificacao(grupos: DiarioSubclassificacaoItem[]): Map<string, string> {
+  const mapa = new Map<string, string>();
+  const gravar = (chave: string, nome: string) => {
+    if (!chave || mapa.has(chave)) return;
+    mapa.set(chave, nome);
+  };
+  for (const grupo of grupos) {
+    const chave = chaveClassificacao(grupo.classificacao);
+    gravar(chave, grupo.nome);
+    gravar(chave.replace(/^\d+\s*-\s*/, ''), grupo.nome);
+  }
+  return mapa;
+}
+
 function nomeSubclassificacao(l: DiarioContaPagarLinha, mapa: Map<string, string>): string {
   const plano = l.planoContas?.trim() ?? '';
-  const direto = plano ? mapa.get(chaveClassificacao(plano)) : undefined;
-  const comCodigo = plano && l.codigoClassificacao != null && l.codigoClassificacao > 0
-    ? mapa.get(chaveClassificacao(`${l.codigoClassificacao} - ${plano}`))
-    : undefined;
-  return (direto ?? comCodigo ?? SEM_SUBCLASSIFICACAO).toLocaleUpperCase('pt-BR');
+  if (!plano) return SEM_SUBCLASSIFICACAO.toLocaleUpperCase('pt-BR');
+  const kPlano = chaveClassificacao(plano);
+  const direto = mapa.get(kPlano);
+  if (direto) return direto.toLocaleUpperCase('pt-BR');
+  if (l.codigoClassificacao != null && l.codigoClassificacao > 0) {
+    const comCodigo = mapa.get(chaveClassificacao(`${l.codigoClassificacao} - ${plano}`));
+    if (comCodigo) return comCodigo.toLocaleUpperCase('pt-BR');
+  }
+  for (const [chave, nome] of mapa) {
+    if (chave.endsWith(` - ${kPlano}`)) return nome.toLocaleUpperCase('pt-BR');
+  }
+  return SEM_SUBCLASSIFICACAO.toLocaleUpperCase('pt-BR');
+}
+
+function ehSemSubclassificacao(nome: string): boolean {
+  return chaveClassificacao(nome) === chaveClassificacao(SEM_SUBCLASSIFICACAO);
+}
+
+function chaveMatriz(fornecedor: string, empresa: string): string {
+  return `${fornecedor}\u001f${empresa}`;
+}
+
+function BadgeSituacao({ status }: { status: string }) {
+  const baixado = status === 'Baixado';
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        baixado
+          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function BadgeSubclassificacao({ nome }: { nome: string }) {
+  const sem = ehSemSubclassificacao(nome);
+  return (
+    <span
+      className={`inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        sem
+          ? 'border-red-500 bg-red-50 text-red-700 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200'
+          : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+      }`}
+    >
+      {nome}
+    </span>
+  );
 }
 
 function KpiCard({
@@ -275,15 +335,16 @@ export const DiarioVencidosPainel = forwardRef<
 
   useEffect(() => {
     void carregar();
-    void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+    void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const mapaSub = useMemo(() => {
-    const mapa = new Map<string, string>();
-    for (const grupo of grupos) mapa.set(chaveClassificacao(grupo.classificacao), grupo.nome);
-    return mapa;
-  }, [grupos]);
+  const mapaSub = useMemo(() => montarMapaSubclassificacao(grupos), [grupos]);
 
   const base = useMemo(() => {
     const fFornecedor = selecionados(fornecedores);
@@ -330,6 +391,7 @@ export const DiarioVencidosPainel = forwardRef<
     const porMes = new Map<string, { mes: string; vencido: number; reprogramado: number }>();
     const porEmpresa = new Map<string, { nome: string; vencido: number; reprogramado: number }>();
     const porFornecedor = new Map<string, number>();
+    const porCelula = new Map<string, number>();
     const porSub = new Map<string, number>();
     const faixas = FAIXAS.map((f) => ({ ...f, qtd: 0, saldo: 0 }));
     for (const l of base) {
@@ -346,6 +408,8 @@ export const DiarioVencidosPainel = forwardRef<
       porEmpresa.set(empNome, emp);
       const forn = (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR');
       porFornecedor.set(forn, (porFornecedor.get(forn) ?? 0) + saldo);
+      const chaveCel = chaveMatriz(forn, empNome);
+      porCelula.set(chaveCel, (porCelula.get(chaveCel) ?? 0) + saldo);
       const sub = nomeSubclassificacao(l, mapaSub);
       porSub.set(sub, (porSub.get(sub) ?? 0) + saldo);
       const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
@@ -373,6 +437,8 @@ export const DiarioVencidosPainel = forwardRef<
       fornecedores: [...porFornecedor.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo),
+      empresasMatriz: [...porEmpresa.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      celulas: Object.fromEntries(porCelula),
       subclassificacoes: [...porSub.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo)
@@ -414,10 +480,20 @@ export const DiarioVencidosPainel = forwardRef<
     recarregar: () => {
       setSelecionadas(new Set());
       void carregar();
-      void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+      void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
     },
     atualizarSubclassificacoes: () => {
-      void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+      void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
     },
   }), [base, marcadas, hoje, onResumo]);
 
@@ -525,7 +601,13 @@ export const DiarioVencidosPainel = forwardRef<
             />
             <RankingFornecedores
               dados={resumo.fornecedores}
+              empresas={resumo.empresasMatriz}
+              celulas={resumo.celulas}
               onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR') === nome))}
+              onSelecionarCelula={(fornecedor, empresa) => abrirDetalhe(
+                `${fornecedor} · ${empresa}`,
+                base.filter((l) => (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR') === fornecedor && empresaExibida(l) === empresa),
+              )}
             />
           </div>
 
@@ -629,9 +711,11 @@ export const DiarioVencidosPainel = forwardRef<
                       />
                     </td>
                     <td className="px-2 py-1.5 tabular-nums">{l.codigoClassificacao ?? '—'}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{l.status}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
                     <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5">{nomeSubclassificacao(l, mapaSub)}</td>
+                    <td className="max-w-[14rem] truncate px-2 py-1.5 normal-case">
+                      <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
+                    </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>
                     <td className="px-2 py-1.5 tabular-nums">{dias ?? '—'}</td>
@@ -694,9 +778,11 @@ function ModalDetalheGrafico({
                 <tr><td colSpan={8} className="py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
               ) : linhas.map((l, i) => (
                 <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <td className="py-1.5 pr-3 whitespace-nowrap">{l.status}</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
                   <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.planoContas ?? '—'}</td>
-                  <td className="max-w-[12rem] truncate py-1.5 pr-3">{nomeSubclassificacao(l, mapaSub)}</td>
+                  <td className="max-w-[12rem] truncate py-1.5 pr-3 normal-case">
+                    <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
+                  </td>
                   <td className="py-1.5 pr-3 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
                   <td className="max-w-[12rem] truncate py-1.5 pr-3">{empresaExibida(l)}</td>
                   <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.fornecedor ?? '—'}</td>
@@ -721,11 +807,10 @@ function ModalDetalheGrafico({
   );
 }
 
-const OPCOES_TOPO_RANKING = [
-  { id: 5, label: 'Top 5' },
-  { id: 10, label: 'Top 10' },
-  { id: 20, label: 'Top 20' },
-  { id: 0, label: 'Todos' },
+const MEDALHA = [
+  'text-amber-400',
+  'text-slate-400',
+  'text-orange-700',
 ] as const;
 
 function GraficoEmpresaEmpilhado({
@@ -784,58 +869,45 @@ function GraficoEmpresaEmpilhado({
 
 function RankingFornecedores({
   dados,
+  empresas,
+  celulas,
   onSelecionar,
+  onSelecionarCelula,
 }: {
   dados: Array<{ nome: string; saldo: number }>;
+  empresas: string[];
+  celulas: Record<string, number>;
   onSelecionar: (nome: string) => void;
+  onSelecionarCelula: (fornecedor: string, empresa: string) => void;
 }) {
-  const [menuAberto, setMenuAberto] = useState(false);
-  const [topN, setTopN] = useState(10);
-  const visiveis = topN > 0 ? dados.slice(0, topN) : dados;
+  const [matrizAberta, setMatrizAberta] = useState(false);
+  const [busca, setBusca] = useState('');
+  const visiveis = dados.slice(0, 10);
   const max = visiveis[0]?.saldo || 1;
-  const recorte = topN > 0 ? `Top ${topN}` : `Todos (${dados.length})`;
+  const passa = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
+  const linhasMatriz = dados.filter((item) => passa(item.nome));
 
   return (
     <div className={`relative p-4 ${panelSurface}`}>
       <button
         type="button"
-        aria-label="Recorte do ranking"
-        title="Escolher recorte do ranking"
-        onClick={() => setMenuAberto((v) => !v)}
+        aria-label="Abrir matriz fornecedor por empresa"
+        title="Abrir matriz fornecedor por empresa"
+        onClick={() => setMatrizAberta(true)}
         className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
       >
         <ListOrdered className="h-4 w-4" />
       </button>
-      {menuAberto ? (
-        <div className="absolute left-3 top-12 z-20 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
-          {OPCOES_TOPO_RANKING.map((opcao) => (
-            <button
-              key={opcao.label}
-              type="button"
-              onClick={() => {
-                setTopN(opcao.id);
-                setMenuAberto(false);
-              }}
-              className={`flex w-full px-3 py-1.5 text-left text-xs ${
-                topN === opcao.id
-                  ? 'bg-primary-50 font-medium text-primary-700 dark:bg-primary-950/40 dark:text-primary-200'
-                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {opcao.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <h2 className="pl-10 text-sm font-semibold text-slate-900 dark:text-white">Ranking de fornecedores</h2>
       <p className="mt-0.5 pl-10 text-xs text-slate-500">
-        {recorte} por saldo. Clique em uma linha para ver as contas.
+        Top 10 por saldo. Clique em uma linha para ver as contas.
       </p>
       <div className="mt-3 max-h-72 space-y-1.5 overflow-auto pr-1">
         {visiveis.length === 0 ? (
           <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p>
         ) : visiveis.map((item, idx) => {
           const pct = Math.max(2, Math.round((item.saldo / max) * 100));
+          const medalha = MEDALHA[idx];
           return (
             <button
               key={item.nome}
@@ -844,7 +916,13 @@ function RankingFornecedores({
               className="flex w-full flex-col gap-0.5 rounded-lg px-1 py-1 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50"
             >
               <div className="flex items-center gap-2">
-                <span className="w-6 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">{idx + 1}º</span>
+                {medalha ? (
+                  <span className={`inline-flex w-6 shrink-0 items-center justify-center ${medalha}`} title={`${idx + 1}º`}>
+                    <Medal className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <span className="w-6 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">{idx + 1}º</span>
+                )}
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">{item.nome}</span>
                 <span className="shrink-0 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{formatMoeda(item.saldo)}</span>
               </div>
@@ -855,6 +933,98 @@ function RankingFornecedores({
           );
         })}
       </div>
+
+      {matrizAberta ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="matriz-forn-titulo"
+            className="relative z-[81] flex max-h-[90vh] w-full max-w-[95vw] flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+          >
+            <div className="px-5 pt-5 pb-3">
+              <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                Matriz fornecedor × empresa
+              </h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Linhas: fornecedores. Colunas: empresas. Clique no valor para ver as contas.
+              </p>
+              <input
+                type="search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar fornecedor"
+                className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
+              {linhasMatriz.length === 0 || empresas.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
+              ) : (
+                <table className="min-w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-900">
+                      <th className="sticky left-0 top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-left font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
+                        Fornecedor
+                      </th>
+                      {empresas.map((emp) => (
+                        <th key={emp} className="sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-right font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900">
+                          {emp}
+                        </th>
+                      ))}
+                      <th className="sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-2 text-right font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linhasMatriz.map((forn) => (
+                      <tr key={forn.nome} className="border-t border-slate-100 dark:border-slate-700">
+                        <th className="sticky left-0 z-10 max-w-[16rem] truncate bg-white px-2 py-1.5 text-left font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+                          <button type="button" className="truncate text-left hover:underline" onClick={() => onSelecionar(forn.nome)}>
+                            {forn.nome}
+                          </button>
+                        </th>
+                        {empresas.map((emp) => {
+                          const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
+                          return (
+                            <td key={emp} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                              {valor > 0 ? (
+                                <button
+                                  type="button"
+                                  className="hover:underline"
+                                  onClick={() => onSelecionarCelula(forn.nome, emp)}
+                                >
+                                  {formatMoeda(valor)}
+                                </button>
+                              ) : (
+                                <span className="text-slate-300 dark:text-slate-600">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                          {formatMoeda(forn.saldo)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="flex justify-end px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setMatrizAberta(false)}
+                className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
