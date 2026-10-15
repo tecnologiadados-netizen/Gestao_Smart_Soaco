@@ -55,34 +55,54 @@ function cellToString(value: unknown): string {
  * Formata data para padrão brasileiro DD/MM/YYYY.
  * Aceita Date, ISO (YYYY-MM-DD), americano (MM/DD/YYYY) ou brasileiro (DD/MM/YYYY).
  */
-function formatDateToBR(value: unknown): string {
-  if (value == null || value === "") return "";
-  let d: Date;
-  if (value instanceof Date) {
-    d = value;
-  } else if (typeof value === "number" && Number.isFinite(value) && value >= 59 && value < 1_000_000) {
-    // Serial de data do Excel (importação com raw: true)
-    d = new Date((value - 25569) * 86400 * 1000);
-  } else {
-    const s = String(value).trim();
-    if (!s) return "";
-    // ISO: YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      d = new Date(s);
-    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [a, b, year] = s.split("/").map(Number);
-      // DD/MM/YYYY ou MM/DD/YYYY? Se a > 12, é DD. Se b > 12, é MM.
-      if (a > 12) d = new Date(year, b - 1, a);
-      else if (b > 12) d = new Date(year, a - 1, b);
-      else d = new Date(year, b - 1, a); // assume DD/MM
-    } else {
-      d = new Date(s);
-    }
+function partesCalendario(value: unknown): { day: number; month: number; year: number } | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 59 && value < 1_000_000) {
+    const d = new Date(Math.round((value - 25569) * 86400 * 1000));
+    if (Number.isNaN(d.getTime())) return null;
+    return { day: d.getUTCDate(), month: d.getUTCMonth() + 1, year: d.getUTCFullYear() };
   }
-  if (isNaN(d.getTime())) return "";
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const meiaNoiteUtc =
+      value.getUTCHours() === 0 &&
+      value.getUTCMinutes() === 0 &&
+      value.getUTCSeconds() === 0 &&
+      value.getUTCMilliseconds() === 0;
+    return meiaNoiteUtc
+      ? { day: value.getUTCDate(), month: value.getUTCMonth() + 1, year: value.getUTCFullYear() }
+      : { day: value.getDate(), month: value.getMonth() + 1, year: value.getFullYear() };
+  }
+  const s = String(value).trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (br) {
+    const a = Number(br[1]);
+    const b = Number(br[2]);
+    const year = Number(br[3]);
+    if (a > 12) return { day: a, month: b, year };
+    if (b > 12) return { day: b, month: a, year };
+    return { day: a, month: b, year };
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
+/**
+ * Formata data para padrão brasileiro DD/MM/YYYY.
+ * ISO (YYYY-MM-DD) e serial do Excel são data de calendário, sem fuso:
+ * `new Date("1996-05-21")` cairia no dia 20 no horário de Brasília.
+ */
+function formatDateToBR(value: unknown): string {
+  const partes = partesCalendario(value);
+  if (!partes) return "";
+  const day = String(partes.day).padStart(2, "0");
+  const month = String(partes.month).padStart(2, "0");
+  const year = partes.year;
+  if (!day || !month || !year) return "";
   return `${day}/${month}/${year}`;
 }
 
