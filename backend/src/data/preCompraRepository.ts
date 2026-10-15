@@ -532,8 +532,35 @@ function raizCnpj(cnpj: string | null | undefined): string | null {
 }
 
 /**
- * Outros cadastros Nomus da mesma empresa nesta cotação (mesmo nome e mesma raiz de CNPJ).
- * O preço de parte dos itens às vezes fica numa filial e o PDF é emitido pela outra.
+ * Dois cadastros Nomus são a mesma empresa quando o nome coincide (ou um é
+ * continuação do outro, ex.: "ANTONIO JOSE MENDES" e "ANTONIO JOSE MENDES BLAMIRES")
+ * e a raiz do CNPJ é a mesma. Se um dos cadastros está sem CNPJ, o nome basta:
+ * o preço de parte dos itens fica nesse outro registro e o PDF saía incompleto.
+ */
+function cadastrosDaMesmaEmpresa(
+  selecionado: { nome: string | null; cnpj: string | null },
+  outro: { nome: string | null; cnpj: string | null }
+): boolean {
+  const nomeA = normalizarTextoBusca(String(selecionado.nome ?? ''));
+  const nomeB = normalizarTextoBusca(String(outro.nome ?? ''));
+  if (!nomeA || !nomeB) return false;
+
+  const iguais = nomeA === nomeB;
+  const [menor, maior] = nomeA.length <= nomeB.length ? [nomeA, nomeB] : [nomeB, nomeA];
+  const continuacao =
+    !iguais && maior.startsWith(`${menor} `) && menor.split(' ').filter(Boolean).length >= 2;
+  if (!iguais && !continuacao) return false;
+
+  const raizA = raizCnpj(selecionado.cnpj);
+  const raizB = raizCnpj(outro.cnpj);
+  if (raizA && raizB) return raizA === raizB;
+  return true;
+}
+
+/**
+ * Outros cadastros Nomus da mesma empresa nesta cotação.
+ * O preço de parte dos itens às vezes fica numa filial, ou num cadastro sem CNPJ,
+ * e o PDF é emitido pelo outro.
  */
 async function listarIdsFornecedorMesmaEmpresa(
   nomeCotacao: string,
@@ -555,16 +582,11 @@ async function listarIdsFornecedorMesmaEmpresa(
   const selecionado = lista.find((r) => Number(r.id) === fornecedorId);
   if (!selecionado) return [fornecedorId];
 
-  const nome = normalizarTextoBusca(String(selecionado.nome ?? ''));
-  const raiz = raizCnpj(selecionado.cnpj);
-  if (!nome || !raiz) return [fornecedorId];
-
   const ids: number[] = [];
   for (const r of lista) {
     const id = Number(r.id);
     if (!Number.isFinite(id) || id <= 0) continue;
-    if (normalizarTextoBusca(String(r.nome ?? '')) !== nome) continue;
-    if (raizCnpj(r.cnpj) !== raiz) continue;
+    if (!cadastrosDaMesmaEmpresa(selecionado, r)) continue;
     ids.push(id);
   }
   if (!ids.includes(fornecedorId)) ids.unshift(fornecedorId);
