@@ -137,6 +137,7 @@ export type DiarioVencidosPainelHandle = {
   linhasSelecionadas: () => DiarioContaPagarLinha[];
   periodo: () => { inicio: string; fim: string };
   recarregar: () => void;
+  atualizarSubclassificacoes: () => void;
 };
 
 function ehVencido(l: DiarioContaPagarLinha, hoje: string): boolean {
@@ -158,7 +159,7 @@ function nomeSubclassificacao(l: DiarioContaPagarLinha, mapa: Map<string, string
   const comCodigo = plano && l.codigoClassificacao != null && l.codigoClassificacao > 0
     ? mapa.get(chaveClassificacao(`${l.codigoClassificacao} - ${plano}`))
     : undefined;
-  return (comCodigo ?? direto ?? SEM_SUBCLASSIFICACAO).toLocaleUpperCase('pt-BR');
+  return (direto ?? comCodigo ?? SEM_SUBCLASSIFICACAO).toLocaleUpperCase('pt-BR');
 }
 
 function KpiCard({
@@ -393,6 +394,9 @@ export const DiarioVencidosPainel = forwardRef<
     recarregar: () => {
       setSelecionadas(new Set());
       void carregar();
+      void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+    },
+    atualizarSubclassificacoes: () => {
       void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
     },
   }), [base, marcadas, hoje, onResumo]);

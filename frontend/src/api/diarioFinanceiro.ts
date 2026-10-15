@@ -278,17 +278,54 @@ export async function fetchDiarioSubclassificacoes(): Promise<DiarioSubclassific
   return Array.isArray(body.itens) ? body.itens : [];
 }
 
+export async function fetchDiarioSubclassificacaoNomes(): Promise<string[]> {
+  const res = await apiFetch('/api/financeiro/diario/subclassificacoes');
+  const body = (await res.json().catch(() => ({}))) as { nomes?: string[]; error?: string };
+  if (!res.ok) throw new Error(body.error || `Erro ao carregar subclassificações (${res.status})`);
+  return Array.isArray(body.nomes) ? body.nomes : [];
+}
+
 export async function cadastrarDiarioSubclassificacao(params: {
-  classificacao: string;
   nome: string;
-}): Promise<DiarioSubclassificacaoItem> {
+}): Promise<{ nome: string }> {
   const res = await apiFetch('/api/financeiro/diario/subclassificacoes', {
     method: 'POST',
     body: params,
   });
-  const body = (await res.json().catch(() => ({}))) as DiarioSubclassificacaoItem & { error?: string };
+  const body = (await res.json().catch(() => ({}))) as { nome?: string; error?: string };
   if (!res.ok) throw new Error(body.error || `Erro ao cadastrar subclassificação (${res.status})`);
-  return { nome: body.nome, classificacao: body.classificacao };
+  return { nome: body.nome ?? params.nome };
+}
+
+export interface DiarioSubclassificacaoConflito {
+  classificacao: string;
+  atual: string;
+}
+
+export async function alocarDiarioSubclassificacao(params: {
+  classificacoes: string[];
+  nome: string;
+  confirmarTroca?: boolean;
+}): Promise<{ atualizados: number; precisaConfirmar?: boolean; conflitos?: DiarioSubclassificacaoConflito[] }> {
+  const res = await apiFetch('/api/financeiro/diario/subclassificacoes/alocar', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    atualizados?: number;
+    precisaConfirmar?: boolean;
+    conflitos?: DiarioSubclassificacaoConflito[];
+    error?: string;
+  };
+  if (res.status === 409 && body.precisaConfirmar) {
+    return {
+      atualizados: 0,
+      precisaConfirmar: true,
+      conflitos: Array.isArray(body.conflitos) ? body.conflitos : [],
+    };
+  }
+  if (!res.ok) throw new Error(body.error || `Erro ao relacionar subclassificação (${res.status})`);
+  return { atualizados: Number(body.atualizados) || 0 };
 }
 
 export type StatusProcessoDiario = 'rascunho' | 'em_aprovacao' | 'aprovado' | 'em_correcao';
