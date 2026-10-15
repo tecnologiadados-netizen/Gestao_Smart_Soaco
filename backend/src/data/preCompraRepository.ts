@@ -123,6 +123,7 @@ SELECT
     COALESCE(cc.valorTotalFrete, 0) AS valor_frete_geral,
     sc.id AS solicitacao_id,
     sc.dataNecessidade AS data_necessidade,
+    c.observacoes AS observacoes,
     c.status AS status,
     c.id AS cotacao_id
 `;
@@ -268,6 +269,8 @@ export interface PreCompraCotacaoRow {
   cotacao_id?: number | null;
   contato_id?: number | null;
   contato?: string | null;
+  /** Texto do campo Observações da cotação no Nomus (`cotacaocompra.observacoes`). */
+  observacoes?: string | null;
 }
 
 export interface PreCompraFornecedorRow {
@@ -591,6 +594,14 @@ function alinharTotalComQuantidade(raw: PreCompraCotacaoRow): PreCompraCotacaoRo
   return { ...raw, valor_total: pelaQtde };
 }
 
+/** Normaliza o texto de Observações do Nomus (quebras de linha e espaços nas pontas). */
+function textoObservacoes(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+}
+
 function chaveItemPdf(raw: PreCompraCotacaoRow): string {
   const itemId = Number(raw.item_cotacao_id);
   if (Number.isFinite(itemId) && itemId > 0) return `icc:${itemId}`;
@@ -665,6 +676,7 @@ export async function buscarDadosPdfPreCompra(
 
   return {
     ...serializeRow(first),
+    observacoes: textoObservacoes(first.observacoes),
     itens: itens.map(serializeRow),
     solicitacoes: Array.from(solicitacoesMap.values()).map((s) => ({
       id: s.id,
