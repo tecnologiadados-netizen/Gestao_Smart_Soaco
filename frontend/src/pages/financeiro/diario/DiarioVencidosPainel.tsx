@@ -1,12 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
-import { CalendarRange, Clock3, RefreshCw, Wallet } from 'lucide-react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BarChart3, CalendarRange, ChartPie, Clock3, ListOrdered, Medal, RefreshCw, Wallet } from 'lucide-react';
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -19,7 +24,9 @@ import {
   type DiarioContaPagarLinha,
   type DiarioSubclassificacaoItem,
 } from '../../../api/diarioFinanceiro';
+import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
+import { DiarioCabecalhoTh, DiarioGradeFiltroPortal } from './DiarioGradeCabecalho';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
 
 type Subaba = 'titulos' | 'dashboard';
@@ -36,6 +43,7 @@ const panelSurface =
 const COR_VENCIDO = '#FF6B35';
 const COR_REPROGRAMADO = '#5C92D6';
 const COR_SUB = '#0F766E';
+const CORES_PIZZA = ['#FF6B35', '#5C92D6', '#0F766E', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#3B82F6', '#84CC16'];
 const SEM_SUBCLASSIFICACAO = 'Sem subclassificação';
 const FAIXAS = [
   { id: '1-30', label: '1 a 30 dias', min: 1, max: 30, cor: '#FBBF24' },
@@ -87,8 +95,104 @@ function formatMoeda(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function empresaCanon(nome: string): string {
+  const k = chaveClassificacao(nome);
+  if (!k || k === 'SEM EMPRESA') return 'SEM EMPRESA';
+  if (k.includes('SO MOVEIS')) return 'SÓ MÓVEIS';
+  if (k.includes('SO ACO') || k.includes('ACO INDUSTRIAL')) return 'SÓ AÇO INDUSTRIAL';
+  if (k.includes('REFRIGER')) return 'SO REFRIGERAÇÃO';
+  if (k.includes('R N MARQUES') || k.includes('RN MARQUES')) return 'R N MARQUES ARAUJO';
+  return nome.toLocaleUpperCase('pt-BR');
+}
+
 function empresaExibida(l: DiarioContaPagarLinha): string {
-  return (l.filial?.trim() || l.empresa?.trim() || 'Sem empresa').toLocaleUpperCase('pt-BR');
+  return empresaCanon(l.filial?.trim() || l.empresa?.trim() || 'Sem empresa');
+}
+
+const VAZIO_CELULA = '—';
+
+const COLUNAS_TITULOS_VENCIDOS = [
+  { id: 'codigo', label: 'Código' },
+  { id: 'situacao', label: 'Situação' },
+  { id: 'plano', label: 'Classificação' },
+  { id: 'subclassificacao', label: 'SubClassificação' },
+  { id: 'vencimento', label: 'Vencimento' },
+  { id: 'reprogramado', label: 'Reprogramado' },
+  { id: 'dias', label: 'Dias' },
+  { id: 'empresa', label: 'Empresa' },
+  { id: 'fornecedor', label: 'Pessoa' },
+  { id: 'descricao', label: 'Descrição' },
+  { id: 'observacao', label: 'Comentários' },
+  { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
+] as const;
+
+const COLUNAS_DETALHE_VENCIDOS = [
+  { id: 'situacao', label: 'Situação' },
+  { id: 'plano', label: 'Classificação' },
+  { id: 'subclassificacao', label: 'SubClassificação' },
+  { id: 'vencimento', label: 'Vencimento' },
+  { id: 'empresa', label: 'Empresa' },
+  { id: 'fornecedor', label: 'Pessoa' },
+  { id: 'descricao', label: 'Descrição' },
+  { id: 'saldo', label: 'Saldo a pagar', align: 'right' as const },
+] as const;
+
+function textoCelulaVencidos(
+  l: DiarioContaPagarLinha,
+  col: string,
+  mapaSub: Map<string, string>,
+  hoje: string,
+): string {
+  const texto = (v: string | null | undefined) => {
+    const t = v?.trim();
+    return t ? t.toLocaleUpperCase('pt-BR') : VAZIO_CELULA;
+  };
+  switch (col) {
+    case 'codigo':
+      return l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : VAZIO_CELULA;
+    case 'situacao':
+      return l.status.toLocaleUpperCase('pt-BR');
+    case 'plano':
+      return texto(l.planoContas);
+    case 'subclassificacao':
+      return nomeSubclassificacao(l, mapaSub);
+    case 'vencimento':
+      return formatData(l.dataVencimento);
+    case 'reprogramado':
+      return texto(l.reprogramado);
+    case 'dias': {
+      const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+      return dias != null ? String(dias) : VAZIO_CELULA;
+    }
+    case 'empresa':
+      return empresaExibida(l);
+    case 'fornecedor':
+      return texto(l.fornecedor);
+    case 'descricao':
+      return texto(l.descricao);
+    case 'observacao':
+      return texto(l.observacao);
+    case 'saldo':
+      return formatMoeda(l.saldo);
+    default:
+      return '';
+  }
+}
+
+function valorOrdenacaoVencidos(
+  l: DiarioContaPagarLinha,
+  col: string,
+  mapaSub: Map<string, string>,
+  hoje: string,
+): string | number {
+  if (col === 'saldo') return Number(l.saldo) || 0;
+  if (col === 'codigo') return l.codigoClassificacao ?? 0;
+  if (col === 'vencimento') return l.dataVencimento ?? '';
+  if (col === 'dias') {
+    const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+    return dias ?? -1;
+  }
+  return textoCelulaVencidos(l, col, mapaSub, hoje);
 }
 
 function selecionados(csv: string): Set<string> {
@@ -107,6 +211,18 @@ function ehReprogramado(l: DiarioContaPagarLinha): boolean {
   return Boolean(l.reprogramado?.trim())
     || temMarcadorReprogramado(l.descricao)
     || temMarcadorReprogramado(l.observacao);
+}
+
+function passaSituacao(l: DiarioContaPagarLinha, filtro: Set<string>, hoje: string): boolean {
+  const vencido = ehVencido(l, hoje);
+  const reprogramado = ehReprogramado(l);
+  if (filtro.size === 0) return vencido || reprogramado;
+  return (filtro.has('Vencidos') && vencido) || (filtro.has('Reprogramados') && reprogramado);
+}
+
+/** Reprogramado prevalece para o saldo da barra não duplicar título que é as duas coisas. */
+function fatiaSaldo(l: DiarioContaPagarLinha): 'vencido' | 'reprogramado' {
+  return ehReprogramado(l) ? 'reprogramado' : 'vencido';
 }
 
 function podeAlterar(l: DiarioContaPagarLinha): boolean {
@@ -137,6 +253,7 @@ export type DiarioVencidosPainelHandle = {
   linhasSelecionadas: () => DiarioContaPagarLinha[];
   periodo: () => { inicio: string; fim: string };
   recarregar: () => void;
+  atualizarSubclassificacoes: () => void;
 };
 
 function ehVencido(l: DiarioContaPagarLinha, hoje: string): boolean {
@@ -147,18 +264,78 @@ function chaveClassificacao(texto: string): string {
   return texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
     .toLocaleUpperCase('pt-BR')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function montarMapaSubclassificacao(grupos: DiarioSubclassificacaoItem[]): Map<string, string> {
+  const mapa = new Map<string, string>();
+  const gravar = (chave: string, nome: string) => {
+    if (!chave || mapa.has(chave)) return;
+    mapa.set(chave, nome);
+  };
+  for (const grupo of grupos) {
+    const chave = chaveClassificacao(grupo.classificacao);
+    gravar(chave, grupo.nome);
+    gravar(chave.replace(/^\d+\s*-\s*/, ''), grupo.nome);
+  }
+  return mapa;
+}
+
 function nomeSubclassificacao(l: DiarioContaPagarLinha, mapa: Map<string, string>): string {
   const plano = l.planoContas?.trim() ?? '';
-  const direto = plano ? mapa.get(chaveClassificacao(plano)) : undefined;
-  const comCodigo = plano && l.codigoClassificacao != null && l.codigoClassificacao > 0
-    ? mapa.get(chaveClassificacao(`${l.codigoClassificacao} - ${plano}`))
-    : undefined;
-  return (comCodigo ?? direto ?? SEM_SUBCLASSIFICACAO).toLocaleUpperCase('pt-BR');
+  if (!plano) return SEM_SUBCLASSIFICACAO.toLocaleUpperCase('pt-BR');
+  const kPlano = chaveClassificacao(plano);
+  const direto = mapa.get(kPlano);
+  if (direto) return direto.toLocaleUpperCase('pt-BR');
+  if (l.codigoClassificacao != null && l.codigoClassificacao > 0) {
+    const comCodigo = mapa.get(chaveClassificacao(`${l.codigoClassificacao} - ${plano}`));
+    if (comCodigo) return comCodigo.toLocaleUpperCase('pt-BR');
+  }
+  for (const [chave, nome] of mapa) {
+    if (chave.endsWith(` - ${kPlano}`)) return nome.toLocaleUpperCase('pt-BR');
+  }
+  return SEM_SUBCLASSIFICACAO.toLocaleUpperCase('pt-BR');
+}
+
+function ehSemSubclassificacao(nome: string): boolean {
+  return chaveClassificacao(nome) === chaveClassificacao(SEM_SUBCLASSIFICACAO);
+}
+
+function chaveMatriz(fornecedor: string, empresa: string): string {
+  return `${fornecedor}\u001f${empresa}`;
+}
+
+function BadgeSituacao({ status }: { status: string }) {
+  const baixado = status === 'Baixado';
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        baixado
+          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function BadgeSubclassificacao({ nome }: { nome: string }) {
+  const sem = ehSemSubclassificacao(nome);
+  return (
+    <span
+      className={`inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        sem
+          ? 'border-red-500 bg-red-50 text-red-700 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200'
+          : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+      }`}
+    >
+      {nome}
+    </span>
+  );
 }
 
 function KpiCard({
@@ -227,6 +404,7 @@ export const DiarioVencidosPainel = forwardRef<
   const [subclassificacoes, setSubclassificacoes] = useState('');
   const [grupos, setGrupos] = useState<DiarioSubclassificacaoItem[]>([]);
   const [origens, setOrigens] = useState('');
+  const [situacoes, setSituacoes] = useState('');
   const [observacao, setObservacao] = useState('');
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -260,15 +438,16 @@ export const DiarioVencidosPainel = forwardRef<
 
   useEffect(() => {
     void carregar();
-    void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+    void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const mapaSub = useMemo(() => {
-    const mapa = new Map<string, string>();
-    for (const grupo of grupos) mapa.set(chaveClassificacao(grupo.classificacao), grupo.nome);
-    return mapa;
-  }, [grupos]);
+  const mapaSub = useMemo(() => montarMapaSubclassificacao(grupos), [grupos]);
 
   const base = useMemo(() => {
     const fFornecedor = selecionados(fornecedores);
@@ -276,10 +455,11 @@ export const DiarioVencidosPainel = forwardRef<
     const fPlano = selecionados(planos);
     const fSub = selecionados(subclassificacoes);
     const fOrigem = selecionados(origens);
+    const fSituacao = selecionados(situacoes);
     const casaObs = criarMatcherTextoLivre(observacao);
     return linhas.filter((l) => {
       if (l.status !== 'Em aberto') return false;
-      if (!(ehVencido(l, hoje) || ehReprogramado(l))) return false;
+      if (!passaSituacao(l, fSituacao, hoje)) return false;
       if (fOrigem.size > 0 && !fOrigem.has(l.origem)) return false;
       if (fFornecedor.size > 0 && !fFornecedor.has(l.fornecedor ?? '')) return false;
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l))) return false;
@@ -288,7 +468,24 @@ export const DiarioVencidosPainel = forwardRef<
       if (observacao.trim() && !casaObs(`${l.observacao ?? ''} ${l.descricao ?? ''}`)) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, observacao, hoje, mapaSub]);
+  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, observacao, hoje, mapaSub]);
+
+  const getCellTextTitulos = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const valueForSortTitulos = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacaoVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const gradeTitulos = useGradeFiltrosExcel({
+    rows: base,
+    columnIds: COLUNAS_TITULOS_VENCIDOS.map((c) => c.id),
+    getCellText: getCellTextTitulos,
+    valueForSort: valueForSortTitulos,
+    dateColumnIds: ['vencimento'],
+  });
+  const titulosExibidos = gradeTitulos.rowsExibidas;
 
   const opcoes = (campo: 'fornecedor' | 'planoContas') => {
     const set = new Set<string>();
@@ -312,22 +509,29 @@ export const DiarioVencidosPainel = forwardRef<
     const reprogramados = base.filter(ehReprogramado);
     const soma = (lista: DiarioContaPagarLinha[]) => lista.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
     const porMes = new Map<string, { mes: string; vencido: number; reprogramado: number }>();
-    const porEmpresa = new Map<string, number>();
+    const porEmpresa = new Map<string, { nome: string; vencido: number; reprogramado: number }>();
     const porFornecedor = new Map<string, number>();
+    const porCelula = new Map<string, number>();
     const porSub = new Map<string, number>();
     const faixas = FAIXAS.map((f) => ({ ...f, qtd: 0, saldo: 0 }));
     for (const l of base) {
+      const saldo = Number(l.saldo) || 0;
       const mes = (l.dataVencimento ?? '').slice(0, 7) || 'sem data';
       const ponto = porMes.get(mes) ?? { mes, vencido: 0, reprogramado: 0 };
-      if (ehVencido(l, hoje)) ponto.vencido += Number(l.saldo) || 0;
-      if (ehReprogramado(l)) ponto.reprogramado += Number(l.saldo) || 0;
+      if (ehVencido(l, hoje)) ponto.vencido += saldo;
+      if (ehReprogramado(l)) ponto.reprogramado += saldo;
       porMes.set(mes, ponto);
-      const emp = empresaExibida(l);
-      porEmpresa.set(emp, (porEmpresa.get(emp) ?? 0) + (Number(l.saldo) || 0));
+      const empNome = empresaExibida(l);
+      const emp = porEmpresa.get(empNome) ?? { nome: empNome, vencido: 0, reprogramado: 0 };
+      if (fatiaSaldo(l) === 'reprogramado') emp.reprogramado += saldo;
+      else emp.vencido += saldo;
+      porEmpresa.set(empNome, emp);
       const forn = (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR');
-      porFornecedor.set(forn, (porFornecedor.get(forn) ?? 0) + (Number(l.saldo) || 0));
+      porFornecedor.set(forn, (porFornecedor.get(forn) ?? 0) + saldo);
+      const chaveCel = chaveMatriz(forn, empNome);
+      porCelula.set(chaveCel, (porCelula.get(chaveCel) ?? 0) + saldo);
       const sub = nomeSubclassificacao(l, mapaSub);
-      porSub.set(sub, (porSub.get(sub) ?? 0) + (Number(l.saldo) || 0));
+      porSub.set(sub, (porSub.get(sub) ?? 0) + saldo);
       const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
       if (dias != null) {
         const faixa = faixas.find((f) => dias >= f.min && dias <= f.max);
@@ -337,11 +541,6 @@ export const DiarioVencidosPainel = forwardRef<
         }
       }
     }
-    const top = (mapa: Map<string, number>) =>
-      [...mapa.entries()]
-        .map(([nome, saldo]) => ({ nome, saldo }))
-        .sort((a, b) => b.saldo - a.saldo)
-        .slice(0, 8);
     return {
       qtdVencidos: vencidos.length,
       saldoVencidos: soma(vencidos),
@@ -351,8 +550,17 @@ export const DiarioVencidosPainel = forwardRef<
         ...p,
         label: p.mes === 'sem data' ? 'Sem data' : `${p.mes.slice(5)}/${p.mes.slice(0, 4)}`,
       })),
-      empresas: top(porEmpresa),
-      fornecedores: top(porFornecedor),
+      empresas: [...porEmpresa.values()]
+        .map((item) => ({ ...item, saldo: item.vencido + item.reprogramado }))
+        .sort((a, b) => b.saldo - a.saldo)
+        .slice(0, 10),
+      fornecedores: [...porFornecedor.entries()]
+        .map(([nome, saldo]) => ({ nome, saldo }))
+        .sort((a, b) => b.saldo - a.saldo),
+      empresasMatriz: [...porEmpresa.values()]
+        .sort((a, b) => (b.vencido + b.reprogramado) - (a.vencido + a.reprogramado) || a.nome.localeCompare(b.nome, 'pt-BR'))
+        .map((item) => item.nome),
+      celulas: Object.fromEntries(porCelula),
       subclassificacoes: [...porSub.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo)
@@ -361,7 +569,7 @@ export const DiarioVencidosPainel = forwardRef<
     };
   }, [base, hoje, mapaSub]);
 
-  const elegiveis = useMemo(() => base.filter(podeAlterar), [base]);
+  const elegiveis = useMemo(() => titulosExibidos.filter(podeAlterar), [titulosExibidos]);
   const marcadas = useMemo(
     () => elegiveis.filter((l) => selecionadas.has(chaveSelecao(l))),
     [elegiveis, selecionadas],
@@ -378,9 +586,11 @@ export const DiarioVencidosPainel = forwardRef<
       setPlanos('');
       setSubclassificacoes('');
       setOrigens('');
+      setSituacoes('');
       setObservacao('');
+      gradeTitulos.limparFiltrosGrade();
     },
-    linhasVisiveis: () => base,
+    linhasVisiveis: () => titulosExibidos,
     linhasSelecionadas: () => marcadas,
     periodo: () => {
       const datas = base
@@ -393,9 +603,22 @@ export const DiarioVencidosPainel = forwardRef<
     recarregar: () => {
       setSelecionadas(new Set());
       void carregar();
-      void fetchDiarioSubclassificacoes().then(setGrupos).catch(() => setGrupos([]));
+      void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
     },
-  }), [base, marcadas, hoje, onResumo]);
+    atualizarSubclassificacoes: () => {
+      void fetchDiarioSubclassificacoes()
+      .then(setGrupos)
+      .catch((e) => {
+        setGrupos([]);
+        setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+      });
+    },
+  }), [base, titulosExibidos, marcadas, hoje, onResumo, gradeTitulos.limparFiltrosGrade]);
 
   const abrirDetalhe = (titulo: string, linhasDetalhe: DiarioContaPagarLinha[]) => {
     setDetalhe({ titulo, linhas: linhasDetalhe });
@@ -429,6 +652,7 @@ export const DiarioVencidosPainel = forwardRef<
           <FiltroMulti label="Plano de contas" placeholder="Todos" options={opcoes('planoContas')} value={planos} onChange={setPlanos} optionLabel="planos" minWidth="160px" disabled={loading} />
           <FiltroMulti label="SubClassificação" placeholder="Todas" options={opcoesSub} value={subclassificacoes} onChange={setSubclassificacoes} optionLabel="subclassificações" minWidth="160px" disabled={loading} />
           <FiltroMulti label="Origem" placeholder="Todas" options={['Nomus', 'Shop9']} value={origens} onChange={setOrigens} optionLabel="origens" minWidth="110px" disabled={loading} />
+          <FiltroMulti label="Situação" placeholder="Todas" options={['Vencidos', 'Reprogramados']} value={situacoes} onChange={setSituacoes} optionLabel="situações" minWidth="150px" disabled={loading} />
           <div className="w-44">
             <label className={FILTRO_LABEL_CLASS}>Observações</label>
             <input type="search" value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Descrição ou comentário" className={FILTRO_INPUT_CLASS} />
@@ -494,17 +718,19 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <Ranking
-              titulo="Por empresa"
+            <GraficoEmpresaEmpilhado
               dados={resumo.empresas}
-              cor={COR_REPROGRAMADO}
               onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => empresaExibida(l) === nome))}
             />
-            <Ranking
-              titulo="Por fornecedor"
+            <RankingFornecedores
               dados={resumo.fornecedores}
-              cor={COR_VENCIDO}
+              empresas={resumo.empresasMatriz}
+              celulas={resumo.celulas}
               onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR') === nome))}
+              onSelecionarCelula={(fornecedor, empresa) => abrirDetalhe(
+                `${fornecedor} · ${empresa}`,
+                base.filter((l) => (l.fornecedor ?? 'Sem pessoa').toLocaleUpperCase('pt-BR') === fornecedor && empresaExibida(l) === empresa),
+              )}
             />
           </div>
 
@@ -553,11 +779,11 @@ export const DiarioVencidosPainel = forwardRef<
           </div>
         </div>
       ) : (
-        <div className="card-panel min-h-0 overflow-auto !p-0">
-          <table className="min-w-[1100px] w-full text-xs uppercase">
+        <div ref={gradeTitulos.tableScrollRef} className="card-panel min-h-0 overflow-auto !p-0">
+          <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-xs uppercase">
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
-                <th className="w-8 px-2 py-2">
+                <th className="sticky top-0 z-20 w-8 bg-primary-600 px-2 py-2">
                   <input
                     type="checkbox"
                     aria-label="Selecionar títulos em aberto"
@@ -576,15 +802,28 @@ export const DiarioVencidosPainel = forwardRef<
                     }}
                   />
                 </th>
-                {['Código', 'Situação', 'Classificação', 'SubClassificação', 'Vencimento', 'Reprogramado', 'Dias', 'Empresa', 'Pessoa', 'Descrição', 'Comentários', 'Saldo a pagar'].map((col) => (
-                  <th key={col} className="px-2 py-2 text-left font-medium whitespace-nowrap">{col}</th>
+                {COLUNAS_TITULOS_VENCIDOS.map((col) => (
+                  <DiarioCabecalhoTh
+                    key={col.id}
+                    colId={col.id}
+                    label={col.label}
+                    grade={gradeTitulos}
+                    align={'align' in col ? col.align : 'left'}
+                    className="sticky top-0 bg-primary-600"
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {base.length === 0 && !loading ? (
-                <tr><td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">Nenhum título vencido ou reprogramado em aberto.</td></tr>
-              ) : base.map((l, i) => {
+              {titulosExibidos.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">
+                    {base.length === 0
+                      ? 'Nenhum título vencido ou reprogramado em aberto.'
+                      : 'Nenhum lançamento com os filtros da grade.'}
+                  </td>
+                </tr>
+              ) : titulosExibidos.map((l, i) => {
                 const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
                 const chave = chaveSelecao(l);
                 const alteravel = podeAlterar(l);
@@ -608,9 +847,11 @@ export const DiarioVencidosPainel = forwardRef<
                       />
                     </td>
                     <td className="px-2 py-1.5 tabular-nums">{l.codigoClassificacao ?? '—'}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{l.status}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
                     <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5">{nomeSubclassificacao(l, mapaSub)}</td>
+                    <td className="max-w-[14rem] truncate px-2 py-1.5 normal-case">
+                      <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
+                    </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>
                     <td className="px-2 py-1.5 tabular-nums">{dias ?? '—'}</td>
@@ -627,7 +868,16 @@ export const DiarioVencidosPainel = forwardRef<
         </div>
       )}
       </div>
-      {detalhe ? <ModalDetalheGrafico titulo={detalhe.titulo} linhas={detalhe.linhas} mapaSub={mapaSub} onClose={() => setDetalhe(null)} /> : null}
+      {subaba === 'titulos' ? <DiarioGradeFiltroPortal grade={gradeTitulos} zIndex={14000} /> : null}
+      {detalhe ? (
+        <ModalDetalheGrafico
+          titulo={detalhe.titulo}
+          linhas={detalhe.linhas}
+          mapaSub={mapaSub}
+          hoje={hoje}
+          onClose={() => setDetalhe(null)}
+        />
+      ) : null}
     </div>
   );
 });
@@ -636,51 +886,91 @@ function ModalDetalheGrafico({
   titulo,
   linhas,
   mapaSub,
+  hoje,
   onClose,
 }: {
   titulo: string;
   linhas: DiarioContaPagarLinha[];
   mapaSub: Map<string, string>;
+  hoje: string;
   onClose: () => void;
 }) {
-  const saldo = linhas.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+  const getCellText = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const valueForSort = useCallback(
+    (row: DiarioContaPagarLinha, colId: string) => valorOrdenacaoVencidos(row, colId, mapaSub, hoje),
+    [mapaSub, hoje],
+  );
+  const grade = useGradeFiltrosExcel({
+    rows: linhas,
+    columnIds: COLUNAS_DETALHE_VENCIDOS.map((c) => c.id),
+    getCellText,
+    valueForSort,
+    dateColumnIds: ['vencimento'],
+  });
+  const visiveis = grade.rowsExibidas;
+  const saldo = visiveis.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
+  return createPortal(
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="detalhe-grafico-titulo"
-        className="relative z-[81] flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className="relative z-[81] flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
       >
-        <div className="px-5 pt-5 pb-3">
-          <h2 id="detalhe-grafico-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">{titulo}</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {linhas.length.toLocaleString('pt-BR')} título(s) · saldo {formatMoeda(saldo)}
-          </p>
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
+          <div>
+            <h2 id="detalhe-grafico-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">{titulo}</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {visiveis.length.toLocaleString('pt-BR')}
+              {visiveis.length !== linhas.length ? ` de ${linhas.length.toLocaleString('pt-BR')}` : ''} título(s) · saldo {formatMoeda(saldo)}
+              {' · use ▾ no cabeçalho para filtrar e classificar'}
+            </p>
+          </div>
+          {grade.temFiltrosOuOrdem ? (
+            <button
+              type="button"
+              onClick={() => grade.limparFiltrosGrade()}
+              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+            >
+              Limpar filtros da grade
+            </button>
+          ) : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto px-5 pb-4">
-          <table className="min-w-[860px] w-full text-xs uppercase">
-            <thead className="sticky top-0 bg-white text-left text-slate-500 dark:bg-slate-800">
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
+          <table className="min-w-[860px] w-full border-separate border-spacing-0 text-xs uppercase">
+            <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
-                {['Situação', 'Classificação', 'SubClassificação', 'Vencimento', 'Empresa', 'Pessoa', 'Descrição', 'Saldo a pagar'].map((col) => (
-                  <th key={col} className="py-1.5 pr-3 font-medium whitespace-nowrap">{col}</th>
+                {COLUNAS_DETALHE_VENCIDOS.map((col) => (
+                  <DiarioCabecalhoTh
+                    key={col.id}
+                    colId={col.id}
+                    label={col.label}
+                    grade={grade}
+                    align={'align' in col ? col.align : 'left'}
+                    className="sticky top-0 bg-primary-600"
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {linhas.length === 0 ? (
-                <tr><td colSpan={8} className="py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
-              ) : linhas.map((l, i) => (
+              {visiveis.length === 0 ? (
+                <tr><td colSpan={8} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
+              ) : visiveis.map((l, i) => (
                 <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <td className="py-1.5 pr-3 whitespace-nowrap">{l.status}</td>
-                  <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.planoContas ?? '—'}</td>
-                  <td className="max-w-[12rem] truncate py-1.5 pr-3">{nomeSubclassificacao(l, mapaSub)}</td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                  <td className="max-w-[12rem] truncate py-1.5 pr-3">{empresaExibida(l)}</td>
-                  <td className="max-w-[14rem] truncate py-1.5 pr-3">{l.fornecedor ?? '—'}</td>
-                  <td className="max-w-[18rem] truncate py-1.5 pr-3"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
-                  <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
+                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
+                  <td className="max-w-[12rem] truncate px-2 py-1.5 normal-case">
+                    <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
+                  </td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
+                  <td className="max-w-[12rem] truncate px-2 py-1.5">{empresaExibida(l)}</td>
+                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.fornecedor ?? '—'}</td>
+                  <td className="max-w-[18rem] truncate px-2 py-1.5"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
                 </tr>
               ))}
             </tbody>
@@ -695,7 +985,297 @@ function ModalDetalheGrafico({
             Fechar
           </button>
         </div>
+        <DiarioGradeFiltroPortal grade={grade} zIndex={14000} />
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+const MEDALHA = [
+  'text-amber-400',
+  'text-slate-400',
+  'text-orange-700',
+] as const;
+
+function GraficoEmpresaEmpilhado({
+  dados,
+  onSelecionar,
+}: {
+  dados: Array<{ nome: string; vencido: number; reprogramado: number; saldo: number }>;
+  onSelecionar: (nome: string) => void;
+}) {
+  const [visao, setVisao] = useState<'barras' | 'pizza'>('barras');
+  const pizza = visao === 'pizza';
+
+  return (
+    <div className={`relative p-4 ${panelSurface}`}>
+      <button
+        type="button"
+        aria-label={pizza ? 'Ver gráfico de barras' : 'Ver gráfico de pizza'}
+        title={pizza ? 'Ver barras' : 'Ver pizza'}
+        onClick={() => setVisao((atual) => (atual === 'barras' ? 'pizza' : 'barras'))}
+        className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        {pizza ? <BarChart3 className="h-4 w-4" /> : <ChartPie className="h-4 w-4" />}
+      </button>
+      <h2 className="pr-10 text-sm font-semibold text-slate-900 dark:text-white">Por empresa</h2>
+      <p className="mt-0.5 pr-10 text-xs text-slate-500">
+        {pizza
+          ? 'Cada fatia é uma empresa. Clique para ver as contas.'
+          : 'Laranja: vencido. Azul: reprogramado. Clique na barra para ver as contas.'}
+      </p>
+      <div className="relative mt-3 h-72 overflow-hidden">
+        {dados.length === 0 ? (
+          <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p>
+        ) : (
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={visao}
+              className="absolute inset-0"
+              initial={{ opacity: 0, scale: 0.55, rotate: pizza ? -90 : 90 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.45, rotate: pizza ? 90 : -90 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <ResponsiveContainer>
+                {pizza ? (
+                  <PieChart>
+                    <Tooltip
+                      formatter={(v, _n, item) => {
+                        const bruto = item?.payload as { vencido?: number; reprogramado?: number } | undefined;
+                        return [
+                          `${formatMoeda(Number(v ?? 0))} · venc. ${formatMoeda(bruto?.vencido ?? 0)} · reprog. ${formatMoeda(bruto?.reprogramado ?? 0)}`,
+                          'Saldo',
+                        ];
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Pie
+                      data={dados}
+                      dataKey="saldo"
+                      nameKey="nome"
+                      cx="50%"
+                      cy="46%"
+                      innerRadius={48}
+                      outerRadius={92}
+                      paddingAngle={2}
+                      cornerRadius={6}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { nome?: string }).nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    >
+                      {dados.map((item, idx) => (
+                        <Cell key={item.nome} fill={CORES_PIZZA[idx % CORES_PIZZA.length]} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                ) : (
+                  <BarChart data={dados} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 4 }} style={{ cursor: 'pointer' }}>
+                    <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.16)" />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="nome" width={120} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      formatter={(v, nome) => [formatMoeda(Number(v ?? 0)), String(nome)]}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar
+                      dataKey="vencido"
+                      name="Vencido"
+                      stackId="saldo"
+                      fill={COR_VENCIDO}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    />
+                    <Bar
+                      dataKey="reprogramado"
+                      name="Reprogramado"
+                      stackId="saldo"
+                      fill={COR_REPROGRAMADO}
+                      radius={[0, 6, 6, 0]}
+                      cursor="pointer"
+                      onClick={(item) => {
+                        const nome = String((item as { payload?: { nome?: string } }).payload?.nome ?? '');
+                        if (nome) onSelecionar(nome);
+                      }}
+                    />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RankingFornecedores({
+  dados,
+  empresas,
+  celulas,
+  onSelecionar,
+  onSelecionarCelula,
+}: {
+  dados: Array<{ nome: string; saldo: number }>;
+  empresas: string[];
+  celulas: Record<string, number>;
+  onSelecionar: (nome: string) => void;
+  onSelecionarCelula: (fornecedor: string, empresa: string) => void;
+}) {
+  const [matrizAberta, setMatrizAberta] = useState(false);
+  const [busca, setBusca] = useState('');
+  const visiveis = dados.slice(0, 10);
+  const max = visiveis[0]?.saldo || 1;
+  const passa = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
+  const linhasMatriz = dados.filter((item) => passa(item.nome));
+
+  return (
+    <div className={`relative p-4 ${panelSurface}`}>
+      <button
+        type="button"
+        aria-label="Abrir matriz fornecedor por empresa"
+        title="Abrir matriz fornecedor por empresa"
+        onClick={() => setMatrizAberta(true)}
+        className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      >
+        <ListOrdered className="h-4 w-4" />
+      </button>
+      <h2 className="pl-10 text-sm font-semibold text-slate-900 dark:text-white">Ranking de fornecedores</h2>
+      <p className="mt-0.5 pl-10 text-xs text-slate-500">
+        Top 10 por saldo. Clique em uma linha para ver as contas.
+      </p>
+      <div className="mt-3 max-h-72 space-y-1.5 overflow-auto pr-1">
+        {visiveis.length === 0 ? (
+          <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p>
+        ) : visiveis.map((item, idx) => {
+          const pct = Math.max(2, Math.round((item.saldo / max) * 100));
+          const medalha = MEDALHA[idx];
+          return (
+            <button
+              key={item.nome}
+              type="button"
+              onClick={() => onSelecionar(item.nome)}
+              className="flex w-full flex-col gap-0.5 rounded-lg px-1 py-1 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            >
+              <div className="flex items-center gap-2">
+                {medalha ? (
+                  <span className={`inline-flex w-6 shrink-0 items-center justify-center ${medalha}`} title={`${idx + 1}º`}>
+                    <Medal className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <span className="w-6 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">{idx + 1}º</span>
+                )}
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-slate-100">{item.nome}</span>
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{formatMoeda(item.saldo)}</span>
+              </div>
+              <div className="ml-8 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: COR_VENCIDO }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {matrizAberta
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="matriz-forn-titulo"
+                className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(98vw,92rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+              >
+                <div className="shrink-0 px-5 pt-5 pb-3">
+                  <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                    Matriz fornecedor × empresa
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Colunas da maior para a menor. Clique no valor para ver as contas.
+                  </p>
+                  <input
+                    type="search"
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Buscar fornecedor"
+                    className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
+                  />
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {linhasMatriz.length === 0 || empresas.length === 0 ? (
+                    <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
+                  ) : (
+                    <table className="w-max min-w-full border-separate border-spacing-0 text-xs uppercase">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 top-0 z-40 min-w-[16rem] bg-primary-600 px-2 py-2 text-left font-medium whitespace-nowrap text-white shadow-[2px_0_0_0_rgb(37,99,235)]">
+                            Fornecedor
+                          </th>
+                          {empresas.map((emp) => (
+                            <th key={emp} className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">
+                              {emp}
+                            </th>
+                          ))}
+                          <th className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {linhasMatriz.map((forn) => (
+                          <tr key={forn.nome} className="text-slate-800 dark:text-slate-100">
+                            <th className="sticky left-0 z-10 border-t border-slate-100 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
+                              <button
+                                type="button"
+                                className="max-w-[22rem] truncate text-left hover:underline"
+                                title={forn.nome}
+                                onClick={() => onSelecionar(forn.nome)}
+                              >
+                                {forn.nome}
+                              </button>
+                            </th>
+                            {empresas.map((emp) => {
+                              const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
+                              return (
+                                <td key={emp} className="border-t border-slate-100 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
+                                  {valor > 0 ? (
+                                    <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(forn.nome, emp)}>
+                                      {formatMoeda(valor)}
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="border-t border-slate-100 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
+                              {formatMoeda(forn.saldo)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setMatrizAberta(false)}
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

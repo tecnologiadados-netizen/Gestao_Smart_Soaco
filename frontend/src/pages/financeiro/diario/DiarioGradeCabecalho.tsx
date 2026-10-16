@@ -23,7 +23,7 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'itens', label: 'Itens', align: 'center' as const },
 ];
 
-const NUMERICAS = new Set(['valor', 'baixado', 'saldo']);
+const NUMERICAS = new Set(['valor', 'baixado', 'saldo', 'dias', 'codigo']);
 const DATAS = new Set(['vencimento', 'baixa']);
 
 type GradeApi = ReturnType<typeof useGradeFiltrosExcel<DiarioContaPagarLinha>>;
@@ -34,15 +34,17 @@ export function DiarioCabecalhoTh({
   grade,
   align = 'left',
   filtroExtraAtivo = false,
+  className = '',
 }: {
   colId: string;
   label: string;
   grade: GradeApi;
   align?: 'left' | 'right' | 'center';
   filtroExtraAtivo?: boolean;
+  className?: string;
 }) {
   return (
-    <th className="px-0 py-0 font-medium whitespace-nowrap">
+    <th className={`px-0 py-0 font-medium whitespace-nowrap ${className}`.trim()}>
       <div
         className={`flex min-h-[2rem] items-center gap-1 px-1.5 py-1 ${
           align === 'right' ? 'flex-row-reverse justify-end' : align === 'center' ? 'justify-center' : 'justify-between'
@@ -63,10 +65,12 @@ export function DiarioGradeFiltroPortal({
   grade,
   filtroCor,
   onOrdenacaoTexto,
+  zIndex,
 }: {
   grade: GradeApi;
   filtroCor?: FiltroCorCabecalho;
   onOrdenacaoTexto?: () => void;
+  zIndex?: number;
 }) {
   if (!grade.colunaFiltroAberta || !grade.filtroAbertoRect) return null;
   const colId = grade.colunaFiltroAberta;
@@ -79,6 +83,7 @@ export function DiarioGradeFiltroPortal({
       excelFilterDrafts={grade.excelFilterDrafts}
       setExcelFilterDrafts={grade.setExcelFilterDrafts}
       valoresUnicosPorColuna={grade.valoresUnicosPorColuna}
+      zIndex={zIndex}
       filtroCor={colId === 'anotacao' ? filtroCor : undefined}
       onSortAsc={(id) => {
         onOrdenacaoTexto?.();

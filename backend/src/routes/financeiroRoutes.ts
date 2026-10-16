@@ -22,6 +22,7 @@ import {
   getDiarioFormasPagamento,
   getDiarioSubclassificacoes,
   postAlocarSubclassificacao,
+  postCadastrarSubclassificacao,
   postAplicarCorAnotacoesDiario,
   postDefinirContaBancaria,
   postDefinirFormaPagamento,
@@ -175,7 +176,8 @@ router.post('/diario/contas-pagar/reprogramar', verFinanceiroDiario, postReprogr
 router.post('/diario/contas-pagar/conta-bancaria', verFinanceiroDiario, postDefinirContaBancaria);
 router.post('/diario/contas-pagar/forma-pagamento', verFinanceiroDiario, postDefinirFormaPagamento);
 router.get('/diario/subclassificacoes', verFinanceiroDiario, getDiarioSubclassificacoes);
-router.post('/diario/subclassificacoes', verFinanceiroDiario, postAlocarSubclassificacao);
+router.post('/diario/subclassificacoes', verFinanceiroDiario, postCadastrarSubclassificacao);
+router.post('/diario/subclassificacoes/alocar', verFinanceiroDiario, postAlocarSubclassificacao);
 router.post('/diario/contas-pagar/anotacao', verFinanceiroDiario, postSalvarAnotacaoDiario);
 router.post('/diario/contas-pagar/anotacoes/cor', verFinanceiroDiario, postAplicarCorAnotacoesDiario);
 router.post('/diario/contas-pagar/anotacoes/importar', verFinanceiroDiario, postImportarAnotacoesDiario);

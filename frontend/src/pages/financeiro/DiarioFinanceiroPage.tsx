@@ -43,6 +43,7 @@ import { DiarioAnotacaoCelula } from './diario/DiarioAnotacaoCelula';
 import { DiarioClassificarCorDialog, type NivelClassificacaoCor } from './diario/DiarioClassificarCorDialog';
 import { DiarioPaletaCorExcel } from './diario/DiarioPaletaCorExcel';
 import { corObservacaoDiario } from './diario/coresObservacaoDiario';
+import { DiarioAlocarSubclassificacaoModal } from './diario/DiarioAlocarSubclassificacaoModal';
 import { DiarioSubclassificacaoModal } from './diario/DiarioSubclassificacaoModal';
 import { DiarioVencidosPainel, type DiarioVencidosPainelHandle } from './diario/DiarioVencidosPainel';
 import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
@@ -323,8 +324,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [prioridadeValor, setPrioridadeValor] = useState('');
   const [formaAberta, setFormaAberta] = useState(false);
   const [subAberta, setSubAberta] = useState(false);
-  const [subSugestoes, setSubSugestoes] = useState<string[]>([]);
-  const [subInicial, setSubInicial] = useState('');
+  const [alocarSubAberta, setAlocarSubAberta] = useState(false);
+  const [alocarClassifs, setAlocarClassifs] = useState<string[]>([]);
   const vencidosRef = useRef<DiarioVencidosPainelHandle>(null);
   const [vencidosUi, setVencidosUi] = useState({ linhas: 0, selecionadas: 0, loading: false });
   const onResumoVencidos = useCallback((resumo: { linhas: number; selecionadas: number; loading: boolean }) => {
@@ -820,16 +821,29 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   };
 
   const abrirSubclassificacao = () => {
-    if (!editavel) return;
-    const fonte = aba === 'vencidos' ? (vencidosRef.current?.linhasVisiveis() ?? []) : linhas;
-    const marcadas = linhasMarcadas();
-    const nomes = new Set(marcadas.map((l) => l.planoContas?.trim() || '').filter(Boolean));
-    setSubSugestoes(
-      [...new Set(fonte.map((l) => l.planoContas?.trim() || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    );
-    setSubInicial(nomes.size === 1 ? [...nomes][0] ?? '' : '');
     setErro(null);
     setSubAberta(true);
+  };
+
+  const abrirRelacionarSubclassificacao = () => {
+    if (aba !== 'vencidos') {
+      setErro('Marque títulos na grade de Vencidos/Reprogramados para relacionar a classificação.');
+      return;
+    }
+    const marcadas = vencidosRef.current?.linhasSelecionadas() ?? [];
+    if (marcadas.length === 0) {
+      setErro('Marque ao menos um título na grade de Vencidos/Reprogramados para relacionar a classificação.');
+      return;
+    }
+    const classifs = [...new Set(marcadas.map((l) => l.planoContas?.trim() || '').filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (classifs.length === 0) {
+      setErro('Os títulos marcados não têm classificação para relacionar.');
+      return;
+    }
+    setErro(null);
+    setAlocarClassifs(classifs);
+    setAlocarSubAberta(true);
   };
 
   const confirmarFormaPagamento = async () => {
@@ -1168,7 +1182,6 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={!editavel}
                     onClick={() => {
                       setAcoesAberto(false);
                       abrirSubclassificacao();
@@ -1176,6 +1189,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     SubClassificação
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={aba !== 'vencidos' || vencidosUi.selecionadas === 0}
+                    onClick={() => {
+                      setAcoesAberto(false);
+                      abrirRelacionarSubclassificacao();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Relacionar classificação
                   </button>
                 </div>
               ) : null}
@@ -1357,6 +1382,15 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
       {vencidosVisitado ? (
         <div className={aba === 'vencidos' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'hidden'}>
+          {erro ? (
+            <div className="mb-2 shrink-0 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+              {erro}
+            </div>
+          ) : aviso ? (
+            <div className="mb-2 shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+              {aviso}
+            </div>
+          ) : null}
           <DiarioVencidosPainel
             ref={vencidosRef}
             ativo={aba === 'vencidos'}
@@ -1663,10 +1697,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       ) : null}
 
       {subAberta ? (
-        <DiarioSubclassificacaoModal
-          sugestoes={subSugestoes}
-          classificacaoInicial={subInicial}
-          onClose={() => setSubAberta(false)}
+        <DiarioSubclassificacaoModal onClose={() => setSubAberta(false)} />
+      ) : null}
+
+      {alocarSubAberta ? (
+        <DiarioAlocarSubclassificacaoModal
+          classificacoes={alocarClassifs}
+          onClose={() => setAlocarSubAberta(false)}
+          onAlocado={() => {
+            setAlocarSubAberta(false);
+            setAviso('Subclassificação relacionada. Todos os títulos com essas classificações passam a usar o agrupamento.');
+            vencidosRef.current?.atualizarSubclassificacoes();
+          }}
         />
       ) : null}
 

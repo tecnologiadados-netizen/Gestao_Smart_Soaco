@@ -1,6 +1,11 @@
 import type { Request, Response } from 'express';
 import { aplicarCorAnotacoesDiario, importarAnotacoesDiario, lerMatrizPlanilha, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
-import { cadastrarSubclassificacaoDiario, listarSubclassificacoesDiario } from '../data/diarioSubclassificacao.js';
+import {
+  alocarSubclassificacaoDiario,
+  cadastrarNomeSubclassificacaoDiario,
+  listarNomesSubclassificacaoDiario,
+  listarSubclassificacoesDiario,
+} from '../data/diarioSubclassificacao.js';
 import { assertDatasDiarioEditaveis } from '../data/diarioProcessoRepository.js';
 import {
   MAX_REPROGRAMAR,
@@ -353,8 +358,11 @@ export async function postAplicarCorAnotacoesDiario(req: Request, res: Response)
 /** GET /api/financeiro/diario/subclassificacoes */
 export async function getDiarioSubclassificacoes(_req: Request, res: Response): Promise<void> {
   try {
-    const itens = await listarSubclassificacoesDiario();
-    res.json({ itens });
+    const [itens, nomes] = await Promise.all([
+      listarSubclassificacoesDiario(),
+      listarNomesSubclassificacaoDiario(),
+    ]);
+    res.json({ itens, nomes });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[getDiarioSubclassificacoes]', msg);
@@ -362,20 +370,44 @@ export async function getDiarioSubclassificacoes(_req: Request, res: Response): 
   }
 }
 
-/** POST /api/financeiro/diario/subclassificacoes */
-export async function postAlocarSubclassificacao(req: Request, res: Response): Promise<void> {
+/** POST /api/financeiro/diario/subclassificacoes — só o nome do agrupamento. */
+export async function postCadastrarSubclassificacao(req: Request, res: Response): Promise<void> {
   try {
-    const item = await cadastrarSubclassificacaoDiario({
-      classificacao: String(req.body?.classificacao ?? ''),
-      nome: String(req.body?.nome ?? ''),
-    });
-    console.log(
-      '[diario subclassificacao] user=%s classificacao=%s nome=%s',
-      req.user?.login ?? '?',
-      item.classificacao,
-      item.nome,
-    );
+    const item = await cadastrarNomeSubclassificacaoDiario(String(req.body?.nome ?? ''));
+    console.log('[diario subclassificacao] user=%s nome=%s', req.user?.login ?? '?', item.nome);
     res.json(item);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postCadastrarSubclassificacao]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/subclassificacoes/alocar */
+export async function postAlocarSubclassificacao(req: Request, res: Response): Promise<void> {
+  const bruto = req.body?.classificacoes;
+  const classificacoes = Array.isArray(bruto) ? bruto.map((v) => String(v ?? '')) : [];
+  try {
+    const resultado = await alocarSubclassificacaoDiario({
+      classificacoes,
+      nome: String(req.body?.nome ?? ''),
+      confirmarTroca: req.body?.confirmarTroca === true,
+    });
+    if (resultado.precisaConfirmar) {
+      res.status(409).json({
+        error: 'Uma ou mais classificações já estão alocadas em outra subclassificação.',
+        precisaConfirmar: true,
+        conflitos: resultado.conflitos ?? [],
+      });
+      return;
+    }
+    console.log(
+      '[diario subclassificacao alocar] user=%s nome=%s qtd=%s',
+      req.user?.login ?? '?',
+      String(req.body?.nome ?? ''),
+      resultado.atualizados ?? 0,
+    );
+    res.json(resultado);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postAlocarSubclassificacao]', msg);
