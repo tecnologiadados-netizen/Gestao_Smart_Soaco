@@ -27,6 +27,7 @@ import {
   postDefinirContaBancaria,
   postDefinirFormaPagamento,
   postImportarAnotacoesDiario,
+  postAplicarCartorioDiario,
   postReprogramarContasPagar,
   postSalvarAnotacaoDiario,
 } from '../controllers/diarioFinanceiroController.js';
@@ -181,6 +182,7 @@ router.post('/diario/subclassificacoes/alocar', verFinanceiroDiario, postAlocarS
 router.post('/diario/contas-pagar/anotacao', verFinanceiroDiario, postSalvarAnotacaoDiario);
 router.post('/diario/contas-pagar/anotacoes/cor', verFinanceiroDiario, postAplicarCorAnotacoesDiario);
 router.post('/diario/contas-pagar/anotacoes/importar', verFinanceiroDiario, postImportarAnotacoesDiario);
+router.post('/diario/contas-pagar/cartorio', verFinanceiroDiario, postAplicarCartorioDiario);
 router.get('/diario/processos', verFinanceiroDiario, getProcessosDiario);
 router.post('/diario/processos', verFinanceiroDiario, postIniciarProcessoDiario);
 router.patch('/diario/processos/:id', verFinanceiroDiario, patchDescricaoProcessoDiario);

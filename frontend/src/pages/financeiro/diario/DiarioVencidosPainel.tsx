@@ -27,6 +27,7 @@ import {
 import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import { DiarioCabecalhoTh, DiarioGradeFiltroPortal } from './DiarioGradeCabecalho';
+import { BadgeCartorio, textoCartorio } from './cartorioDiario';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
 
 type Subaba = 'titulos' | 'dashboard';
@@ -118,6 +119,7 @@ const COLUNAS_TITULOS_VENCIDOS = [
   { id: 'subclassificacao', label: 'SubClassificação' },
   { id: 'vencimento', label: 'Vencimento' },
   { id: 'reprogramado', label: 'Reprogramado' },
+  { id: 'cartorio', label: 'Cartório' },
   { id: 'dias', label: 'Dias' },
   { id: 'empresa', label: 'Empresa' },
   { id: 'fornecedor', label: 'Pessoa' },
@@ -131,6 +133,7 @@ const COLUNAS_DETALHE_VENCIDOS = [
   { id: 'plano', label: 'Classificação' },
   { id: 'subclassificacao', label: 'SubClassificação' },
   { id: 'vencimento', label: 'Vencimento' },
+  { id: 'cartorio', label: 'Cartório' },
   { id: 'empresa', label: 'Empresa' },
   { id: 'fornecedor', label: 'Pessoa' },
   { id: 'descricao', label: 'Descrição' },
@@ -160,6 +163,8 @@ function textoCelulaVencidos(
       return formatData(l.dataVencimento);
     case 'reprogramado':
       return texto(l.reprogramado);
+    case 'cartorio':
+      return textoCartorio(l.emCartorio);
     case 'dias': {
       const dias = diasAtrasoTitulo(l, hoje);
       return dias != null ? String(dias) : VAZIO_CELULA;
@@ -276,6 +281,7 @@ export type DiarioVencidosPainelHandle = {
   periodo: () => { inicio: string; fim: string };
   recarregar: () => void;
   atualizarSubclassificacoes: () => void;
+  aplicarCartorio: (itens: Array<{ origem: DiarioContaPagarLinha['origem']; codigo: number }>, emCartorio: boolean) => void;
 };
 
 function ehVencido(l: DiarioContaPagarLinha, hoje: string): boolean {
@@ -460,6 +466,7 @@ export const DiarioVencidosPainel = forwardRef<
   const [grupos, setGrupos] = useState<DiarioSubclassificacaoItem[]>([]);
   const [origens, setOrigens] = useState('');
   const [situacoes, setSituacoes] = useState('');
+  const [cartorioFiltro, setCartorioFiltro] = useState('');
   const [observacao, setObservacao] = useState('');
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -512,6 +519,7 @@ export const DiarioVencidosPainel = forwardRef<
     const fSub = selecionados(subclassificacoes);
     const fOrigem = selecionados(origens);
     const fSituacao = selecionados(situacoes);
+    const fCartorio = selecionados(cartorioFiltro);
     const casaObs = criarMatcherTextoLivre(observacao);
     return linhas.filter((l) => {
       if (l.status !== 'Em aberto') return false;
@@ -521,10 +529,11 @@ export const DiarioVencidosPainel = forwardRef<
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l))) return false;
       if (fPlano.size > 0 && !fPlano.has(l.planoContas ?? '')) return false;
       if (fSub.size > 0 && !fSub.has(nomeSubclassificacao(l, mapaSub))) return false;
+      if (fCartorio.size > 0 && !fCartorio.has(l.emCartorio ? 'Sim' : 'Não')) return false;
       if (observacao.trim() && !casaObs(`${l.observacao ?? ''} ${l.descricao ?? ''}`)) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, observacao, hoje, mapaSub]);
+  }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, cartorioFiltro, observacao, hoje, mapaSub]);
 
   const getCellTextTitulos = useCallback(
     (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
@@ -648,6 +657,7 @@ export const DiarioVencidosPainel = forwardRef<
       setSubclassificacoes('');
       setOrigens('');
       setSituacoes('');
+      setCartorioFiltro('');
       setObservacao('');
       gradeTitulos.limparFiltrosGrade();
     },
@@ -678,6 +688,22 @@ export const DiarioVencidosPainel = forwardRef<
         setGrupos([]);
         setErro((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
       });
+    },
+    aplicarCartorio: (itens, emCartorio) => {
+      const chaves = new Set(itens.map((it) => `${it.origem}:${it.codigo}`));
+      setLinhas((prev) =>
+        prev.map((item) => (chaves.has(`${item.origem}:${item.codigo}`) ? { ...item, emCartorio } : item)),
+      );
+      setDetalhe((prev) =>
+        prev
+          ? {
+              ...prev,
+              linhas: prev.linhas.map((item) =>
+                chaves.has(`${item.origem}:${item.codigo}`) ? { ...item, emCartorio } : item,
+              ),
+            }
+          : prev,
+      );
     },
   }), [base, titulosExibidos, marcadas, hoje, onResumo, gradeTitulos.limparFiltrosGrade]);
 
@@ -721,6 +747,7 @@ export const DiarioVencidosPainel = forwardRef<
           <FiltroMulti label="SubClassificação" placeholder="Todas" options={opcoesSub} value={subclassificacoes} onChange={setSubclassificacoes} optionLabel="subclassificações" minWidth="160px" disabled={loading} />
           <FiltroMulti label="Origem" placeholder="Todas" options={['Nomus', 'Shop9']} value={origens} onChange={setOrigens} optionLabel="origens" minWidth="110px" disabled={loading} />
           <FiltroMulti label="Situação" placeholder="Todas" options={['Vencidos', 'Reprogramados']} value={situacoes} onChange={setSituacoes} optionLabel="situações" minWidth="150px" disabled={loading} />
+          <FiltroMulti label="Cartório" placeholder="Todos" options={['Sim', 'Não']} value={cartorioFiltro} onChange={setCartorioFiltro} optionLabel="cartório" minWidth="110px" disabled={loading} />
           <div className="w-44">
             <label className={FILTRO_LABEL_CLASS}>Observações</label>
             <input type="search" value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Descrição ou comentário" className={FILTRO_INPUT_CLASS} />
@@ -968,7 +995,7 @@ export const DiarioVencidosPainel = forwardRef<
             <tbody>
               {titulosExibidos.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={13} className="px-3 py-8 text-center normal-case text-slate-500">
+                  <td colSpan={14} className="px-3 py-8 text-center normal-case text-slate-500">
                     {base.length === 0
                       ? 'Nenhum título vencido ou reprogramado em aberto.'
                       : 'Nenhum lançamento com os filtros da grade.'}
@@ -1005,6 +1032,7 @@ export const DiarioVencidosPainel = forwardRef<
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeCartorio sim={l.emCartorio} /></td>
                     <td className="px-2 py-1.5 tabular-nums">{dias ?? '—'}</td>
                     <td className="max-w-[12rem] truncate px-2 py-1.5">{empresaExibida(l)}</td>
                     <td className="max-w-[14rem] truncate px-2 py-1.5">{l.fornecedor ?? '—'}</td>
@@ -1109,13 +1137,14 @@ function ModalDetalheGrafico({
         <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <table className="w-full table-fixed border-separate border-spacing-0 text-xs uppercase">
             <colgroup>
+              <col className="w-[8%]" />
+              <col className="w-[13%]" />
+              <col className="w-[12%]" />
               <col className="w-[9%]" />
+              <col className="w-[7%]" />
+              <col className="w-[12%]" />
               <col className="w-[14%]" />
-              <col className="w-[13%]" />
-              <col className="w-[9%]" />
-              <col className="w-[13%]" />
-              <col className="w-[15%]" />
-              <col className="w-[18%]" />
+              <col className="w-[16%]" />
               <col className="w-[9%]" />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
@@ -1134,7 +1163,7 @@ function ModalDetalheGrafico({
             </thead>
             <tbody>
               {visiveis.length === 0 ? (
-                <tr><td colSpan={8} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
+                <tr><td colSpan={9} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
               ) : visiveis.map((l, i) => (
                 <tr key={`${l.origem}-${l.codigo}-${i}`} className="text-slate-800 dark:text-slate-100">
                   <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top normal-case dark:border-slate-700"><BadgeSituacao status={l.status} /></td>
@@ -1143,6 +1172,7 @@ function ModalDetalheGrafico({
                     <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
                   </td>
                   <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top whitespace-nowrap dark:border-slate-700">{formatData(l.dataVencimento)}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top whitespace-nowrap normal-case dark:border-slate-700"><BadgeCartorio sim={l.emCartorio} /></td>
                   <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700">{empresaExibida(l)}</td>
                   <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700">{l.fornecedor ?? '—'}</td>
                   <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700"><DescricaoReprogramadaGrade texto={l.descricao} /></td>

@@ -6,6 +6,7 @@ import {
   fetchDiarioContasBancarias,
   fetchDiarioFormasPagamento,
   fetchDiarioContasPagar,
+  aplicarCartorioDiario,
   aplicarCorAnotacoesDiario,
   importarAnotacoesDiario,
   reprogramarDiarioContasPagar,
@@ -46,6 +47,7 @@ import { corObservacaoDiario } from './diario/coresObservacaoDiario';
 import { DiarioAlocarSubclassificacaoModal } from './diario/DiarioAlocarSubclassificacaoModal';
 import { DiarioSubclassificacaoModal } from './diario/DiarioSubclassificacaoModal';
 import { DiarioVencidosPainel, type DiarioVencidosPainelHandle } from './diario/DiarioVencidosPainel';
+import { BadgeCartorio, textoCartorio } from './diario/cartorioDiario';
 import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
@@ -110,6 +112,7 @@ const ATALHOS: { id: Atalho; label: string }[] = [
 
 const OPCOES_SITUACAO = ['Em aberto', 'Baixado'];
 const OPCOES_ORIGEM = ['Nomus', 'Shop9'];
+const OPCOES_CARTORIO = ['Sim', 'Não'];
 
 function selecionados(csv: string): Set<string> {
   return new Set(
@@ -191,6 +194,23 @@ function dedupeReprogramar(linhas: DiarioContaPagarLinha[]): DiarioContaPagarLin
   return saida;
 }
 
+function chaveCartorio(l: Pick<DiarioContaPagarLinha, 'origem' | 'codigo'>): string {
+  return `${l.origem}:${l.codigo}`;
+}
+
+function dedupeCartorio(linhas: DiarioContaPagarLinha[]): DiarioContaPagarLinha[] {
+  const vistos = new Set<string>();
+  const saida: DiarioContaPagarLinha[] = [];
+  for (const l of linhas) {
+    if (!(l.codigo > 0)) continue;
+    const chave = chaveCartorio(l);
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    saida.push(l);
+  }
+  return saida;
+}
+
 function empresaExibida(l: DiarioContaPagarLinha): string | null {
   if (l.filial?.trim()) return l.filial.trim();
   if (l.empresa?.trim()) return l.empresa.trim();
@@ -213,6 +233,8 @@ function textoCelula(l: DiarioContaPagarLinha, col: string): string {
       return formatData(l.dataVencimento);
     case 'reprogramado':
       return texto(l.reprogramado);
+    case 'cartorio':
+      return textoCartorio(l.emCartorio);
     case 'baixa':
       return formatData(l.dataBaixa);
     case 'fornecedor':
@@ -304,6 +326,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [planos, setPlanos] = useState('');
   const [origens, setOrigens] = useState('');
   const [situacoes, setSituacoes] = useState('');
+  const [cartorioFiltro, setCartorioFiltro] = useState('');
   const [observacao, setObservacao] = useState('');
   const [corObservacao, setCorObservacao] = useState('');
   const [filtroCorHex, setFiltroCorHex] = useState<string | null>(null);
@@ -322,6 +345,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [carregandoContas, setCarregandoContas] = useState(false);
   const [prioridadeAberta, setPrioridadeAberta] = useState(false);
   const [prioridadeValor, setPrioridadeValor] = useState('');
+  const [cartorioAberto, setCartorioAberto] = useState(false);
+  const [cartorioAcao, setCartorioAcao] = useState<'apontar' | 'remover'>('apontar');
   const [formaAberta, setFormaAberta] = useState(false);
   const [subAberta, setSubAberta] = useState(false);
   const [alocarSubAberta, setAlocarSubAberta] = useState(false);
@@ -504,6 +529,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     const fPlano = selecionados(planos);
     const fOrigem = selecionados(origens);
     const fSituacao = selecionados(situacoes);
+    const fCartorio = selecionados(cartorioFiltro);
     const casaObs = criarMatcherTextoLivre(observacao);
     return linhas.filter((l) => {
       if (fSituacao.size > 0 && !fSituacao.has(l.status)) return false;
@@ -511,6 +537,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (fFornecedor.size > 0 && !fFornecedor.has(l.fornecedor ?? '')) return false;
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l) ?? '')) return false;
       if (fPlano.size > 0 && !fPlano.has(l.planoContas ?? '')) return false;
+      if (fCartorio.size > 0 && !fCartorio.has(l.emCartorio ? 'Sim' : 'Não')) return false;
       if (observacao.trim()) {
         const texto = `${l.observacao ?? ''} ${l.descricao ?? ''} ${l.anotacao ?? ''}`;
         if (!casaObs(texto)) return false;
@@ -519,7 +546,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (corObservacao === 'com' && !l.anotacaoCor) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, origens, situacoes, observacao, corObservacao]);
+  }, [linhas, fornecedores, empresas, planos, origens, situacoes, cartorioFiltro, observacao, corObservacao]);
 
   const coresCabecalho = useMemo(() => {
     const usadas = new Set<string>();
@@ -593,6 +620,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setPlanos('');
     setOrigens('');
     setSituacoes('');
+    setCartorioFiltro('');
     setObservacao('');
     setCorObservacao('');
     setFiltroCorHex(null);
@@ -709,6 +737,48 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         `${r.afetados.toLocaleString('pt-BR')} título(s) ${remover ? 'sem prioridade' : `classificado(s) como ${prio} — ${DFC_PRIORIDADE_LABEL[prio as DfcPrioridade]}`}.`,
       );
       setPrioridadeAberta(false);
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const abrirCartorio = () => {
+    if (!editavel) return;
+    const escolhidas = dedupeCartorio(linhasMarcadas());
+    if (escolhidas.length === 0) {
+      setErro('Marque ao menos um título identificado para apontar o cartório.');
+      return;
+    }
+    setModalLinhas(escolhidas);
+    setCartorioAcao(escolhidas.every((l) => l.emCartorio) ? 'remover' : 'apontar');
+    setErroModal(null);
+    setErro(null);
+    setCartorioAberto(true);
+  };
+
+  const confirmarCartorio = async () => {
+    if (salvando) return;
+    const itens = modalLinhas.flatMap((l) => (l.codigo > 0 ? [{ origem: l.origem, codigo: l.codigo }] : []));
+    if (itens.length === 0) return;
+    const emCartorio = cartorioAcao === 'apontar';
+    const chaves = new Set(itens.map((it) => `${it.origem}:${it.codigo}`));
+    setSalvando(true);
+    setErroModal(null);
+    try {
+      const r = await aplicarCartorioDiario({ itens, emCartorio, dataProcesso });
+      setLinhas((prev) =>
+        prev.map((item) => (chaves.has(chaveCartorio(item)) ? { ...item, emCartorio: r.emCartorio } : item)),
+      );
+      vencidosRef.current?.aplicarCartorio(itens, r.emCartorio);
+      setSelecionadas(new Set());
+      setAviso(
+        r.emCartorio
+          ? `${r.atualizados.toLocaleString('pt-BR')} título(s) apontado(s) como em cartório.`
+          : `${r.atualizados.toLocaleString('pt-BR')} título(s) sem apontamento de cartório.`,
+      );
+      setCartorioAberto(false);
     } catch (e) {
       setErroModal(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1160,6 +1230,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
                     onClick={() => {
                       setAcoesAberto(false);
+                      abrirCartorio();
+                    }}
+                    className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Cartório
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
+                    onClick={() => {
+                      setAcoesAberto(false);
                       abrirContaBancaria();
                     }}
                     className="flex w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -1341,6 +1423,16 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               minWidth="120px"
               disabled={loading}
             />
+            <FiltroMulti
+              label="Cartório"
+              placeholder="Todos"
+              options={OPCOES_CARTORIO}
+              value={cartorioFiltro}
+              onChange={setCartorioFiltro}
+              optionLabel="cartório"
+              minWidth="110px"
+              disabled={loading}
+            />
             <div className="w-44">
               <label className={FILTRO_LABEL_CLASS}>Observações</label>
               <input
@@ -1463,7 +1555,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={18} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={19} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1516,6 +1608,9 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                 <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">
                   {l.reprogramado ?? '—'}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap normal-case">
+                  <BadgeCartorio sim={l.emCartorio} />
                 </td>
                 <td className="px-2 py-1.5 max-w-[12rem] truncate" title={empresaExibida(l) ?? ''}>
                   {empresaExibida(l) ?? '—'}
@@ -1655,6 +1750,20 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             if (!salvando) setPrioridadeAberta(false);
           }}
           onConfirm={() => void confirmarPrioridade()}
+          salvando={salvando}
+          erro={erroModal}
+        />
+      ) : null}
+
+      {cartorioAberto ? (
+        <ModalCartorioDiario
+          linhas={modalLinhas}
+          acao={cartorioAcao}
+          onChangeAcao={setCartorioAcao}
+          onClose={() => {
+            if (!salvando) setCartorioAberto(false);
+          }}
+          onConfirm={() => void confirmarCartorio()}
           salvando={salvando}
           erro={erroModal}
         />
@@ -1874,6 +1983,112 @@ function Resumo({ label, valor }: { label: string; valor: string }) {
     <div className="card-panel px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
       <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{valor}</div>
+    </div>
+  );
+}
+
+function ModalCartorioDiario({
+  linhas,
+  acao,
+  onChangeAcao,
+  onClose,
+  onConfirm,
+  salvando,
+  erro,
+}: {
+  linhas: DiarioContaPagarLinha[];
+  acao: 'apontar' | 'remover';
+  onChangeAcao: (value: 'apontar' | 'remover') => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  salvando: boolean;
+  erro: string | null;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !salvando) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, salvando]);
+
+  const apontar = acao === 'apontar';
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-slate-900/50" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cartorio-lote-titulo"
+        className="relative z-[81] flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2 id="cartorio-lote-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            Cartório
+          </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {linhas.length.toLocaleString('pt-BR')} título(s) selecionado(s). O apontamento fica só neste projeto —
+            Nomus e Shop9 não são alterados. Confirme para gravar.
+          </p>
+        </div>
+        <div className="space-y-2 px-5 pb-4">
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            Os títulos selecionados devem ser demonstrados como em cartório na grade?
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-600">
+            <input
+              type="radio"
+              name="diario-cartorio-acao"
+              checked={apontar}
+              disabled={salvando}
+              onChange={() => onChangeAcao('apontar')}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-slate-800 dark:text-slate-100">Apontar como cartório</span>
+              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                A coluna Cartório passa a exibir SIM.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-600">
+            <input
+              type="radio"
+              name="diario-cartorio-acao"
+              checked={!apontar}
+              disabled={salvando}
+              onChange={() => onChangeAcao('remover')}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-slate-800 dark:text-slate-100">Remover apontamento</span>
+              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                Os títulos deixam de aparecer como em cartório.
+              </span>
+            </span>
+          </label>
+          {erro ? <p className="mt-2 text-xs text-red-700 dark:text-red-300">{erro}</p> : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={salvando}
+            className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {salvando ? 'Gravando…' : 'Confirmar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

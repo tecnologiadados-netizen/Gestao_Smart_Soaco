@@ -43,6 +43,8 @@ export interface DiarioContaPagarLinha {
   anotacaoCor: string | null;
   /** Vencimento original da reprogramação, quando já estiver gravado. */
   reprogramado: string | null;
+  /** Apontamento local: título em cartório. */
+  emCartorio: boolean;
   itens: DiarioContaPagarItem[];
 }
 
@@ -71,7 +73,10 @@ export async function fetchDiarioContasPagar(params: {
   }
   return {
     ...body,
-    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+    linhas: (Array.isArray(body.linhas) ? body.linhas : []).map((l) => ({
+      ...l,
+      emCartorio: Boolean(l.emCartorio),
+    })),
   };
 }
 
@@ -83,7 +88,10 @@ export async function fetchDiarioVencidosReprogramados(): Promise<DiarioContasPa
   }
   return {
     ...body,
-    linhas: Array.isArray(body.linhas) ? body.linhas : [],
+    linhas: (Array.isArray(body.linhas) ? body.linhas : []).map((l) => ({
+      ...l,
+      emCartorio: Boolean(l.emCartorio),
+    })),
   };
 }
 
@@ -263,6 +271,27 @@ export async function importarAnotacoesDiario(
     semCorrespondencia: Number(body.semCorrespondencia) || 0,
     ambiguos: Number(body.ambiguos) || 0,
     amostrasSem: Array.isArray(body.amostrasSem) ? body.amostrasSem : [],
+  };
+}
+
+export async function aplicarCartorioDiario(params: {
+  itens: { origem: 'Nomus' | 'Shop9'; codigo: number }[];
+  emCartorio: boolean;
+  dataProcesso: string;
+}): Promise<{ atualizados: number; emCartorio: boolean }> {
+  const res = await apiFetch('/api/financeiro/diario/contas-pagar/cartorio', {
+    method: 'POST',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    atualizados?: number;
+    emCartorio?: boolean;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(body.error || `Erro ao apontar cartório (${res.status})`);
+  return {
+    atualizados: Number(body.atualizados) || 0,
+    emCartorio: Boolean(body.emCartorio),
   };
 }
 
