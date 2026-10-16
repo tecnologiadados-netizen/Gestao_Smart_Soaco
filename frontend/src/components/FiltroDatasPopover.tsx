@@ -58,7 +58,19 @@ function BlocoDatas({
     <div>
       <p className="text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2 mb-2.5">
         <CalendarIcon />
-        {titulo}
+        <span className="min-w-0 flex-1">{titulo}</span>
+        {(dataIni || dataFim) ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary-700 hover:underline dark:text-primary-300"
+            onClick={() => {
+              onDataIniChange('');
+              onDataFimChange('');
+            }}
+          >
+            Limpar
+          </button>
+        ) : null}
       </p>
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
@@ -160,25 +172,67 @@ export default function FiltroDatasPopover({
     },
   };
 
+  const limparDatasExibidas = () => {
+    const updates: Partial<DatasFiltroKeys> = {};
+    for (const bloco of blocos) {
+      if (bloco === 'emissao') {
+        updates.data_emissao_ini = '';
+        updates.data_emissao_fim = '';
+      } else if (bloco === 'entrega') {
+        updates.data_entrega_ini = '';
+        updates.data_entrega_fim = '';
+      } else if (bloco === 'previsao_anterior') {
+        updates.data_previsao_anterior_ini = '';
+        updates.data_previsao_anterior_fim = '';
+      } else {
+        updates.data_previsao_ini = '';
+        updates.data_previsao_fim = '';
+      }
+    }
+    onChange(updates);
+  };
+
   return (
     <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition border ${
+      <div
+        className={`inline-flex items-center gap-1 rounded-lg border text-sm font-medium transition ${
           temAlgumaData
             ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
             : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
         }`}
-        aria-expanded={open}
-        aria-haspopup="true"
       >
-        <CalendarIcon />
-        Filtrar por datas
-        {temAlgumaData && (
-          <span className="w-2 h-2 rounded-full bg-primary-500 shrink-0" aria-hidden />
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex items-center gap-2 px-4 py-2"
+          aria-expanded={open}
+          aria-haspopup="true"
+        >
+          <CalendarIcon />
+          Filtrar por datas
+          {temAlgumaData && (
+            <span className="w-2 h-2 rounded-full bg-primary-500 shrink-0" aria-hidden />
+          )}
+        </button>
+        {temAlgumaData ? (
+          <button
+            type="button"
+            aria-label="Limpar filtro de datas"
+            title="Limpar datas"
+            className="mr-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-current hover:bg-black/10 dark:hover:bg-white/10"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              limparDatasExibidas();
+              setOpen(false);
+            }}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 12 12" fill="none" aria-hidden>
+              <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
       {open && (
         <div
           className="filtro-datas-popover absolute top-full left-0 mt-1 z-50 w-[340px] min-w-[320px] rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg p-5"

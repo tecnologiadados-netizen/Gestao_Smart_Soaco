@@ -518,15 +518,30 @@ export default function CarteiraFinanceiraPage() {
             />
             <div>
               <label className={FILTRO_LABEL_CLASS}>Status de entrega</label>
-              <select
-                value={statusPedido}
-                onChange={(e) => setStatusPedido(e.target.value)}
-                className={FILTRO_INPUT_CLASS}
-              >
-                <option value="">Todos</option>
-                <option value="Atrasado">Atrasado</option>
-                <option value="Em dia">Em dia</option>
-              </select>
+              <div className={`${FILTRO_INPUT_CLASS} flex items-center gap-1`}>
+                <select
+                  value={statusPedido}
+                  onChange={(e) => setStatusPedido(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent py-0 outline-none"
+                >
+                  <option value="">Todos</option>
+                  <option value="Atrasado">Atrasado</option>
+                  <option value="Em dia">Em dia</option>
+                </select>
+                {statusPedido ? (
+                  <button
+                    type="button"
+                    aria-label="Limpar filtro Status de entrega"
+                    title="Limpar este filtro"
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-600 dark:hover:text-slate-100"
+                    onClick={() => setStatusPedido('')}
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
 
