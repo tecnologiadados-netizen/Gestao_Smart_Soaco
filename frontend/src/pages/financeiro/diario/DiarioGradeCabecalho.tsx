@@ -9,6 +9,7 @@ export const DIARIO_COLUNAS_GRADE = [
   { id: 'plano', label: 'Classificação' },
   { id: 'vencimento', label: 'Vencimento' },
   { id: 'reprogramado', label: 'Reprogramado' },
+  { id: 'cartorio', label: 'Cartório' },
   { id: 'empresa', label: 'Empresa' },
   { id: 'conta', label: 'Conta' },
   { id: 'forma', label: 'Forma de pagamento' },

@@ -354,6 +354,8 @@ export interface DiarioContaPagarLinha {
   anotacaoCor: string | null;
   /** Vencimento original gravado quando o título foi reprogramado. */
   reprogramado: string | null;
+  /** Apontamento local: título em cartório. */
+  emCartorio: boolean;
   itens: DiarioContaPagarItem[];
 }
 
@@ -515,6 +517,7 @@ function mapShop9(row: Record<string, unknown>): DiarioContaPagarLinha {
     anotacao: null,
     anotacaoCor: null,
     reprogramado: null,
+    emCartorio: false,
     itens: [],
   };
 }
@@ -554,6 +557,7 @@ function mapNomus(row: Record<string, unknown>): DiarioContaPagarLinha {
     anotacao: null,
     anotacaoCor: null,
     reprogramado: null,
+    emCartorio: false,
     itens: [],
   };
 }
@@ -689,8 +693,10 @@ function ordenarLinhasDiario(linhas: DiarioContaPagarLinha[]): DiarioContaPagarL
 async function enriquecerLinhasDiario(linhas: DiarioContaPagarLinha[]): Promise<void> {
   await Promise.all([aplicarContaLocalShop9(linhas), aplicarFormaLocalShop9(linhas)]);
   const { aplicarAnotacoesDiario } = await import('./diarioAnotacao.js');
+  const { aplicarCartoriosDiario } = await import('./diarioCartorio.js');
   await aplicarAnotacoesDiario(linhas);
   await aplicarReprogramacoesDiario(linhas);
+  await aplicarCartoriosDiario(linhas);
 }
 
 async function queryNomus(

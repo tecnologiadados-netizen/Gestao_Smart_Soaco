@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { aplicarCorAnotacoesDiario, importarAnotacoesDiario, lerMatrizPlanilha, salvarAnotacaoDiario } from '../data/diarioAnotacao.js';
+import { aplicarCartorioDiario } from '../data/diarioCartorio.js';
 import {
   alocarSubclassificacaoDiario,
   cadastrarNomeSubclassificacaoDiario,
@@ -440,6 +441,49 @@ export async function postImportarAnotacoesDiario(req: Request, res: Response): 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[postImportarAnotacoesDiario]', msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/** POST /api/financeiro/diario/contas-pagar/cartorio */
+export async function postAplicarCartorioDiario(req: Request, res: Response): Promise<void> {
+  const bruto = req.body?.itens;
+  if (!Array.isArray(bruto) || bruto.length === 0) {
+    res.status(400).json({ error: 'Selecione ao menos um título.' });
+    return;
+  }
+  const itens: { origem: 'Nomus' | 'Shop9'; codigo: number }[] = [];
+  for (const item of bruto) {
+    const origem = item?.origem;
+    const codigo = Number(item?.codigo);
+    if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(codigo) || codigo <= 0) continue;
+    itens.push({ origem, codigo });
+  }
+  if (itens.length === 0) {
+    res.status(400).json({ error: 'Nenhum título identificado para apontar o cartório.' });
+    return;
+  }
+  const dataProcesso = dataProcessoDoBody(req);
+  if (!dataProcesso) {
+    res.status(400).json({ error: 'Informe o dia do contas a pagar.' });
+    return;
+  }
+  if (await recusarSeDiaTravado(res, [dataProcesso])) return;
+  if (typeof req.body?.emCartorio !== 'boolean') {
+    res.status(400).json({ error: 'Informe se os títulos ficam em cartório.' });
+    return;
+  }
+  const emCartorio = req.body.emCartorio;
+  try {
+    const resultado = await aplicarCartorioDiario({
+      itens,
+      emCartorio,
+      usuario: req.user?.login ?? '?',
+    });
+    res.json(resultado);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[postAplicarCartorioDiario]', msg);
     res.status(400).json({ error: msg });
   }
 }

@@ -3284,3 +3284,17 @@ model DiarioSubclassificacaoCatalogo {
 
   @@map("diario_subclassificacao_catalogo")
 }
+
+/// Título apontado como em cartório no Diário. Não grava no Nomus nem no Shop9.
+/// codigo = código da conta (Nomus) ou Ordem (Shop9), igual à observação.
+model DiarioCartorio {
+  id           Int      @id @default(autoincrement())
+  origem       String
+  codigo       Int
+  usuario      String
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+
+  @@unique([origem, codigo])
+  @@map("diario_cartorio")
+}

@@ -23,6 +23,7 @@ const COLUNAS = [
   'Saldo a pagar',
   'NF',
   'Prioridade',
+  'Cartório',
 ] as const;
 
 const COL_DESCRICAO = 9;
@@ -169,6 +170,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
       l.saldo,
       maiusculo(l.notaFiscal),
       maiusculo(opts.rotuloPrioridade?.(l)),
+      l.emCartorio ? 'SIM' : '',
     ]);
     row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
@@ -190,6 +192,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
     '',
     '',
     opts.totais.saldo,
+    '',
     '',
     '',
   ]);
@@ -310,6 +313,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     formatMoeda(l.saldo),
     maiusculo(l.notaFiscal),
     maiusculo(opts.rotuloPrioridade?.(l)),
+    l.emCartorio ? 'SIM' : '',
   ]);
 
   autoTable(doc, {
@@ -334,6 +338,7 @@ export function exportarDiarioContasPagarPdf(opts: {
       formatMoeda(opts.totais.saldo),
       '',
       '',
+      '',
     ]],
     styles: { fontSize: 6.5, cellPadding: 0.9, textColor: TEXTO, overflow: 'linebreak' },
     headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
@@ -355,6 +360,7 @@ export function exportarDiarioContasPagarPdf(opts: {
       13: { cellWidth: 18, halign: 'right' },
       14: { cellWidth: 16 },
       15: { cellWidth: 16 },
+      16: { cellWidth: 14 },
     },
     horizontalPageBreak: true,
     willDrawCell(data) {
