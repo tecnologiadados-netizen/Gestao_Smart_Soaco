@@ -114,9 +114,9 @@ export const TELA_PRINCIPAL_MAP: Record<
     requiredAny: [PERMISSOES.PRECIFICACAO_VER],
   },
   resumo_financeiro: {
-    path: '/financeiro/resumo',
-    label: 'Resumo financeiro',
-    requiredAny: [PERMISSOES.FINANCEIRO_VER, PERMISSOES.FINANCEIRO_RESUMO_VER],
+    path: '/financeiro/dashboard',
+    label: 'Dashboard Financeiro',
+    requiredAny: [PERMISSOES.FINANCEIRO_VER, PERMISSOES.FINANCEIRO_RESUMO_VER, PERMISSOES.FINANCEIRO_DRE_VER],
   },
   painel_tv: {
     path: '/pedidos/painel-metas/tv',

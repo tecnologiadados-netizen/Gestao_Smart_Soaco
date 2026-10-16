@@ -90,11 +90,6 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
     requiredAny: [PERMISSOES.PRECIFICACAO_VER],
   },
   {
-    key: 'resumo_financeiro',
-    label: 'Resumo financeiro',
-    requiredAny: [PERMISSOES.FINANCEIRO_VER, PERMISSOES.FINANCEIRO_RESUMO_VER],
-  },
-  {
     key: 'painel_tv',
     label: 'Painel TV',
     requiredAny: [PERMISSOES.PCP_PAINEL_TV_VER, PERMISSOES.PCP_TOTAL],
@@ -112,6 +107,7 @@ export function mensagemSeTelaPrincipalInvalidaParaGrupo(
   grupoPermissoes: string[]
 ): string | null {
   if (!telaKey) return null;
+  if (telaKey === 'resumo_financeiro') return null;
   const opt = OPCOES_TELA_PRINCIPAL.find((o) => o.key === telaKey);
   if (!opt) return 'Tela principal inválida.';
   const ok = opt.requiredAny.some((p) => grupoPermissoes.includes(p));
