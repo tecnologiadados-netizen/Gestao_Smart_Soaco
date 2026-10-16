@@ -1676,6 +1676,10 @@ export type DoubleCheckInComparativoLinha = {
   >;
   /** Documento sem contas a pagar (Nomus não gera agendamento financeiro). */
   naoGeraContasPagar?: boolean;
+  idTipoMovimentacao?: number | null;
+  tipoMovimentacao?: string | null;
+  /** Só pré-entrada compara condição quando não gera AP; demais tipos omitem o campo. */
+  comparaCondicaoPagamento?: boolean;
   temDivergencia: boolean;
 };
 

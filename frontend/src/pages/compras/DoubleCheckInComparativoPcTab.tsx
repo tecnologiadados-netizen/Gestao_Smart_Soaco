@@ -579,11 +579,34 @@ export default function DoubleCheckInComparativoPcTab({
             {pendentes} decisão(ões) pendente(s)
           </span>
         )}
-        {linhas.some((l) => l.naoGeraContasPagar) && (
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-            Não gera contas a pagar
+        {[
+          ...new Map(
+            linhas
+              .filter((l) => l.naoGeraContasPagar)
+              .map((l) => {
+                const tipo = (l.tipoMovimentacao ?? '').trim() || 'Movimentação';
+                return [
+                  `${l.idTipoMovimentacao ?? tipo}|${l.comparaCondicaoPagamento ? 1 : 0}`,
+                  {
+                    tipo,
+                    compara: l.comparaCondicaoPagamento !== false,
+                  },
+                ] as const;
+              })
+          ).values(),
+        ].map(({ tipo, compara }) => (
+          <span
+            key={`${tipo}-${compara ? 'cmp' : 'skip'}`}
+            className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+            title={
+              compara
+                ? 'Pré-entrada: não gera contas, mas a condição e as parcelas entram na comparação.'
+                : 'Essa movimentação não gera contas e a condição de pagamento não entra na comparação.'
+            }
+          >
+            {tipo} (Não gera contas)
           </span>
-        )}
+        ))}
       </div>
 
       <div className="space-y-3">
@@ -615,7 +638,7 @@ export default function DoubleCheckInComparativoPcTab({
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {CAMPOS.filter(
-                (c) => !(c.id === 'condicao_pagamento' && linha.naoGeraContasPagar)
+                (c) => !(c.id === 'condicao_pagamento' && linha.comparaCondicaoPagamento === false)
               ).map((c) => {
                 const diverg = Boolean(linha[c.divergKey]);
                 const vals = valoresExibicao(linha, c);

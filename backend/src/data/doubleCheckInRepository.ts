@@ -724,8 +724,16 @@ export type DoubleCheckInComparativoLinha = {
   divergQtde: boolean;
   divergIpi: boolean;
   divergCondicaoPagamento: boolean;
-  /** Nomus `documentoestoque.geraAgendamentoFinanceiro = 0`: não gera contas a pagar. */
+  /**
+   * Nomus `documentoestoque.geraAgendamentoFinanceiro = 0`: a movimentação não gera contas a pagar.
+   * Só a pré-entrada compara condição/parcelas nesses casos.
+   */
   naoGeraContasPagar: boolean;
+  /** Tipo de movimentação do documento (ex.: PRÉ ENTRADA). */
+  idTipoMovimentacao: number | null;
+  tipoMovimentacao: string | null;
+  /** Exibe e compara condição de pagamento (sempre, ou só pré-entrada quando não gera AP). */
+  comparaCondicaoPagamento: boolean;
   temDivergencia: boolean;
 };
 
@@ -927,10 +935,13 @@ SELECT
   cpde.regra AS regraPagamentoNF,
   cppc.nome AS condicaoPagamentoPC,
   cppc.regra AS regraPagamentoPC,
-  IFNULL(de.geraAgendamentoFinanceiro, 1) AS geraAgendamentoFinanceiro
+  IFNULL(de.geraAgendamentoFinanceiro, 1) AS geraAgendamentoFinanceiro,
+  de.idTipoMovimentacao AS idTipoMovimentacao,
+  tp.nome AS tipoMovimentacao
 FROM itemdocumentoestoque_itempedidocompra ideipc
 LEFT JOIN itemdocumentoestoque ide ON ide.id = ideipc.idItemDocumentoEstoque
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
 LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
 LEFT JOIN produto p ON p.id = ide.idProduto
@@ -1087,16 +1098,21 @@ function montarLinhaComparativo(
       ? !aliquotasIpiIguais(aliquotaIpiNF, aliquotaIpiPC)
       : !valoresIguaisComparativo(valorIpiNF, valorIpiPC, 2);
   const naoGeraContasPagar = toInt(r.geraAgendamentoFinanceiro) === 0;
-  const divergCondicaoPagamento = naoGeraContasPagar
-    ? false
-    : divergenciaCondicaoPorPrazos({
+  const idTipoMovimentacao = r.idTipoMovimentacao != null ? toInt(r.idTipoMovimentacao) : null;
+  const tipoMovimentacao = strOrNull(r.tipoMovimentacao);
+  // Só a pré-entrada compara condição/parcelas quando a movimentação não gera AP.
+  const comparaCondicaoPagamento =
+    !naoGeraContasPagar || idTipoMovimentacao === RECEBIMENTO_ID_TIPO_PRE_ENTRADA;
+  const divergCondicaoPagamento = comparaCondicaoPagamento
+    ? divergenciaCondicaoPorPrazos({
         prazosNF: prazosDiasNF,
         prazosPC: prazosDiasPC,
         condicaoNF: condicaoPagamentoNF,
         regraNF: regraPagamentoNF,
         condicaoPC: condicaoPagamentoPC,
         regraPC: regraPagamentoPC,
-      });
+      })
+    : false;
   return {
     idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
     idItemPedidoCompra: toInt(r.idItemPedidoCompra),
@@ -1125,23 +1141,26 @@ function montarLinhaComparativo(
     aliquotaIpiNF,
     aliquotaIpiPC,
     conferenciaIpi,
-    condicaoPagamentoNF,
-    regraPagamentoNF,
-    condicaoPagamentoPC,
-    regraPagamentoPC,
-    dataBaseParcelasNF: dataBaseNF,
-    dataBaseParcelasPC,
-    parcelasNF: parcelasNFNorm,
-    parcelasPC,
-    prazosDiasNF,
-    prazosDiasPC,
-    prazosLabelNF,
-    prazosLabelPC,
+    condicaoPagamentoNF: comparaCondicaoPagamento ? condicaoPagamentoNF : null,
+    regraPagamentoNF: comparaCondicaoPagamento ? regraPagamentoNF : null,
+    condicaoPagamentoPC: comparaCondicaoPagamento ? condicaoPagamentoPC : null,
+    regraPagamentoPC: comparaCondicaoPagamento ? regraPagamentoPC : null,
+    dataBaseParcelasNF: comparaCondicaoPagamento ? dataBaseNF : null,
+    dataBaseParcelasPC: comparaCondicaoPagamento ? dataBaseParcelasPC : null,
+    parcelasNF: comparaCondicaoPagamento ? parcelasNFNorm : [],
+    parcelasPC: comparaCondicaoPagamento ? parcelasPC : [],
+    prazosDiasNF: comparaCondicaoPagamento ? prazosDiasNF : [],
+    prazosDiasPC: comparaCondicaoPagamento ? prazosDiasPC : [],
+    prazosLabelNF: comparaCondicaoPagamento ? prazosLabelNF : null,
+    prazosLabelPC: comparaCondicaoPagamento ? prazosLabelPC : null,
     divergValorUnitario,
     divergQtde,
     divergIpi,
     divergCondicaoPagamento,
     naoGeraContasPagar,
+    idTipoMovimentacao,
+    tipoMovimentacao,
+    comparaCondicaoPagamento,
     temDivergencia: divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
   };
 }
