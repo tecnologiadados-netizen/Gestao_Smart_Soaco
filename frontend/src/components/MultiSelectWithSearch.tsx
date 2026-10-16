@@ -75,7 +75,7 @@ export default function MultiSelectWithSearch({
   const [asyncOptions, setAsyncOptions] = useState<string[]>([]);
   const [asyncLoading, setAsyncLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const btnRef = useRef<HTMLDivElement>(null);
   const portalRef = useRef<HTMLDivElement>(null);
   const inputSearchRef = useRef<HTMLInputElement>(null);
   const [portalPos, setPortalPos] = useState<{
@@ -90,12 +90,14 @@ export default function MultiSelectWithSearch({
     return (opt: string) => labelByValue?.[opt] ?? opt;
   }, [labelByValue]);
 
+  const buscaInsuficiente = minSearchChars > 0 && search.trim().length < minSearchChars;
+
   const filteredOptions = useMemo(() => {
     if (onSearchAsync) {
       const vistos = new Set(asyncOptions);
       return [...asyncOptions, ...selected.filter((s) => !vistos.has(s))];
     }
-    if (minSearchChars > 0 && search.trim().length < minSearchChars) return [];
+    if (minSearchChars > 0 && search.trim().length < minSearchChars) return selected;
     if (!search.trim()) return options;
     const match = criarMatcherTextoLivre(search);
     return options.filter((o) => {
@@ -103,6 +105,14 @@ export default function MultiSelectWithSearch({
       return match(d) || match(o);
     });
   }, [options, search, labelByValue, onSearchAsync, asyncOptions, minSearchChars, selected]);
+
+  const limparSelecao = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (disabled) return;
+    onChange('');
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!onSearchAsync || !open) return;
@@ -227,7 +237,16 @@ export default function MultiSelectWithSearch({
         />
       </div>
       <div className="overflow-y-auto overflow-x-hidden py-1" style={{ maxHeight: listaMaxHeight }}>
-        {filteredOptions.length > 0 && (
+        {selected.length > 0 && (
+          <button
+            type="button"
+            onClick={() => limparSelecao()}
+            className="flex w-full items-center border-b border-slate-100 px-3 py-1.5 text-left text-sm font-medium text-primary-700 hover:bg-slate-100 dark:border-slate-600 dark:text-primary-300 dark:hover:bg-slate-600"
+          >
+            Limpar este filtro
+          </button>
+        )}
+        {filteredOptions.length > 0 && !buscaInsuficiente && (
           <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-600">
             <input
               type="checkbox"
@@ -290,16 +309,42 @@ export default function MultiSelectWithSearch({
       ref={ref}
     >
       <label className={labelClass}>{label}</label>
-      <button
+      <div
         ref={btnRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((o) => !o)}
-        className={inputClass + ' w-full max-w-full min-w-0 text-left flex items-center justify-between gap-2'}
+        className={inputClass + ' w-full max-w-full min-w-0 flex items-center gap-1'}
       >
-        <span className="min-w-0 flex-1 truncate">{labelText}</span>
-        <span className="text-slate-400 shrink-0">{open ? '▲' : '▼'}</span>
-      </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen((o) => !o)}
+          className="min-w-0 flex-1 truncate bg-transparent py-0 text-left"
+        >
+          {labelText}
+        </button>
+        {selected.length > 0 ? (
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label={`Limpar filtro ${label}`}
+            title="Limpar este filtro"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-600 dark:hover:text-slate-100"
+            onClick={limparSelecao}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 12 12" fill="none" aria-hidden>
+              <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={open ? `Fechar ${label}` : `Abrir ${label}`}
+          className="shrink-0 bg-transparent py-0 text-slate-400"
+          onClick={() => !disabled && setOpen((o) => !o)}
+        >
+          {open ? '▲' : '▼'}
+        </button>
+      </div>
       {open && !dropdownPortal && (
         <div
           className={`absolute left-0 top-full mt-1 w-full ${painelClasses}`}
