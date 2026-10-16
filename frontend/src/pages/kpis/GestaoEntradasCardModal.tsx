@@ -312,7 +312,7 @@ export default function GestaoEntradasCardModal({
           )}
           {!loading && !erro && exibidas.some((nota) => nota.divergencias.length > 0) && (
             <p className="mt-2 text-xs text-slate-500">
-              Clique no documento com divergência para ver o campo, a natureza, o valor na NF e o valor no pedido.
+              Clique no documento com divergência para abrir os cards do comparativo NF × pedido.
             </p>
           )}
           {!loading && !erro && card === 'media' && dias > 0 && (

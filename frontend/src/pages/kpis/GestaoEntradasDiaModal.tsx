@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import {
   fetchGestaoEntradasDia,
   type GestaoEntradasDia,
+  type GestaoEntradasDivergencia,
   type GestaoEntradasNotaDia,
 } from '../../api/gestaoEntradas';
 
@@ -28,131 +30,188 @@ function fmtQuando(iso: string): string {
   return d.toLocaleString('pt-BR');
 }
 
-function decisaoLabel(decisao: 'aceita' | 'recusa' | null): string {
-  if (decisao === 'aceita') return 'aceita';
-  if (decisao === 'recusa') return 'recusada';
-  return 'sem decisão';
+const LABEL_CARD: Record<string, string> = {
+  valor_unitario: 'Vl. unitário (líq.)',
+  qtde: 'Quantidade',
+  ipi: 'IPI',
+  condicao_pagamento: 'Cond. pagamento',
+};
+
+const ORDEM_CAMPO = ['valor_unitario', 'qtde', 'ipi', 'condicao_pagamento'];
+
+function labelCard(d: GestaoEntradasDivergencia): string {
+  if (d.campo === 'ipi' && (`${d.valorNf}${d.valorPc}`.includes('%'))) return 'IPI %';
+  return LABEL_CARD[d.campo] ?? d.campoLabel;
 }
 
-function ValorLado({ valor, detalhe, pedido }: { valor?: string; detalhe?: string | null; pedido?: string | null }) {
+type GrupoItem = {
+  chave: string;
+  codigo: string | null;
+  descricao: string | null;
+  pedido: string | null;
+  divergencias: GestaoEntradasDivergencia[];
+};
+
+function gruposDaNota(nota: GestaoEntradasNotaDia): GrupoItem[] {
+  const map = new Map<string, GrupoItem>();
+  for (const d of nota.divergencias) {
+    const chave = `${d.codigoProduto ?? ''}|${d.descricaoProduto ?? ''}|${d.nomePedidoCompra ?? ''}`;
+    const atual = map.get(chave);
+    if (atual) {
+      atual.divergencias.push(d);
+      continue;
+    }
+    map.set(chave, {
+      chave,
+      codigo: d.codigoProduto,
+      descricao: d.descricaoProduto,
+      pedido: d.nomePedidoCompra,
+      divergencias: [d],
+    });
+  }
+  for (const grupo of map.values()) {
+    grupo.divergencias.sort(
+      (a, b) => ORDEM_CAMPO.indexOf(a.campo) - ORDEM_CAMPO.indexOf(b.campo)
+    );
+  }
+  return [...map.values()];
+}
+
+function CardDivergencia({ d }: { d: GestaoEntradasDivergencia }) {
+  const aceita = d.decisao === 'aceita';
+  const recusada = d.decisao === 'recusa';
   return (
-    <div className="text-xs tabular-nums">
-      <span className="font-medium text-slate-800 dark:text-slate-100">{valor || '—'}</span>
-      {detalhe ? <span className="mt-0.5 block font-normal text-slate-500">{detalhe}</span> : null}
-      {pedido ? <span className="mt-0.5 block font-normal text-slate-500">{pedido}</span> : null}
+    <div className="rounded-lg border border-amber-400/80 bg-white px-2.5 py-2 dark:border-amber-600 dark:bg-slate-900/50">
+      <div className="mb-1 flex items-center justify-between gap-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {labelCard(d)}
+          </span>
+          <span
+            className={
+              d.natureza === 'real'
+                ? 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                : 'rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+            }
+          >
+            {d.natureza === 'real' ? 'Real' : 'Benigna'}
+          </span>
+        </div>
+        {aceita ? (
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-label="Aceita" />
+        ) : recusada ? (
+          <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-600" aria-label="Recusada" />
+        ) : (
+          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">Sem decisão</span>
+        )}
+      </div>
+      <div className={`space-y-0.5 text-xs ${d.campo === 'condicao_pagamento' ? '' : 'tabular-nums'}`}>
+        <div className="flex justify-between gap-2">
+          <span className="shrink-0 text-slate-400">NF</span>
+          <span className="min-w-0 text-right">
+            <span className="block font-medium text-slate-800 break-words dark:text-slate-100">{d.valorNf || '—'}</span>
+            {d.detalheNf ? (
+              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">{d.detalheNf}</span>
+            ) : null}
+          </span>
+        </div>
+        <div className="flex justify-between gap-2">
+          <span className="shrink-0 text-slate-400">PC</span>
+          <span className="min-w-0 text-right">
+            <span className="block font-medium text-slate-800 break-words dark:text-slate-100">{d.valorPc || '—'}</span>
+            {d.detalhePc ? (
+              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">{d.detalhePc}</span>
+            ) : null}
+          </span>
+        </div>
+      </div>
+      {d.natureza === 'benigna' && d.observacaoNatureza ? (
+        <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+          {d.observacaoNatureza}
+        </p>
+      ) : null}
+      <div className="mt-2 space-y-1.5">
+        <p className="text-[10px] text-slate-500" title={d.justificativaLabel ?? ''}>
+          {d.decisao === 'aceita'
+            ? `Aceita: ${d.justificativaLabel ?? '—'}`
+            : d.decisao === 'recusa'
+              ? `Recusada: ${d.justificativaLabel ?? '—'}`
+              : 'Divergente'}
+        </p>
+        {d.observacoes.length > 0 ? (
+          <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Observações ({d.observacoes.length})
+            </div>
+            <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+              {d.observacoes.map((o, idx) => (
+                <li
+                  key={`${o.criadoEm}-${idx}-${o.texto.slice(0, 12)}`}
+                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
+                    <span className="font-medium">{o.usuarioLogin || '—'}</span>
+                    <span>{o.criadoEm ? fmtQuando(o.criadoEm) : ''}</span>
+                  </div>
+                  <p className="mt-0.5 whitespace-pre-wrap break-words text-[10px] leading-snug text-slate-700 dark:text-slate-300">
+                    {o.texto}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-const TH =
-  'sticky top-0 z-20 border-b border-slate-200 bg-slate-100 px-3 py-2 font-medium shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1c2030] dark:shadow-[0_1px_0_rgba(0,0,0,0.35)]';
-const TH_ENTRADA =
-  'sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2 font-medium shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#161822] dark:shadow-[0_1px_0_rgba(0,0,0,0.35)]';
-
-function faixaLinha(indice: number): string {
-  return indice % 2 === 0
-    ? 'bg-white dark:bg-[#161822]'
-    : 'bg-slate-100 dark:bg-[#232838]';
-}
-
 export function TabelaDivergencias({ notas }: { notas: GestaoEntradasNotaDia[] }) {
-  const linhas = notas.flatMap((nota) =>
-    nota.divergencias.map((d, i) => ({ nota, d, i, primeira: i === 0 }))
-  );
-
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/10">
-      <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-left text-sm">
-        <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          <tr>
-            <th className={TH_ENTRADA}>Entrada</th>
-            <th className={TH}>Campo</th>
-            <th className={TH}>Natureza</th>
-            <th className={TH}>Item</th>
-            <th className={TH}>Na NF</th>
-            <th className={TH}>No pedido</th>
-            <th className={TH}>Motivo</th>
-            <th className={TH}>Observação</th>
-          </tr>
-        </thead>
-        <tbody className="[&_td]:border-b [&_td]:border-slate-200 dark:[&_td]:border-white/10">
-          {linhas.map(({ nota, d, i, primeira }, indice) => {
-            const faixa = faixaLinha(indice);
-            return (
-              <tr
-                key={`${nota.idDocumento}-${d.campo}-${d.codigoProduto ?? ''}-${i}`}
-                className="align-top"
-              >
-                {primeira ? (
-                  <td className="bg-slate-50 px-3 py-2 dark:bg-[#161822]" rowSpan={nota.divergencias.length}>
-                    <p className="font-medium text-slate-800 dark:text-slate-100">
-                      {nota.numeroDocumentoFiscal ?? `Documento ${nota.idDocumento}`}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {nota.numeroNfe ? `NF ${nota.numeroNfe} · ` : ''}
-                      {nota.nomeParceiro ?? 'Parceiro não informado'}
-                    </p>
-                    <span
-                      className={`mt-1 inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[nota.status]}`}
-                    >
-                      {STATUS_LABEL[nota.status]}
-                    </span>
-                  </td>
-                ) : null}
-                <td className={`px-3 py-2 font-medium text-slate-800 dark:text-slate-100 ${faixa}`}>
-                  {d.campoLabel}
-                  <span className="mt-0.5 block text-xs font-normal text-slate-500">{decisaoLabel(d.decisao)}</span>
-                </td>
-                <td className={`px-3 py-2 ${faixa}`}>
-                  <span
-                    className={
-                      d.natureza === 'real'
-                        ? 'inline-flex rounded-full bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                        : 'inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    }
-                  >
-                    {d.natureza === 'real' ? 'Divergência real' : 'Divergência benigna'}
-                  </span>
-                  {d.natureza === 'benigna' && d.observacaoNatureza ? (
-                    <span className="mt-1 block text-[11px] leading-snug text-emerald-800 dark:text-emerald-200">
-                      {d.observacaoNatureza}
-                    </span>
-                  ) : null}
-                </td>
-                <td className={`px-3 py-2 text-xs text-slate-600 dark:text-slate-300 ${faixa}`}>
-                  <span className="font-medium text-slate-800 dark:text-slate-100">{d.codigoProduto ?? 'Item'}</span>
-                  {d.descricaoProduto ? <span className="mt-0.5 block">{d.descricaoProduto}</span> : null}
-                </td>
-                <td className={`px-3 py-2 ${faixa}`}>
-                  <ValorLado valor={d.valorNf} detalhe={d.detalheNf} />
-                </td>
-                <td className={`px-3 py-2 ${faixa}`}>
-                  <ValorLado valor={d.valorPc} detalhe={d.detalhePc} pedido={d.nomePedidoCompra} />
-                </td>
-                <td className={`px-3 py-2 text-xs text-slate-600 dark:text-slate-300 ${faixa}`}>
-                  {d.justificativaLabel ?? '—'}
-                </td>
-                <td className={`px-3 py-2 text-xs text-slate-700 dark:text-slate-200 ${faixa}`}>
-                  {d.observacoes.length > 0 ? (
-                    <ul className="space-y-1">
-                      {d.observacoes.map((o, j) => (
-                        <li key={`${o.criadoEm}-${j}`}>
-                          <span className="text-slate-500">
-                            {o.usuarioLogin} · {fmtQuando(o.criadoEm)}
-                          </span>
-                          <span className="mt-0.5 block whitespace-pre-wrap">{o.texto}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="text-slate-400">Sem observação.</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      {notas.map((nota) => (
+        <section key={nota.idDocumento} className="space-y-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-slate-800 dark:text-slate-100">
+                {nota.numeroDocumentoFiscal ?? `Documento ${nota.idDocumento}`}
+              </p>
+              <p className="text-xs text-slate-500">
+                {nota.numeroNfe ? `NF ${nota.numeroNfe} · ` : ''}
+                {nota.nomeParceiro ?? 'Parceiro não informado'}
+              </p>
+            </div>
+            <span
+              className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[nota.status]}`}
+            >
+              {STATUS_LABEL[nota.status]}
+            </span>
+          </div>
+          {gruposDaNota(nota).map((grupo) => (
+            <div
+              key={grupo.chave}
+              className="rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-3 dark:border-amber-700 dark:bg-amber-950/30"
+            >
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-800 dark:text-slate-100">
+                    {grupo.codigo ?? 'Item'}
+                  </div>
+                  <div className="line-clamp-2 text-xs text-slate-500">{grupo.descricao ?? '—'}</div>
+                </div>
+                <div className="text-right text-xs font-medium text-slate-700 dark:text-slate-200">
+                  {grupo.pedido ?? 'PC —'}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {grupo.divergencias.map((d) => (
+                  <CardDivergencia key={`${grupo.chave}-${d.campo}`} d={d} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }
