@@ -631,6 +631,12 @@ export default function DoubleCheckInComparativoPcTab({
                     ? 'benigna'
                     : linha.naturezaDivergencias?.[c.id];
                 const hist = historicoDaDecisao(dec);
+                const numeroSolicitacaoOtimiza =
+                  dec?.numeroSolicitacaoOtimiza ??
+                  solicitacaoMap.get(
+                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+                  ) ??
+                  null;
                 return (
                   <div
                     key={c.id}
@@ -640,6 +646,14 @@ export default function DoubleCheckInComparativoPcTab({
                         : 'border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20'
                     }`}
                   >
+                    {diverg && numeroSolicitacaoOtimiza != null ? (
+                      <p
+                        className="mb-1 text-[11px] font-bold leading-tight text-sky-800 dark:text-sky-200"
+                        title={`Solicitação no Otimiza nº ${numeroSolicitacaoOtimiza}`}
+                      >
+                        Otimiza nº {numeroSolicitacaoOtimiza}
+                      </p>
+                    ) : null}
                     <div className="mb-1 flex items-center justify-between gap-1">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -738,18 +752,8 @@ export default function DoubleCheckInComparativoPcTab({
                             title={dec?.justificativaLabel ?? ''}
                           >
                             {dec
-                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}${
-                                  dec.decisao === 'aceita' && dec.numeroSolicitacaoOtimiza
-                                    ? ` · Otimiza nº ${dec.numeroSolicitacaoOtimiza}`
-                                    : ''
-                                }: ${dec.justificativaLabel}`
-                              : solicitacaoMap.get(
-                                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
-                                  )
-                                ? `Otimiza nº ${solicitacaoMap.get(
-                                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
-                                  )} gravada`
-                                : 'Divergente'}
+                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
+                              : 'Divergente'}
                           </span>
                           {!somenteLeitura && (!conferido || !decVigente) && (
                             <div className="flex shrink-0 gap-1">
