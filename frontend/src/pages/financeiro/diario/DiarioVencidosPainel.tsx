@@ -338,22 +338,46 @@ function BadgeSubclassificacao({ nome }: { nome: string }) {
   );
 }
 
+function PontoSerieClicavel({
+  cx,
+  cy,
+  payload,
+  stroke,
+  onPonto,
+}: {
+  cx?: number;
+  cy?: number;
+  payload?: { mes?: string; label?: string };
+  stroke?: string;
+  onPonto?: (ponto: { mes?: string; label?: string }) => void;
+}) {
+  if (cx == null || cy == null) return null;
+  return (
+    <g style={{ cursor: 'pointer' }} onClick={() => payload && onPonto?.(payload)}>
+      <circle cx={cx} cy={cy} r={12} fill="transparent" />
+      <circle cx={cx} cy={cy} r={3.5} fill={stroke} stroke="#fff" strokeWidth={1} />
+    </g>
+  );
+}
+
 function KpiCard({
   tone,
   titulo,
   valor,
   detalhe,
   icone,
+  onClick,
 }: {
   tone: Tone;
   titulo: string;
   valor: string;
   detalhe: string;
   icone: ReactNode;
+  onClick?: () => void;
 }) {
   const tom = TONE[tone];
-  return (
-    <article className={`relative overflow-hidden rounded-2xl border p-4 ${tom.card}`}>
+  const corpo = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{titulo}</p>
@@ -362,8 +386,17 @@ function KpiCard({
         <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${tom.icon}`}>{icone}</span>
       </div>
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{detalhe}</p>
-    </article>
+    </>
   );
+  const classe = `relative overflow-hidden rounded-2xl border p-4 text-left ${tom.card}`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`${classe} cursor-pointer hover:ring-2 hover:ring-primary-400/50`}>
+        {corpo}
+      </button>
+    );
+  }
+  return <article className={classe}>{corpo}</article>;
 }
 
 function FiltroMulti(props: {
@@ -565,7 +598,7 @@ export const DiarioVencidosPainel = forwardRef<
         .map(([nome, saldo]) => ({ nome, saldo }))
         .sort((a, b) => b.saldo - a.saldo)
         .slice(0, 12),
-      faixas,
+      faixas: [...faixas].sort((a, b) => b.saldo - a.saldo || a.min - b.min),
     };
   }, [base, hoje, mapaSub]);
 
@@ -622,6 +655,13 @@ export const DiarioVencidosPainel = forwardRef<
 
   const abrirDetalhe = (titulo: string, linhasDetalhe: DiarioContaPagarLinha[]) => {
     setDetalhe({ titulo, linhas: linhasDetalhe });
+  };
+  const abrirMes = (ponto?: { mes?: string; label?: string }) => {
+    if (!ponto?.mes) return;
+    abrirDetalhe(
+      `Vencimento ${ponto.label ?? ponto.mes}`,
+      base.filter((l) => ((l.dataVencimento ?? '').slice(0, 7) || 'sem data') === ponto.mes),
+    );
   };
 
   return (
@@ -680,10 +720,48 @@ export const DiarioVencidosPainel = forwardRef<
       {subaba === 'dashboard' ? (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard tone="amber" titulo="Vencidos" valor={resumo.qtdVencidos.toLocaleString('pt-BR')} detalhe={formatMoeda(resumo.saldoVencidos)} icone={<Clock3 className="h-4 w-4" />} />
-            <KpiCard tone="violet" titulo="Reprogramados" valor={resumo.qtdReprogramados.toLocaleString('pt-BR')} detalhe={formatMoeda(resumo.saldoReprogramados)} icone={<RefreshCw className="h-4 w-4" />} />
-            <KpiCard tone="cyan" titulo="Saldo vencido" valor={formatMoeda(resumo.saldoVencidos)} detalhe="Somente títulos em aberto com vencimento passado" icone={<Wallet className="h-4 w-4" />} />
-            <KpiCard tone="emerald" titulo="Faixa mais pesada" valor={resumo.faixas.slice().sort((a, b) => b.saldo - a.saldo)[0]?.label ?? '—'} detalhe={formatMoeda(resumo.faixas.slice().sort((a, b) => b.saldo - a.saldo)[0]?.saldo ?? 0)} icone={<CalendarRange className="h-4 w-4" />} />
+            <KpiCard
+              tone="amber"
+              titulo="Vencidos"
+              valor={resumo.qtdVencidos.toLocaleString('pt-BR')}
+              detalhe={formatMoeda(resumo.saldoVencidos)}
+              icone={<Clock3 className="h-4 w-4" />}
+              onClick={() => abrirDetalhe('Vencidos', base.filter((l) => ehVencido(l, hoje)))}
+            />
+            <KpiCard
+              tone="violet"
+              titulo="Reprogramados"
+              valor={resumo.qtdReprogramados.toLocaleString('pt-BR')}
+              detalhe={formatMoeda(resumo.saldoReprogramados)}
+              icone={<RefreshCw className="h-4 w-4" />}
+              onClick={() => abrirDetalhe('Reprogramados', base.filter(ehReprogramado))}
+            />
+            <KpiCard
+              tone="cyan"
+              titulo="Saldo vencido"
+              valor={formatMoeda(resumo.saldoVencidos)}
+              detalhe="Somente títulos em aberto com vencimento passado"
+              icone={<Wallet className="h-4 w-4" />}
+              onClick={() => abrirDetalhe('Saldo vencido', base.filter((l) => ehVencido(l, hoje)))}
+            />
+            <KpiCard
+              tone="emerald"
+              titulo="Faixa mais pesada"
+              valor={resumo.faixas[0]?.label ?? '—'}
+              detalhe={formatMoeda(resumo.faixas[0]?.saldo ?? 0)}
+              icone={<CalendarRange className="h-4 w-4" />}
+              onClick={() => {
+                const faixa = resumo.faixas[0];
+                if (!faixa) return;
+                abrirDetalhe(
+                  faixa.label,
+                  base.filter((l) => {
+                    const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+                    return dias != null && dias >= faixa.min && dias <= faixa.max;
+                  }),
+                );
+              }}
+            />
           </div>
 
           <div className={`p-4 ${panelSurface}`}>
@@ -698,19 +776,63 @@ export const DiarioVencidosPainel = forwardRef<
                     style={{ cursor: 'pointer' }}
                     onClick={(estado) => {
                       const ponto = estado?.activePayload?.[0]?.payload as { mes?: string; label?: string } | undefined;
-                      if (!ponto?.mes) return;
-                      abrirDetalhe(
-                        `Vencimento ${ponto.label ?? ponto.mes}`,
-                        base.filter((l) => ((l.dataVencimento ?? '').slice(0, 7) || 'sem data') === ponto.mes),
-                      );
+                      abrirMes(ponto);
                     }}
                   >
                     <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.16)" />
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} width={48} axisLine={false} tickLine={false} />
                     <Tooltip formatter={(v) => formatMoeda(Number(v ?? 0))} />
-                    <Line type="monotone" dataKey="vencido" name="Vencido" stroke={COR_VENCIDO} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                    <Line type="monotone" dataKey="reprogramado" name="Reprogramado" stroke={COR_REPROGRAMADO} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="vencido"
+                      name="Vencido"
+                      stroke={COR_VENCIDO}
+                      strokeWidth={2.5}
+                      dot={(props) => (
+                        <PontoSerieClicavel
+                          cx={props.cx}
+                          cy={props.cy}
+                          payload={props.payload as { mes?: string; label?: string }}
+                          stroke={props.stroke}
+                          onPonto={abrirMes}
+                        />
+                      )}
+                      activeDot={(props) => (
+                        <PontoSerieClicavel
+                          cx={props.cx}
+                          cy={props.cy}
+                          payload={props.payload as { mes?: string; label?: string }}
+                          stroke={props.stroke}
+                          onPonto={abrirMes}
+                        />
+                      )}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="reprogramado"
+                      name="Reprogramado"
+                      stroke={COR_REPROGRAMADO}
+                      strokeWidth={2.5}
+                      dot={(props) => (
+                        <PontoSerieClicavel
+                          cx={props.cx}
+                          cy={props.cy}
+                          payload={props.payload as { mes?: string; label?: string }}
+                          stroke={props.stroke}
+                          onPonto={abrirMes}
+                        />
+                      )}
+                      activeDot={(props) => (
+                        <PontoSerieClicavel
+                          cx={props.cx}
+                          cy={props.cy}
+                          payload={props.payload as { mes?: string; label?: string }}
+                          stroke={props.stroke}
+                          onPonto={abrirMes}
+                        />
+                      )}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -919,7 +1041,7 @@ function ModalDetalheGrafico({
         role="dialog"
         aria-modal="true"
         aria-labelledby="detalhe-grafico-titulo"
-        className="relative z-[81] flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className="relative z-[81] flex h-[min(92vh,56rem)] w-[min(98vw,96rem)] max-w-none flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
           <div>
@@ -940,8 +1062,18 @@ function ModalDetalheGrafico({
             </button>
           ) : null}
         </div>
-        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
-          <table className="min-w-[860px] w-full border-separate border-spacing-0 text-xs uppercase">
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-xs uppercase">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
+              <col className="w-[15%]" />
+              <col className="w-[18%]" />
+              <col className="w-[9%]" />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
                 {COLUNAS_DETALHE_VENCIDOS.map((col) => (
@@ -951,7 +1083,7 @@ function ModalDetalheGrafico({
                     label={col.label}
                     grade={grade}
                     align={'align' in col ? col.align : 'left'}
-                    className="sticky top-0 bg-primary-600"
+                    className="sticky top-0 border-r border-white/20 bg-primary-600 last:border-r-0"
                   />
                 ))}
               </tr>
@@ -960,17 +1092,17 @@ function ModalDetalheGrafico({
               {visiveis.length === 0 ? (
                 <tr><td colSpan={8} className="px-3 py-8 text-center normal-case text-slate-400">Nenhuma conta neste recorte.</td></tr>
               ) : visiveis.map((l, i) => (
-                <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
-                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
-                  <td className="max-w-[12rem] truncate px-2 py-1.5 normal-case">
+                <tr key={`${l.origem}-${l.codigo}-${i}`} className="text-slate-800 dark:text-slate-100">
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top normal-case dark:border-slate-700"><BadgeSituacao status={l.status} /></td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700">{l.planoContas ?? '—'}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top normal-case dark:border-slate-700">
                     <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                  <td className="max-w-[12rem] truncate px-2 py-1.5">{empresaExibida(l)}</td>
-                  <td className="max-w-[14rem] truncate px-2 py-1.5">{l.fornecedor ?? '—'}</td>
-                  <td className="max-w-[18rem] truncate px-2 py-1.5"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
-                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top whitespace-nowrap dark:border-slate-700">{formatData(l.dataVencimento)}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700">{empresaExibida(l)}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700">{l.fornecedor ?? '—'}</td>
+                  <td className="border-r border-t border-slate-200 px-2 py-1.5 align-top break-words dark:border-slate-700"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
+                  <td className="border-t border-slate-200 px-2 py-1.5 align-top text-right tabular-nums whitespace-nowrap dark:border-slate-700">{formatMoeda(l.saldo)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1116,6 +1248,12 @@ function GraficoEmpresaEmpilhado({
   );
 }
 
+type LinhaMatrizGrade = {
+  fornecedor: string;
+  total: number;
+  [col: string]: string | number;
+};
+
 function RankingFornecedores({
   dados,
   empresas,
@@ -1134,7 +1272,37 @@ function RankingFornecedores({
   const visiveis = dados.slice(0, 10);
   const max = visiveis[0]?.saldo || 1;
   const passa = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
-  const linhasMatriz = dados.filter((item) => passa(item.nome));
+  const rowsMatriz = useMemo((): LinhaMatrizGrade[] => {
+    return dados
+      .filter((item) => passa(item.nome))
+      .map((forn) => {
+        const row: LinhaMatrizGrade = { fornecedor: forn.nome, total: forn.saldo };
+        for (const emp of empresas) {
+          row[`emp:${emp}`] = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
+        }
+        return row;
+      });
+  }, [dados, empresas, celulas, passa]);
+  const columnIds = useMemo(
+    () => ['fornecedor', ...empresas.map((emp) => `emp:${emp}`), 'total'],
+    [empresas],
+  );
+  const getCellText = useCallback((row: LinhaMatrizGrade, colId: string) => {
+    if (colId === 'fornecedor') return String(row.fornecedor);
+    const n = Number(row[colId] ?? 0);
+    return n > 0 ? formatMoeda(n) : VAZIO_CELULA;
+  }, []);
+  const valueForSort = useCallback((row: LinhaMatrizGrade, colId: string) => {
+    if (colId === 'fornecedor') return String(row.fornecedor);
+    return Number(row[colId] ?? 0);
+  }, []);
+  const gradeMatriz = useGradeFiltrosExcel({
+    rows: rowsMatriz,
+    columnIds,
+    getCellText,
+    valueForSort,
+  });
+  const linhasMatriz = gradeMatriz.rowsExibidas;
 
   return (
     <div className={`relative p-4 ${panelSurface}`}>
@@ -1193,58 +1361,83 @@ function RankingFornecedores({
                 aria-labelledby="matriz-forn-titulo"
                 className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(98vw,92rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
               >
-                <div className="shrink-0 px-5 pt-5 pb-3">
-                  <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                    Matriz fornecedor × empresa
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Colunas da maior para a menor. Clique no valor para ver as contas.
-                  </p>
-                  <input
-                    type="search"
-                    value={busca}
-                    onChange={(e) => setBusca(e.target.value)}
-                    placeholder="Buscar fornecedor"
-                    className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
-                  />
+                <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
+                  <div className="min-w-0 flex-1">
+                    <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                      Matriz fornecedor × empresa
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Colunas da maior para a menor. Clique no valor para ver as contas. Use ▾ no cabeçalho para filtrar e classificar.
+                    </p>
+                    <input
+                      type="search"
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="Buscar fornecedor"
+                      className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
+                    />
+                  </div>
+                  {gradeMatriz.temFiltrosOuOrdem ? (
+                    <button
+                      type="button"
+                      onClick={() => gradeMatriz.limparFiltrosGrade()}
+                      className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                    >
+                      Limpar filtros da grade
+                    </button>
+                  ) : null}
                 </div>
-                <div className="min-h-0 flex-1 overflow-auto">
+                <div ref={gradeMatriz.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
                   {linhasMatriz.length === 0 || empresas.length === 0 ? (
                     <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
                   ) : (
                     <table className="w-max min-w-full border-separate border-spacing-0 text-xs uppercase">
-                      <thead>
+                      <thead className="text-white">
                         <tr>
-                          <th className="sticky left-0 top-0 z-40 min-w-[16rem] bg-primary-600 px-2 py-2 text-left font-medium whitespace-nowrap text-white shadow-[2px_0_0_0_rgb(37,99,235)]">
-                            Fornecedor
-                          </th>
+                          <DiarioCabecalhoTh
+                            colId="fornecedor"
+                            label="Fornecedor"
+                            grade={gradeMatriz}
+                            className="sticky left-0 top-0 z-40 min-w-[16rem] border-r border-white/25 bg-primary-600 text-white shadow-[2px_0_0_0_rgb(37,99,235)]"
+                          />
                           {empresas.map((emp) => (
-                            <th key={emp} className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">
-                              {emp}
-                            </th>
+                            <DiarioCabecalhoTh
+                              key={emp}
+                              colId={`emp:${emp}`}
+                              label={emp}
+                              grade={gradeMatriz}
+                              align="right"
+                              className="sticky top-0 z-30 min-w-[9rem] border-r border-white/25 bg-primary-600 text-white last:border-r-0"
+                            />
                           ))}
-                          <th className="sticky top-0 z-30 bg-primary-600 px-2 py-2 text-right font-medium whitespace-nowrap text-white">Total</th>
+                          <DiarioCabecalhoTh
+                            colId="total"
+                            label="Total"
+                            grade={gradeMatriz}
+                            align="right"
+                            className="sticky top-0 z-30 min-w-[9rem] bg-primary-600 text-white"
+                          />
                         </tr>
                       </thead>
                       <tbody>
                         {linhasMatriz.map((forn) => (
-                          <tr key={forn.nome} className="text-slate-800 dark:text-slate-100">
-                            <th className="sticky left-0 z-10 border-t border-slate-100 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
+                          <tr key={String(forn.fornecedor)} className="text-slate-800 dark:text-slate-100">
+                            <th className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
                               <button
                                 type="button"
                                 className="max-w-[22rem] truncate text-left hover:underline"
-                                title={forn.nome}
-                                onClick={() => onSelecionar(forn.nome)}
+                                title={String(forn.fornecedor)}
+                                onClick={() => onSelecionar(String(forn.fornecedor))}
                               >
-                                {forn.nome}
+                                {forn.fornecedor}
                               </button>
                             </th>
                             {empresas.map((emp) => {
-                              const valor = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
+                              const valor = Number(forn[`emp:${emp}`] ?? 0);
                               return (
-                                <td key={emp} className="border-t border-slate-100 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
+                                <td key={emp} className="border-r border-t border-slate-200 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
                                   {valor > 0 ? (
-                                    <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(forn.nome, emp)}>
+                                    <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(String(forn.fornecedor), emp)}>
                                       {formatMoeda(valor)}
                                     </button>
                                   ) : (
@@ -1253,8 +1446,8 @@ function RankingFornecedores({
                                 </td>
                               );
                             })}
-                            <td className="border-t border-slate-100 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
-                              {formatMoeda(forn.saldo)}
+                            <td className="border-t border-slate-200 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
+                              {formatMoeda(Number(forn.total) || 0)}
                             </td>
                           </tr>
                         ))}
@@ -1271,6 +1464,7 @@ function RankingFornecedores({
                     Fechar
                   </button>
                 </div>
+                <DiarioGradeFiltroPortal grade={gradeMatriz} zIndex={14000} />
               </div>
             </div>,
             document.body,

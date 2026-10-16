@@ -1,4 +1,4 @@
-import { Workbook, type Worksheet } from 'exceljs';
+import { Workbook, type Cell, type Worksheet } from 'exceljs';
 import { jsPDF } from 'jspdf';
 import autoTable, { type CellHookData } from 'jspdf-autotable';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
@@ -30,7 +30,24 @@ const COL_ANOTACAO = 12;
 const COL_SALDO = 14;
 
 function argbDeHex(hex: string): string {
-  return `FF${hex.replace('#', '').toUpperCase()}`;
+  const n = hex.replace('#', '').toUpperCase();
+  if (n.length === 8) return n;
+  return `FF${n}`;
+}
+
+function pintarCelulaObservacao(cell: Cell, hex: string) {
+  const argb = argbDeHex(hex);
+  cell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb },
+    bgColor: { argb },
+  };
+  cell.font = {
+    name: 'Calibri',
+    size: 10,
+    color: { argb: corTextoSobreFundo(hex) },
+  };
 }
 
 function corTextoSobreFundo(hex: string): string {
@@ -156,21 +173,6 @@ export async function exportarDiarioContasPagarExcel(opts: {
     row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
     row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
-    const fundo = hexObservacaoDiario(l.anotacaoCor);
-    if (fundo) {
-      const fill = {
-        type: 'pattern' as const,
-        pattern: 'solid' as const,
-        fgColor: { argb: argbDeHex(fundo) },
-      };
-      const fonte = corTextoSobreFundo(fundo);
-      row.eachCell({ includeEmpty: true }, (cell) => {
-        cell.fill = fill;
-        cell.font = { ...(cell.font ?? {}), color: { argb: fonte }, name: 'Calibri', size: 10 };
-      });
-      const celulaObs = row.getCell(COL_ANOTACAO);
-      celulaObs.fill = fill;
-    }
   }
 
   const total = ws.addRow([
@@ -201,6 +203,11 @@ export async function exportarDiarioContasPagarExcel(opts: {
     to: { row: Math.max(1, opts.linhas.length + 1), column: COLUNAS.length },
   };
   autosize(ws, COLUNAS.length);
+  opts.linhas.forEach((l, i) => {
+    const fundo = hexObservacaoDiario(l.anotacaoCor);
+    if (!fundo) return;
+    pintarCelulaObservacao(ws.getRow(i + 2).getCell(COL_ANOTACAO), fundo);
+  });
   await baixarWorkbook(wb, nomeArquivo(opts.dataInicio, opts.dataFim, 'xlsx'));
 }
 

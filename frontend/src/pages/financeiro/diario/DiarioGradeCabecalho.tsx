@@ -26,7 +26,8 @@ export const DIARIO_COLUNAS_GRADE = [
 const NUMERICAS = new Set(['valor', 'baixado', 'saldo', 'dias', 'codigo']);
 const DATAS = new Set(['vencimento', 'baixa']);
 
-type GradeApi = ReturnType<typeof useGradeFiltrosExcel<DiarioContaPagarLinha>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GradeApi = ReturnType<typeof useGradeFiltrosExcel<any>>;
 
 export function DiarioCabecalhoTh({
   colId,
@@ -74,7 +75,7 @@ export function DiarioGradeFiltroPortal({
 }) {
   if (!grade.colunaFiltroAberta || !grade.filtroAbertoRect) return null;
   const colId = grade.colunaFiltroAberta;
-  const numerica = NUMERICAS.has(colId);
+  const numerica = NUMERICAS.has(colId) || colId === 'total' || colId.startsWith('emp:');
   return (
     <GradeFiltroExcelPortal
       colunaAberta={colId}
