@@ -24,7 +24,6 @@ import PendenciasComprasPage from './pages/compras/PendenciasComprasPage';
 import PainelRupturasPage from './pages/compras/PainelRupturasPage';
 import DoubleCheckInPage from './pages/compras/DoubleCheckInPage';
 import PrecificacaoPage from './pages/PrecificacaoPage';
-import ResumoFinanceiroPage from './pages/financeiro/ResumoFinanceiroPage';
 import DfcPage from './pages/financeiro/DfcPage';
 import DrePage from './pages/financeiro/DrePage';
 import DashboardFinanceiroPage from './pages/financeiro/DashboardFinanceiroPage';
@@ -157,8 +156,8 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'organico', element: <OrganicoLegacyRedirect /> },
   ...rhRoutes,
   ...pdvRoutes,
-  { path: 'financeiro', element: <ResumoFinanceiroPage /> },
-  { path: 'financeiro/resumo', element: <ResumoFinanceiroPage /> },
+  { path: 'financeiro', element: <Navigate to="/financeiro/dashboard" replace /> },
+  { path: 'financeiro/resumo', element: <Navigate to="/financeiro/dashboard" replace /> },
   { path: 'financeiro/dfc', element: <DfcPage /> },
   { path: 'financeiro/dre', element: <ErrorBoundary><DrePage /></ErrorBoundary> },
   { path: 'financeiro/dashboard', element: <ErrorBoundary><DashboardFinanceiroPage /></ErrorBoundary> },

@@ -198,7 +198,6 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
     children: [
       { to: '/financeiro/carteira-financeira', label: 'Carteira Financeira' },
       { to: '/financeiro/painel-financeiro-comercial', label: 'Financeiro-Comercial' },
-      { to: '/financeiro/resumo', label: 'Resumo Financeiro' },
     ],
   },
   {
@@ -286,7 +285,6 @@ export const PATH_LABELS: Record<string, string> = {
   '/rh/organograma': 'RH — Organograma',
   '/rh/configuracoes': 'RH — Configurações',
   '/financeiro': 'Financeiro',
-  '/financeiro/resumo': 'Resumo Financeiro',
   '/financeiro/dfc': 'DFC',
   '/financeiro/diario': 'Diário Financeiro',
   '/financeiro/dre': 'DRE',

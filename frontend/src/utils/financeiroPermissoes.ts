@@ -89,8 +89,8 @@ export const PERMISSOES_ACESSO_FINANCEIRO_DIARIO: CodigoPermissao[] = [
 ];
 
 export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
-  '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
-  '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_RESUMO,
+  '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_MENU,
+  '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_MENU,
   '/financeiro/dre': PERMISSOES_ACESSO_FINANCEIRO_DRE,
   '/financeiro/dashboard': PERMISSOES_ACESSO_FINANCEIRO_DRE,
   '/financeiro/dfc': PERMISSOES_ACESSO_FINANCEIRO_DFC,
