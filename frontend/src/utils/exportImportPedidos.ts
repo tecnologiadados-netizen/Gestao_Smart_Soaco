@@ -17,6 +17,7 @@ import {
   resolverDataProducaoExibicaoGerenciador,
 } from './dataProducaoGerenciador';
 import { LABEL_CARRADA_EM_FORMACAO, normalizePdLabelForCompare } from './rotaCarrada';
+import { linhaEstaFaturada, statusPrincipalPedido } from './statusPedidoBadges';
 
 /** Valor de célula na exportação: `null` = célula vazia real no Excel (não string ""). */
 export type ExportCellValue = string | number | Date | null;
@@ -410,6 +411,9 @@ export const DIR_FINANCEIRA_EXPORT_COLUMNS = [
   'Emissao',
   'Previsão atual',
   'Previsão Confiável',
+  'Atrasado',
+  'Disponível',
+  'Faturado',
 ] as const;
 
 const DIR_FIN_DATE_KEYS = new Set<string>(['Data base entrega futura', 'Emissao', 'Previsão atual']);
@@ -437,6 +441,21 @@ function textoPrevisaoConfiavelExport(p: Pedido): string | null {
   return null;
 }
 
+/** Mesmos badges da coluna Status da grade: Atrasado, Disponível e Faturado. */
+function textoAtrasadoExport(p: Pedido): 'SIM' | 'NÃO' | null {
+  const principal = statusPrincipalPedido(p);
+  if (principal === '—') return null;
+  return principal.toLowerCase() === 'atrasado' ? 'SIM' : 'NÃO';
+}
+
+function textoDisponivelExport(p: Pedido): 'SIM' | 'NÃO' {
+  return String(p.Card ?? '').trim() === 'Disponível' ? 'SIM' : 'NÃO';
+}
+
+function textoFaturadoExport(p: Pedido): 'SIM' | 'NÃO' {
+  return linhaEstaFaturada(p) ? 'SIM' : 'NÃO';
+}
+
 /** Total real do PD (todos os itens, exceto cancelados) — alinhado à Carteira Financeira. */
 function valorPedidoTotalDirFinanceira(p: Pedido): unknown {
   const original =
@@ -456,6 +475,12 @@ function linhaDirFinanceiraItem(p: Pedido, dataFormacao: string): Record<string,
         : toExcelDateSerial(previsaoAtual);
     } else if (key === 'Previsão Confiável') {
       row[key] = textoPrevisaoConfiavelExport(p);
+    } else if (key === 'Atrasado') {
+      row[key] = textoAtrasadoExport(p);
+    } else if (key === 'Disponível') {
+      row[key] = textoDisponivelExport(p);
+    } else if (key === 'Faturado') {
+      row[key] = textoFaturadoExport(p);
     } else if (key === 'Valor Pedido Total') {
       row[key] = normalizeNumValue(key, valorPedidoTotalDirFinanceira(p));
     } else if (DIR_FIN_DATE_KEYS.has(key)) {
@@ -526,6 +551,13 @@ function agregarPrevisaoConfiavel(vals: ExportCellValue[]): string | null {
   return null;
 }
 
+/** Se algum item do PD tiver o badge, a linha consolidada fica SIM. */
+function agregarFlagStatus(vals: ExportCellValue[]): string | null {
+  if (vals.some((v) => v === 'SIM')) return 'SIM';
+  if (vals.some((v) => v === 'NÃO')) return 'NÃO';
+  return null;
+}
+
 function chaveSaldoRota(pd: string, observacoes: string): string {
   return `${normalizePdLabelForCompare(pd)}\x1e${observacoes.trim().toUpperCase()}`;
 }
@@ -568,6 +600,8 @@ function agregarGrupoDirFinanceira(linhas: Record<string, ExportCellValue>[]): R
       out[key] = agregarPrevisaoAtual(vals);
     } else if (key === 'Previsão Confiável') {
       out[key] = agregarPrevisaoConfiavel(vals);
+    } else if (key === 'Atrasado' || key === 'Disponível' || key === 'Faturado') {
+      out[key] = agregarFlagStatus(vals);
     } else if (key === 'Data base entrega futura') {
       out[key] = menorData(vals);
     } else if (key === 'Emissao') {
