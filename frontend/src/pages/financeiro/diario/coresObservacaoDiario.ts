@@ -38,7 +38,19 @@ export function corObservacaoDiario(valor: string | null | undefined): string | 
   if (!cru) return null;
   const antiga = CORES_ANTIGAS[cru];
   if (antiga) return antiga;
-  return /^#[0-9a-fA-F]{6}$/.test(cru) ? cru.toUpperCase() : null;
+  if (/^#[0-9a-fA-F]{6}$/.test(cru)) return cru.toUpperCase();
+  if (/^#[0-9a-fA-F]{8}$/.test(cru)) return `#${cru.slice(1, 7).toUpperCase()}`;
+  if (/^[0-9a-fA-F]{6}$/.test(cru)) return `#${cru.toUpperCase()}`;
+  if (/^[0-9a-fA-F]{8}$/.test(cru)) return `#${cru.slice(0, 6).toUpperCase()}`;
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(cru);
+  if (rgb) {
+    const hex = [rgb[1], rgb[2], rgb[3]]
+      .map((n) => Number(n).toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase();
+    return `#${hex}`;
+  }
+  return null;
 }
 
 export function hexObservacaoDiario(valor: string | null | undefined): string | null {
