@@ -161,7 +161,7 @@ function textoCelulaVencidos(
     case 'reprogramado':
       return texto(l.reprogramado);
     case 'dias': {
-      const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+      const dias = diasAtrasoTitulo(l, hoje);
       return dias != null ? String(dias) : VAZIO_CELULA;
     }
     case 'empresa':
@@ -189,7 +189,7 @@ function valorOrdenacaoVencidos(
   if (col === 'codigo') return l.codigoClassificacao ?? 0;
   if (col === 'vencimento') return l.dataVencimento ?? '';
   if (col === 'dias') {
-    const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+    const dias = diasAtrasoTitulo(l, hoje);
     return dias ?? -1;
   }
   return textoCelulaVencidos(l, col, mapaSub, hoje);
@@ -205,6 +205,28 @@ function diasAtraso(vencimento: string | null, hoje: string): number | null {
   const b = Date.parse(`${hoje}T12:00:00`);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return Math.round((b - a) / 86_400_000);
+}
+
+/** Data original gravada na reprogramação (dd/mm/aaaa ou ISO). */
+function isoDeReprogramado(texto: string | null | undefined): string | null {
+  const t = (texto ?? '').trim();
+  const br = /^(\d{2})[\/.](\d{2})[\/.](\d{4})$/.exec(t);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  return null;
+}
+
+/** Vencimento usado no atraso: original da reprogramação, senão a data atual se já passou. */
+function dataReferenciaAtraso(l: DiarioContaPagarLinha, hoje: string): string | null {
+  const original = isoDeReprogramado(l.reprogramado);
+  if (original) return original;
+  const venc = l.dataVencimento?.slice(0, 10) ?? null;
+  if (venc && venc < hoje) return venc;
+  return null;
+}
+
+function diasAtrasoTitulo(l: DiarioContaPagarLinha, hoje: string): number | null {
+  return diasAtraso(dataReferenciaAtraso(l, hoje), hoje);
 }
 
 function ehReprogramado(l: DiarioContaPagarLinha): boolean {
@@ -541,6 +563,7 @@ export const DiarioVencidosPainel = forwardRef<
   const resumo = useMemo(() => {
     const vencidos = base.filter((l) => ehVencido(l, hoje));
     const reprogramados = base.filter(ehReprogramado);
+    const emAtraso = base.filter((l) => ehVencido(l, hoje) || ehReprogramado(l));
     const soma = (lista: DiarioContaPagarLinha[]) => lista.reduce((acc, l) => acc + (Number(l.saldo) || 0), 0);
     const porMes = new Map<string, { mes: string; vencido: number; reprogramado: number }>();
     const porEmpresa = new Map<string, { nome: string; vencido: number; reprogramado: number }>();
@@ -568,7 +591,7 @@ export const DiarioVencidosPainel = forwardRef<
       const sub = nomeSubclassificacao(l, mapaSub);
       porSub.set(sub, (porSub.get(sub) ?? 0) + saldo);
       porCelulaSub.set(chaveMatriz(sub, empNome), (porCelulaSub.get(chaveMatriz(sub, empNome)) ?? 0) + saldo);
-      const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+      const dias = diasAtrasoTitulo(l, hoje);
       if (dias != null) {
         const faixa = faixas.find((f) => dias >= f.min && dias <= f.max);
         if (faixa) {
@@ -582,6 +605,8 @@ export const DiarioVencidosPainel = forwardRef<
       saldoVencidos: soma(vencidos),
       qtdReprogramados: reprogramados.length,
       saldoReprogramados: soma(reprogramados),
+      qtdEmAtraso: emAtraso.length,
+      saldoEmAtraso: soma(emAtraso),
       serie: [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes)).map((p) => ({
         ...p,
         label: p.mes === 'sem data' ? 'Sem data' : `${p.mes.slice(5)}/${p.mes.slice(0, 4)}`,
@@ -726,10 +751,10 @@ export const DiarioVencidosPainel = forwardRef<
             <KpiCard
               tone="amber"
               titulo="Vencidos"
-              valor={resumo.qtdVencidos.toLocaleString('pt-BR')}
-              detalhe={formatMoeda(resumo.saldoVencidos)}
+              valor={resumo.qtdEmAtraso.toLocaleString('pt-BR')}
+              detalhe={formatMoeda(resumo.saldoEmAtraso)}
               icone={<Clock3 className="h-4 w-4" />}
-              onClick={() => abrirDetalhe('Vencidos', base.filter((l) => ehVencido(l, hoje)))}
+              onClick={() => abrirDetalhe('Vencidos', base.filter((l) => ehVencido(l, hoje) || ehReprogramado(l)))}
             />
             <KpiCard
               tone="violet"
@@ -742,10 +767,10 @@ export const DiarioVencidosPainel = forwardRef<
             <KpiCard
               tone="cyan"
               titulo="Saldo vencido"
-              valor={formatMoeda(resumo.saldoVencidos)}
-              detalhe="Somente títulos em aberto com vencimento passado"
+              valor={formatMoeda(resumo.saldoEmAtraso)}
+              detalhe="Vencidos e reprogramados em aberto (a reprogramação interna continua vencida)"
               icone={<Wallet className="h-4 w-4" />}
-              onClick={() => abrirDetalhe('Saldo vencido', base.filter((l) => ehVencido(l, hoje)))}
+              onClick={() => abrirDetalhe('Saldo vencido', base.filter((l) => ehVencido(l, hoje) || ehReprogramado(l)))}
             />
             <KpiCard
               tone="emerald"
@@ -759,7 +784,7 @@ export const DiarioVencidosPainel = forwardRef<
                 abrirDetalhe(
                   faixa.label,
                   base.filter((l) => {
-                    const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+                    const dias = diasAtrasoTitulo(l, hoje);
                     return dias != null && dias >= faixa.min && dias <= faixa.max;
                   }),
                 );
@@ -891,7 +916,7 @@ export const DiarioVencidosPainel = forwardRef<
                       abrirDetalhe(
                         regra.label,
                         base.filter((l) => {
-                          const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+                          const dias = diasAtrasoTitulo(l, hoje);
                           return dias != null && dias >= regra.min && dias <= regra.max;
                         }),
                       );
@@ -950,7 +975,7 @@ export const DiarioVencidosPainel = forwardRef<
                   </td>
                 </tr>
               ) : titulosExibidos.map((l, i) => {
-                const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
+                const dias = diasAtrasoTitulo(l, hoje);
                 const chave = chaveSelecao(l);
                 const alteravel = podeAlterar(l);
                 return (
