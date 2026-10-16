@@ -445,6 +445,7 @@ export const DiarioVencidosPainel = forwardRef<
   const [subaba, setSubaba] = useState<Subaba>('titulos');
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
   const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: DiarioContaPagarLinha[] } | null>(null);
+  const [dinamicoSubAberto, setDinamicoSubAberto] = useState(false);
   const hoje = hojeYmd();
 
   const carregar = async () => {
@@ -545,6 +546,7 @@ export const DiarioVencidosPainel = forwardRef<
     const porEmpresa = new Map<string, { nome: string; vencido: number; reprogramado: number }>();
     const porFornecedor = new Map<string, number>();
     const porCelula = new Map<string, number>();
+    const porCelulaSub = new Map<string, number>();
     const porSub = new Map<string, number>();
     const faixas = FAIXAS.map((f) => ({ ...f, qtd: 0, saldo: 0 }));
     for (const l of base) {
@@ -565,6 +567,7 @@ export const DiarioVencidosPainel = forwardRef<
       porCelula.set(chaveCel, (porCelula.get(chaveCel) ?? 0) + saldo);
       const sub = nomeSubclassificacao(l, mapaSub);
       porSub.set(sub, (porSub.get(sub) ?? 0) + saldo);
+      porCelulaSub.set(chaveMatriz(sub, empNome), (porCelulaSub.get(chaveMatriz(sub, empNome)) ?? 0) + saldo);
       const dias = ehVencido(l, hoje) ? diasAtraso(l.dataVencimento, hoje) : null;
       if (dias != null) {
         const faixa = faixas.find((f) => dias >= f.min && dias <= f.max);
@@ -594,10 +597,10 @@ export const DiarioVencidosPainel = forwardRef<
         .sort((a, b) => (b.vencido + b.reprogramado) - (a.vencido + a.reprogramado) || a.nome.localeCompare(b.nome, 'pt-BR'))
         .map((item) => item.nome),
       celulas: Object.fromEntries(porCelula),
+      celulasSub: Object.fromEntries(porCelulaSub),
       subclassificacoes: [...porSub.entries()]
         .map(([nome, saldo]) => ({ nome, saldo }))
-        .sort((a, b) => b.saldo - a.saldo)
-        .slice(0, 12),
+        .sort((a, b) => b.saldo - a.saldo),
       faixas: [...faixas].sort((a, b) => b.saldo - a.saldo || a.min - b.min),
     };
   }, [base, hoje, mapaSub]);
@@ -858,10 +861,11 @@ export const DiarioVencidosPainel = forwardRef<
 
           <Ranking
             titulo="Por subclassificação"
-            detalhe="Clique em uma barra para ver as contas desse agrupamento."
-            dados={resumo.subclassificacoes}
+            detalhe="Clique em uma barra para abrir o Dinâmico (subclassificação × empresa)."
+            dados={resumo.subclassificacoes.slice(0, 12)}
             cor={COR_SUB}
-            onSelecionar={(nome) => abrirDetalhe(nome, base.filter((l) => nomeSubclassificacao(l, mapaSub) === nome))}
+            onSelecionar={() => setDinamicoSubAberto(true)}
+            onAbrirDinamico={() => setDinamicoSubAberto(true)}
           />
 
           <div className={`p-4 ${panelSurface}`}>
@@ -991,6 +995,21 @@ export const DiarioVencidosPainel = forwardRef<
       )}
       </div>
       {subaba === 'titulos' ? <DiarioGradeFiltroPortal grade={gradeTitulos} zIndex={14000} /> : null}
+      {dinamicoSubAberto ? (
+        <ModalDinamico
+          tituloLinha="SubClassificação"
+          buscaPlaceholder="Buscar subclassificação"
+          linhas={resumo.subclassificacoes}
+          empresas={resumo.empresasMatriz}
+          celulas={resumo.celulasSub}
+          onClose={() => setDinamicoSubAberto(false)}
+          onSelecionarLinha={(nome) => abrirDetalhe(nome, base.filter((l) => nomeSubclassificacao(l, mapaSub) === nome))}
+          onSelecionarCelula={(sub, empresa) => abrirDetalhe(
+            `${sub} · ${empresa}`,
+            base.filter((l) => nomeSubclassificacao(l, mapaSub) === sub && empresaExibida(l) === empresa),
+          )}
+        />
+      ) : null}
       {detalhe ? (
         <ModalDetalheGrafico
           titulo={detalhe.titulo}
@@ -1248,11 +1267,185 @@ function GraficoEmpresaEmpilhado({
   );
 }
 
-type LinhaMatrizGrade = {
-  fornecedor: string;
+type LinhaDinamicoGrade = {
+  linha: string;
   total: number;
   [col: string]: string | number;
 };
+
+function ModalDinamico({
+  tituloLinha,
+  buscaPlaceholder,
+  linhas,
+  empresas,
+  celulas,
+  onClose,
+  onSelecionarLinha,
+  onSelecionarCelula,
+}: {
+  tituloLinha: string;
+  buscaPlaceholder: string;
+  linhas: Array<{ nome: string; saldo: number }>;
+  empresas: string[];
+  celulas: Record<string, number>;
+  onClose: () => void;
+  onSelecionarLinha: (nome: string) => void;
+  onSelecionarCelula: (linha: string, empresa: string) => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const passa = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
+  const rows = useMemo((): LinhaDinamicoGrade[] => {
+    return linhas
+      .filter((item) => passa(item.nome))
+      .map((item) => {
+        const row: LinhaDinamicoGrade = { linha: item.nome, total: item.saldo };
+        for (const emp of empresas) {
+          row[`emp:${emp}`] = celulas[chaveMatriz(item.nome, emp)] ?? 0;
+        }
+        return row;
+      });
+  }, [linhas, empresas, celulas, passa]);
+  const columnIds = useMemo(
+    () => ['linha', ...empresas.map((emp) => `emp:${emp}`), 'total'],
+    [empresas],
+  );
+  const getCellText = useCallback((row: LinhaDinamicoGrade, colId: string) => {
+    if (colId === 'linha') return String(row.linha);
+    const n = Number(row[colId] ?? 0);
+    return n > 0 ? formatMoeda(n) : VAZIO_CELULA;
+  }, []);
+  const valueForSort = useCallback((row: LinhaDinamicoGrade, colId: string) => {
+    if (colId === 'linha') return String(row.linha);
+    return Number(row[colId] ?? 0);
+  }, []);
+  const grade = useGradeFiltrosExcel({
+    rows,
+    columnIds,
+    getCellText,
+    valueForSort,
+  });
+  const visiveis = grade.rowsExibidas;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="Fechar" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dinamico-titulo"
+        className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(98vw,92rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
+          <div className="min-w-0 flex-1">
+            <h2 id="dinamico-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+              Dinâmico
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Linhas: {tituloLinha}. Colunas: empresa (maior para a menor). Clique no valor para ver as contas. Use ▾ no cabeçalho para filtrar e classificar.
+            </p>
+            <input
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder={buscaPlaceholder}
+              className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
+            />
+          </div>
+          {grade.temFiltrosOuOrdem ? (
+            <button
+              type="button"
+              onClick={() => grade.limparFiltrosGrade()}
+              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+            >
+              Limpar filtros da grade
+            </button>
+          ) : null}
+        </div>
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
+          {visiveis.length === 0 || empresas.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
+          ) : (
+            <table className="w-max min-w-full border-separate border-spacing-0 text-xs uppercase">
+              <thead className="text-white">
+                <tr>
+                  <DiarioCabecalhoTh
+                    colId="linha"
+                    label={tituloLinha}
+                    grade={grade}
+                    className="sticky left-0 top-0 z-40 min-w-[16rem] border-r border-white/25 bg-primary-600 text-white shadow-[2px_0_0_0_rgb(37,99,235)]"
+                  />
+                  {empresas.map((emp) => (
+                    <DiarioCabecalhoTh
+                      key={emp}
+                      colId={`emp:${emp}`}
+                      label={emp}
+                      grade={grade}
+                      align="right"
+                      className="sticky top-0 z-30 min-w-[9rem] border-r border-white/25 bg-primary-600 text-white last:border-r-0"
+                    />
+                  ))}
+                  <DiarioCabecalhoTh
+                    colId="total"
+                    label="Total"
+                    grade={grade}
+                    align="right"
+                    className="sticky top-0 z-30 min-w-[9rem] bg-primary-600 text-white"
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((row) => (
+                  <tr key={String(row.linha)} className="text-slate-800 dark:text-slate-100">
+                    <th className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        className="max-w-[22rem] truncate text-left hover:underline"
+                        title={String(row.linha)}
+                        onClick={() => onSelecionarLinha(String(row.linha))}
+                      >
+                        {row.linha}
+                      </button>
+                    </th>
+                    {empresas.map((emp) => {
+                      const valor = Number(row[`emp:${emp}`] ?? 0);
+                      return (
+                        <td key={emp} className="border-r border-t border-slate-200 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
+                          {valor > 0 ? (
+                            <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(String(row.linha), emp)}>
+                              {formatMoeda(valor)}
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="border-t border-slate-200 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
+                      <button type="button" className="hover:underline" onClick={() => onSelecionarLinha(String(row.linha))}>
+                        {formatMoeda(Number(row.total) || 0)}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+          >
+            Fechar
+          </button>
+        </div>
+        <DiarioGradeFiltroPortal grade={grade} zIndex={14000} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 function RankingFornecedores({
   dados,
@@ -1267,57 +1460,24 @@ function RankingFornecedores({
   onSelecionar: (nome: string) => void;
   onSelecionarCelula: (fornecedor: string, empresa: string) => void;
 }) {
-  const [matrizAberta, setMatrizAberta] = useState(false);
-  const [busca, setBusca] = useState('');
+  const [dinamicoAberto, setDinamicoAberto] = useState(false);
   const visiveis = dados.slice(0, 10);
   const max = visiveis[0]?.saldo || 1;
-  const passa = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
-  const rowsMatriz = useMemo((): LinhaMatrizGrade[] => {
-    return dados
-      .filter((item) => passa(item.nome))
-      .map((forn) => {
-        const row: LinhaMatrizGrade = { fornecedor: forn.nome, total: forn.saldo };
-        for (const emp of empresas) {
-          row[`emp:${emp}`] = celulas[chaveMatriz(forn.nome, emp)] ?? 0;
-        }
-        return row;
-      });
-  }, [dados, empresas, celulas, passa]);
-  const columnIds = useMemo(
-    () => ['fornecedor', ...empresas.map((emp) => `emp:${emp}`), 'total'],
-    [empresas],
-  );
-  const getCellText = useCallback((row: LinhaMatrizGrade, colId: string) => {
-    if (colId === 'fornecedor') return String(row.fornecedor);
-    const n = Number(row[colId] ?? 0);
-    return n > 0 ? formatMoeda(n) : VAZIO_CELULA;
-  }, []);
-  const valueForSort = useCallback((row: LinhaMatrizGrade, colId: string) => {
-    if (colId === 'fornecedor') return String(row.fornecedor);
-    return Number(row[colId] ?? 0);
-  }, []);
-  const gradeMatriz = useGradeFiltrosExcel({
-    rows: rowsMatriz,
-    columnIds,
-    getCellText,
-    valueForSort,
-  });
-  const linhasMatriz = gradeMatriz.rowsExibidas;
 
   return (
     <div className={`relative p-4 ${panelSurface}`}>
       <button
         type="button"
-        aria-label="Abrir matriz fornecedor por empresa"
-        title="Abrir matriz fornecedor por empresa"
-        onClick={() => setMatrizAberta(true)}
+        aria-label="Abrir Dinâmico fornecedor por empresa"
+        title="Abrir Dinâmico"
+        onClick={() => setDinamicoAberto(true)}
         className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
       >
         <ListOrdered className="h-4 w-4" />
       </button>
       <h2 className="pl-10 text-sm font-semibold text-slate-900 dark:text-white">Ranking de fornecedores</h2>
       <p className="mt-0.5 pl-10 text-xs text-slate-500">
-        Top 10 por saldo. Clique em uma linha para ver as contas.
+        Top 10 por saldo. Clique em uma linha para ver as contas. Ícone abre o Dinâmico.
       </p>
       <div className="mt-3 max-h-72 space-y-1.5 overflow-auto pr-1">
         {visiveis.length === 0 ? (
@@ -1351,125 +1511,18 @@ function RankingFornecedores({
         })}
       </div>
 
-      {matrizAberta
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-              <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="Fechar" onClick={() => setMatrizAberta(false)} />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="matriz-forn-titulo"
-                className="relative z-[121] flex h-[min(92vh,56rem)] w-[min(98vw,92rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-600 dark:bg-slate-800"
-              >
-                <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 id="matriz-forn-titulo" className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                      Matriz fornecedor × empresa
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Colunas da maior para a menor. Clique no valor para ver as contas. Use ▾ no cabeçalho para filtrar e classificar.
-                    </p>
-                    <input
-                      type="search"
-                      value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Buscar fornecedor"
-                      className={`${FILTRO_INPUT_CLASS} mt-3 max-w-sm`}
-                    />
-                  </div>
-                  {gradeMatriz.temFiltrosOuOrdem ? (
-                    <button
-                      type="button"
-                      onClick={() => gradeMatriz.limparFiltrosGrade()}
-                      className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
-                    >
-                      Limpar filtros da grade
-                    </button>
-                  ) : null}
-                </div>
-                <div ref={gradeMatriz.tableScrollRef} className="min-h-0 flex-1 overflow-auto">
-                  {linhasMatriz.length === 0 || empresas.length === 0 ? (
-                    <p className="py-10 text-center text-sm text-slate-400">Sem dados.</p>
-                  ) : (
-                    <table className="w-max min-w-full border-separate border-spacing-0 text-xs uppercase">
-                      <thead className="text-white">
-                        <tr>
-                          <DiarioCabecalhoTh
-                            colId="fornecedor"
-                            label="Fornecedor"
-                            grade={gradeMatriz}
-                            className="sticky left-0 top-0 z-40 min-w-[16rem] border-r border-white/25 bg-primary-600 text-white shadow-[2px_0_0_0_rgb(37,99,235)]"
-                          />
-                          {empresas.map((emp) => (
-                            <DiarioCabecalhoTh
-                              key={emp}
-                              colId={`emp:${emp}`}
-                              label={emp}
-                              grade={gradeMatriz}
-                              align="right"
-                              className="sticky top-0 z-30 min-w-[9rem] border-r border-white/25 bg-primary-600 text-white last:border-r-0"
-                            />
-                          ))}
-                          <DiarioCabecalhoTh
-                            colId="total"
-                            label="Total"
-                            grade={gradeMatriz}
-                            align="right"
-                            className="sticky top-0 z-30 min-w-[9rem] bg-primary-600 text-white"
-                          />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {linhasMatriz.map((forn) => (
-                          <tr key={String(forn.fornecedor)} className="text-slate-800 dark:text-slate-100">
-                            <th className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-2 py-1.5 text-left font-medium whitespace-nowrap shadow-[2px_0_6px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-800">
-                              <button
-                                type="button"
-                                className="max-w-[22rem] truncate text-left hover:underline"
-                                title={String(forn.fornecedor)}
-                                onClick={() => onSelecionar(String(forn.fornecedor))}
-                              >
-                                {forn.fornecedor}
-                              </button>
-                            </th>
-                            {empresas.map((emp) => {
-                              const valor = Number(forn[`emp:${emp}`] ?? 0);
-                              return (
-                                <td key={emp} className="border-r border-t border-slate-200 px-2 py-1.5 text-right tabular-nums whitespace-nowrap dark:border-slate-700">
-                                  {valor > 0 ? (
-                                    <button type="button" className="hover:underline" onClick={() => onSelecionarCelula(String(forn.fornecedor), emp)}>
-                                      {formatMoeda(valor)}
-                                    </button>
-                                  ) : (
-                                    <span className="text-slate-300 dark:text-slate-600">—</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td className="border-t border-slate-200 px-2 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap dark:border-slate-700">
-                              {formatMoeda(Number(forn.total) || 0)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-                <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setMatrizAberta(false)}
-                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
-                  >
-                    Fechar
-                  </button>
-                </div>
-                <DiarioGradeFiltroPortal grade={gradeMatriz} zIndex={14000} />
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      {dinamicoAberto ? (
+        <ModalDinamico
+          tituloLinha="Fornecedor"
+          buscaPlaceholder="Buscar fornecedor"
+          linhas={dados}
+          empresas={empresas}
+          celulas={celulas}
+          onClose={() => setDinamicoAberto(false)}
+          onSelecionarLinha={onSelecionar}
+          onSelecionarCelula={onSelecionarCelula}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1480,17 +1533,30 @@ function Ranking({
   cor,
   detalhe = 'Clique em uma barra para ver as contas.',
   onSelecionar,
+  onAbrirDinamico,
 }: {
   titulo: string;
   dados: Array<{ nome: string; saldo: number }>;
   cor: string;
   detalhe?: string;
   onSelecionar?: (nome: string) => void;
+  onAbrirDinamico?: () => void;
 }) {
   return (
-    <div className={`p-4 ${panelSurface}`}>
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{titulo}</h2>
-      <p className="mt-0.5 text-xs text-slate-500">{detalhe}</p>
+    <div className={`relative p-4 ${panelSurface}`}>
+      {onAbrirDinamico ? (
+        <button
+          type="button"
+          aria-label="Abrir Dinâmico"
+          title="Abrir Dinâmico"
+          onClick={onAbrirDinamico}
+          className="absolute left-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+        >
+          <ListOrdered className="h-4 w-4" />
+        </button>
+      ) : null}
+      <h2 className={`${onAbrirDinamico ? 'pl-10' : ''} text-sm font-semibold text-slate-900 dark:text-white`}>{titulo}</h2>
+      <p className={`${onAbrirDinamico ? 'pl-10' : ''} mt-0.5 text-xs text-slate-500`}>{detalhe}</p>
       <div className="mt-3 h-72">
         {dados.length === 0 ? <p className="py-16 text-center text-sm text-slate-400">Sem dados.</p> : (
           <ResponsiveContainer>
