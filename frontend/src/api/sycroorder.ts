@@ -59,6 +59,8 @@ export interface SycroOrderHistoryItem {
   observation: string | null;
   /** Motivo do ajuste de previsão (Gerenciador), quando aplicável. */
   motivo?: string | null;
+  /** False quando a nova previsão foi gravada como provisória. */
+  previsao_confiavel?: boolean | null;
   created_at: string;
   /** Código do produto (Cod), preenchido quando o pedido tem mais de um item para identificar a qual item se refere o ajuste. */
   product_code?: string | null;
@@ -149,7 +151,7 @@ export async function updateSycroOrderOrder(
     observacao?: string;
     is_urgent?: boolean;
     motivo?: string;
-    /** Quando false, a previsão é provisória (não entra no histórico da Comunicação Interna). Default true. */
+    /** Quando false, a previsão é provisória na grade. O histórico do card registra a alteração. Default true. */
     previsao_confiavel?: boolean;
     /** Aplicar ajuste apenas a estes id_pedido (quando alteração não é para todos os itens). */
     id_pedidos?: string[];

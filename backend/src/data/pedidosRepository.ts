@@ -2918,7 +2918,7 @@ export interface AjusteLoteItem {
   observacao?: string | null;
   /** Quando informado, grava como override apenas para esta rota. Caso contrário, grava como base. */
   rota?: string | null;
-  /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
+  /** Quando false, a previsão é provisória na grade. O histórico do card ainda registra a alteração. Default true. */
   previsao_confiavel?: boolean;
   /**
    * Confirmação explícita da data vigente (sem alterá-la). Permite gravar quando a única
@@ -3372,7 +3372,7 @@ function parseDateFromDb(val: unknown): Date {
 }
 
 export type OpcoesListarHistoricoAjustes = {
-  /** Quando true, retorna só ajustes com previsao_confiavel (histórico Comunicação Interna). */
+  /** Quando true, omite previsões provisórias. O histórico do card da Comunicação Interna não usa este filtro. */
   apenasPrevisaoConfiavel?: boolean;
   /**
    * Quando informado, retorna overrides dessa rota + ajustes base (`rota` null).

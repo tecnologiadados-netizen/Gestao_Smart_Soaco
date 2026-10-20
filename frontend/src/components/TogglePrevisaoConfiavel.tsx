@@ -1,7 +1,7 @@
 /**
  * Toggle tri-estado para “Previsão confiável”:
  * - null = meio (não escolhido) — estado inicial ao abrir formulários
- * - false = Não (provisória; não entra no histórico da Comunicação Interna)
+ * - false = Não (provisória na grade; o histórico do card registra a alteração)
  * - true = Sim
  */
 export type PrevisaoConfiavelTri = boolean | null;
@@ -86,8 +86,8 @@ export default function TogglePrevisaoConfiavel({
       {showHelp && (
         <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
           Escolha <span className="font-medium">Sim</span> ou <span className="font-medium">Não</span> para
-          salvar. <span className="font-medium">Não</span> = data provisória (não entra no histórico da
-          Comunicação Interna). O controle sempre inicia no meio.
+          salvar. <span className="font-medium">Não</span> = data provisória na grade. A alteração continua
+          no histórico do card, marcada como provisória. O controle sempre inicia no meio.
         </p>
       )}
     </div>

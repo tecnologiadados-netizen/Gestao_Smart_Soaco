@@ -61,6 +61,6 @@ export function bloqueioImportacaoPrevisaoConfiavel(linhas: number[]): Importaca
     titulo: 'Upload bloqueado',
     motivo: 'A coluna Previsão Confiável aceita apenas SIM ou NÃO em cada linha preenchida.',
     itens: linhas.length > 0 ? { rotulo: 'Linhas com valor inválido', valores: linhas.map(String) } : undefined,
-    acoes: ['Preencha SIM (data confiável, aparece no histórico do card) ou NÃO (data provisória, não aparece no histórico da Comunicação Interna).'],
+    acoes: ['Preencha SIM (data confiável) ou NÃO (data provisória). Nos dois casos a alteração entra no histórico do card; NÃO fica marcada como provisória.'],
   };
 }

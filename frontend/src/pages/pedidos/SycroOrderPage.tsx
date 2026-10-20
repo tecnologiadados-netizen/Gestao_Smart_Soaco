@@ -304,6 +304,8 @@ function formatLinhaPrevisaoHistorico(opts: {
   if (opts.actionType === 'CREATE') {
     return `Previsão prometida no card: ${newFmt}`;
   }
+  // Comentário sem reprogramação grava a mesma data: não inventar alteração.
+  if (prevFmt && prevFmt === newFmt) return null;
   return `Previsão alterada para ${newFmt}`;
 }
 
@@ -331,6 +333,8 @@ function historicoEventTone(
   if (actionType === 'TAG_DISPONIVEL_FALSE') return 'tagIndisponivel';
   if (actionType === 'DATA_PRODUCAO') return 'dataProducao';
   if (actionType === 'AJUSTE_PREVISAO') return 'previsao';
+  // UPDATE com data diferente da anterior: mostra a alteração mesmo quando há mensagem no mesmo evento.
+  if (actionType === 'UPDATE' && linhaPrevisao) return 'previsao';
   if (linhaPrevisao && linhaConteudo === linhaPrevisao) return 'previsao';
   return 'default';
 }
@@ -1099,6 +1103,9 @@ export default function SycroOrderPage() {
                       if (linhaDataProducao) linhasCorpoBoxed.push(linhaDataProducao);
                     } else if (isCreate || tone === 'previsao') {
                       if (linhaPrevisao) linhasCorpoBoxed.push(linhaPrevisao);
+                      const motivoStr = h.motivo != null && String(h.motivo).trim() !== '' ? String(h.motivo).trim() : '';
+                      if (motivoStr) linhasCorpoBoxed.push(`Motivo: ${motivoStr}`);
+                      if (h.previsao_confiavel === false) linhasCorpoBoxed.push('Previsão provisória (não confiável).');
                       if (obsStr) linhasCorpoBoxed.push(obsStr);
                     }
                     return (

@@ -379,14 +379,14 @@ export default function ModalHistoricoPedido({
                           (naoConfiavel ? (
                             <span
                               className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300 border border-red-500 dark:border-red-400"
-                              title="Esta alteração não entra no histórico da Comunicação Interna"
+                              title="Previsão provisória: vale na grade e aparece no histórico do card marcada como provisória"
                             >
                               Não confiável
                             </span>
                           ) : (
                             <span
                               className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-200 border border-emerald-500 dark:border-emerald-400"
-                              title="Previsão confiável — entra no histórico da Comunicação Interna"
+                              title="Previsão confiável — registrada no histórico do card da Comunicação Interna"
                             >
                               Confiável
                             </span>

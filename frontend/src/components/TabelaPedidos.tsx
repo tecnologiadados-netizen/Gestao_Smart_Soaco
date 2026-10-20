@@ -125,7 +125,7 @@ function CelulaPrevisaoAtual({
       {naoConfiavel ? (
         <span
           className={`${BADGE_GRADE_CLASS} bg-red-500/20 text-red-700 dark:text-red-300`}
-          title="Previsão provisória: não aparece no histórico da Comunicação Interna"
+          title="Previsão provisória: aparece no histórico do card marcada como provisória"
         >
           Não confiável
         </span>

@@ -57,7 +57,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão confiável',
         texto:
-          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória: vale na grade, mas não entra no histórico da Comunicação Interna. Sem escolha no meio, o salvamento é bloqueado.',
+          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória na grade do Gerenciador. A alteração de data entra no histórico do card nos dois casos e, quando for Não, o histórico marca a previsão como provisória. Sem escolha no meio, o salvamento é bloqueado.',
       },
       {
         titulo: 'Justificativa (PDF)',
@@ -77,7 +77,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'O que o histórico mostra',
         texto:
-          'Criação do card, alteração de previsão, marcação de disponível/não disponível e as demais mensagens. Alteração de data de produção não aparece neste modal.',
+          'Criação do card, alteração de previsão (inclusive provisória), motivo, mensagem, marcação de disponível/não disponível e as demais mensagens. Alteração de data de produção não aparece neste modal.',
       },
     ],
   },

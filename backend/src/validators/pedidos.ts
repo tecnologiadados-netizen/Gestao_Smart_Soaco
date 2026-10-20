@@ -29,7 +29,7 @@ export const ajustarPrevisaoSchema = z.object({
    * por rota além do ajuste base. Sem isso, o base ficaria sombreado pelos overrides existentes.
    */
   todas_rotas: z.boolean().optional(),
-  /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
+  /** Quando false, a previsão é provisória na grade. O histórico do card registra a alteração. Default true. */
   previsao_confiavel: z.boolean().optional().default(true),
   /** Confirma uma data já preenchida automaticamente, registrando a validação no histórico. */
   confirmacao_data: z.boolean().optional(),

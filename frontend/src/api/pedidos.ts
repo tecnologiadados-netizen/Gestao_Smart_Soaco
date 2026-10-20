@@ -608,7 +608,7 @@ export async function ajustarPrevisao(
      * além do ajuste base. Sem isso, o base fica sombreado pelos overrides já existentes.
      */
     todas_rotas?: boolean;
-    /** Quando false, não exibe no histórico dos cards Comunicação Interna. Default true. */
+    /** Quando false, a previsão é provisória na grade. O histórico do card registra a alteração. Default true. */
     previsao_confiavel?: boolean;
     /** Registra a validação de uma data automática, mesmo sem alterá-la. */
     confirmacao_data?: boolean;

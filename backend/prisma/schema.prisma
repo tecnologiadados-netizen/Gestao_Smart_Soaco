@@ -25,7 +25,7 @@ model PedidoPrevisaoAjuste {
   observacao    String?
   usuario       String
   data_ajuste   DateTime @default(now())
-  /// Quando false, altera a previsão efetiva mas não entra no histórico dos cards Comunicação Interna.
+  /// Quando false, a previsão é provisória na grade. O histórico do card da Comunicação Interna ainda registra a alteração.
   previsao_confiavel Boolean @default(true)
   /// PDF de assinatura do responsável (obrigatório em justificativas não abonadas, exceto import XLSX).
   anexoAssinaturaPath    String? @map("anexo_assinatura_path")

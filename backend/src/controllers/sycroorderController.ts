@@ -975,7 +975,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     observacao?: string;
     is_urgent?: boolean;
     motivo?: string;
-    /** Quando false, a previsão é provisória (não entra no histórico da Comunicação Interna). Default true. */
+    /** Quando false, a previsão é provisória na grade. O histórico do card registra a alteração mesmo assim. Default true. */
     previsao_confiavel?: boolean;
     /** Quando informado, o ajuste no Gerenciador é aplicado apenas a estes id_pedido (mesmo PD). */
     id_pedidos?: string[];
@@ -1733,7 +1733,7 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
   try {
     const order = await prisma.sycroOrderOrder.findUnique({
       where: { id },
-      select: { order_number: true },
+      select: { order_number: true, item_ids_json: true },
     });
     if (!order) {
       res.status(404).json({ error: 'Pedido não encontrado.' });
@@ -1759,6 +1759,8 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
       motivo?: string | null;
       created_at: Date;
       product_code?: string | null;
+      /** False = previsão provisória. Ausente nas mensagens que não alteram data. */
+      previsao_confiavel?: boolean | null;
     };
 
     const mapped: HistoryEntry[] = history.map((h) => ({
@@ -1779,11 +1781,9 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
     const idPedidoToDataOriginal = new Map<string, string>();
     try {
       const { data: pedidos } = await listarPedidos({});
-      const pdNorm = orderNumber.toLowerCase();
       for (const p of pedidos) {
         const row = p as Record<string, unknown>;
-        const pd = String(row.PD ?? row.pd ?? '').trim();
-        if (pd.toLowerCase() !== pdNorm) continue;
+        if (!gerenciadorRowMatchesOrderNumber(row, orderNumber)) continue;
         const idPedido = String(row.id_pedido ?? '').trim();
         if (idPedido && !idPedidosGestao.includes(idPedido)) {
           idPedidosGestao.push(idPedido);
@@ -1797,6 +1797,13 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
       // Se listarPedidos falhar, segue só com histórico Sycro
     }
 
+    // Itens gravados no card: cobre PD que saiu da listagem ativa ou número com/sem prefixo.
+    if (idPedidosGestao.length === 0) {
+      for (const idPedido of parseJsonArray(order.item_ids_json) ?? []) {
+        if (idPedido && !idPedidosGestao.includes(idPedido)) idPedidosGestao.push(idPedido);
+      }
+    }
+
     const prazoOriginalOrder = formatDateRangePtBr(
       idPedidosGestao.map((id) => idPedidoToDataOriginal.get(id)).filter(Boolean) as string[]
     );
@@ -1805,7 +1812,7 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
 
     for (const idPedido of idPedidosGestao) {
       try {
-        const ajustes = await listarHistoricoAjustes(idPedido, { apenasPrevisaoConfiavel: true });
+        const ajustes = await listarHistoricoAjustes(idPedido);
         const productCode = ordemTemMaisDeUmItem ? (idPedidoToCod.get(idPedido) ?? null) : null;
         for (let i = 0; i < ajustes.length; i++) {
           const a = ajustes[i];
@@ -1830,6 +1837,7 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
             observation: observacaoTrim,
             created_at: created,
             product_code: productCode,
+            previsao_confiavel: a.previsao_confiavel !== false,
           });
         }
       } catch (_) {
@@ -1883,11 +1891,13 @@ export async function getOrderHistory(req: Request, res: Response): Promise<void
             : cods.join(', ')
           : null;
       const previous_date = resolvePreviousDateForGroup(list, first, prazoOriginalOrder);
+      const algumaProvisoria = list.some((e) => e.previsao_confiavel === false);
       mergedAjuste.push({
         ...first,
         id: first.id,
         product_code: product_code ?? undefined,
         previous_date,
+        previsao_confiavel: algumaProvisoria ? false : first.previsao_confiavel ?? null,
       });
     }
     mergedAjuste.sort((a, b) => {

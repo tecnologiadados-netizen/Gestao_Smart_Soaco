@@ -847,7 +847,7 @@ export interface LinhaImportacao {
   rota: string;
   /** Coluna Igual? (Nova previsão = Previsão atual). Importação não aceita linhas com Igual? = verdadeiro. */
   igual?: boolean;
-  /** Coluna Previsão Confiável (SIM/NÃO). Quando false, não exibe no histórico Comunicação Interna. */
+  /** Coluna Previsão Confiável (SIM/NÃO). Quando false, a previsão é provisória; o histórico do card ainda registra a alteração. */
   previsao_confiavel?: boolean;
   /**
    * Coluna Data de produção (ISO YYYY-MM-DD).
