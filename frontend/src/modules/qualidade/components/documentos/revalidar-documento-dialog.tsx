@@ -105,6 +105,16 @@ export function RevalidarDocumentoDialog({
     (s) => s.getVersionsByDocumentId
   );
   const revalidarDocumento = useDocumentsStore((s) => s.revalidarDocumento);
+  const temTarefaPendente = useDocumentsStore((s) =>
+    documentId
+      ? s.tasks.some(
+          (t) =>
+            t.referenciaId === documentId &&
+            t.tipo === "revalidar_documento" &&
+            t.status === "pendente"
+        )
+      : false
+  );
 
   const users = useConfigStore((s) => s.users);
 
@@ -142,7 +152,7 @@ export function RevalidarDocumentoDialog({
 
     if (!acabouDeAbrir) return;
 
-    if (!documentoExigeRevalidacao(doc)) {
+    if (!documentoExigeRevalidacao(doc) && !temTarefaPendente) {
       onOpenChange(false);
       return;
     }
@@ -161,7 +171,7 @@ export function RevalidarDocumentoDialog({
     setAcaoRevalidacao("");
     setError("");
     setErroArquivo("");
-  }, [open, hidden, doc, onOpenChange]);
+  }, [open, hidden, doc, onOpenChange, temTarefaPendente]);
 
   function handleFechar() {
     onOpenChange(false);
@@ -211,7 +221,7 @@ export function RevalidarDocumentoDialog({
 
         if (!ok) {
           throw new Error(
-            documentoExigeRevalidacao(doc)
+            documentoExigeRevalidacao(doc) || temTarefaPendente
               ? "Não foi possível registrar a revalidação."
               : "A revalidação só pode ser feita após o vencimento da validade."
           );

@@ -1907,11 +1907,17 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
 
       revalidarDocumento: (documentId, input) => {
         const doc = get().getDocumentById(documentId);
+        const temTarefaPendente = get().tasks.some(
+          (t) =>
+            t.referenciaId === documentId &&
+            t.tipo === "revalidar_documento" &&
+            t.status === "pendente"
+        );
         if (
           !doc ||
           doc.status !== "vigente" ||
           !doc.validade?.ativa ||
-          !documentoExigeRevalidacao(doc) ||
+          (!documentoExigeRevalidacao(doc) && !temTarefaPendente) ||
           !input.observacoes.trim()
         ) {
           return false;

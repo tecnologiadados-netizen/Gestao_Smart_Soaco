@@ -85,7 +85,10 @@ export function DocumentosPage() {
         </div>
       </div>
 
-      <DocumentosPendenciasBoards showAll={showAll} />
+      <DocumentosPendenciasBoards
+        showAll={showAll}
+        onRevalidar={(id) => setRevalidarId(id)}
+      />
 
       {!showAll && (
         <p className="text-left text-xs text-muted-foreground">

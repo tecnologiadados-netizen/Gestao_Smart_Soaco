@@ -20,6 +20,7 @@ import type { Task } from "@qualidade/types/task";
 
 interface Props {
   showAll?: boolean;
+  onRevalidar?: (documentId: string) => void;
 }
 
 const ETAPAS_FLUXO: Task["tipo"][] = [
@@ -183,10 +184,12 @@ function RevalidacaoKanbanColumn({
   items,
   descricao,
   mostrarResponsavel,
+  onRevalidar,
 }: {
   items: RevalidacaoItem[];
   descricao: string;
   mostrarResponsavel: boolean;
+  onRevalidar?: (documentId: string) => void;
 }) {
   return (
     <section className="sgq-kanban-column sgq-kanban-column--primary">
@@ -261,6 +264,7 @@ function RevalidacaoKanbanColumn({
               <div className="mt-4">
                 <Link
                   to={`/qualidade/documentos?revalidar=${doc.id}`}
+                  onClick={() => onRevalidar?.(doc.id)}
                   className={cn(
                     buttonVariants({ size: "sm" }),
                     "h-8 gap-1.5 text-xs"
@@ -278,7 +282,10 @@ function RevalidacaoKanbanColumn({
   );
 }
 
-export function DocumentosPendenciasBoards({ showAll = false }: Props) {
+export function DocumentosPendenciasBoards({
+  showAll = false,
+  onRevalidar,
+}: Props) {
   const currentUserId = useConfigStore((s) => s.currentUserId);
   const users = useConfigStore((s) => s.users);
   const documents = useDocumentsStore((s) => s.documents);
@@ -333,6 +340,7 @@ export function DocumentosPendenciasBoards({ showAll = false }: Props) {
       <div className="grid min-h-0 flex-1 items-stretch gap-6 lg:grid-cols-2">
         <RevalidacaoKanbanColumn
           items={revalidacaoItems}
+          onRevalidar={onRevalidar}
           mostrarResponsavel={showAll}
           descricao={
             showAll
