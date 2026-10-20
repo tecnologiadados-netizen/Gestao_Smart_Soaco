@@ -782,7 +782,7 @@ export default function DoubleCheckInComparativoPcTab({
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
-                                title="Aceitar divergência (exige solicitação no Otimiza)"
+                                title="Aceitar divergência (exige solicitação concluída no Otimiza)"
                                 className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
                               >
@@ -891,15 +891,15 @@ export default function DoubleCheckInComparativoPcTab({
                         }
                         onClick={() => void gravarNumeroOtimiza()}
                       >
-                        {salvandoNumero ? 'Gravando…' : numeroGravado ? 'Atualizar' : 'Gravar'}
+                        {salvandoNumero ? 'Consultando…' : numeroGravado ? 'Atualizar' : 'Gravar'}
                       </button>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500">
                       {aceiteLiberado
                         ? aplicouNasDemais
-                          ? `Solicitação ${numeroGravado} gravada nesta e nas outras divergências em aberto. Agora informe a justificativa.`
-                          : `Solicitação ${numeroGravado} gravada. Agora informe a justificativa.`
-                        : 'Grave o número da solicitação aberta no Otimiza. A justificativa só libera depois disso.'}
+                          ? `Solicitação ${numeroGravado} concluída no Otimiza e gravada nesta e nas outras divergências em aberto. Agora informe a justificativa.`
+                          : `Solicitação ${numeroGravado} concluída no Otimiza. Agora informe a justificativa.`
+                        : 'Informe o número da solicitação no Otimiza e grave. O aceite só libera se ela estiver concluída.'}
                     </p>
                     {outrasDivergenciasAbertas > 0 && (
                       <button
@@ -909,7 +909,7 @@ export default function DoubleCheckInComparativoPcTab({
                         onClick={() => void gravarNumeroOtimiza(true)}
                       >
                         {salvandoNumero
-                          ? 'Gravando…'
+                          ? 'Consultando…'
                           : `Vale para as demais divergências (${outrasDivergenciasAbertas})`}
                       </button>
                     )}
