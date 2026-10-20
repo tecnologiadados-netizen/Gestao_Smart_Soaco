@@ -239,20 +239,20 @@ export const RCC_CAMPOS_PDF_MAPA: RccCampoPdfMapa[] = [
   {
     rotuloPdf: "Serviço realizado",
     chaveSistema: "servicoRealizado",
-    versoes: ["empresa"],
+    versoes: ["cliente", "empresa"],
     situacao: "parcial",
     observacao: "Concatena serviço realizado, 1 e 2 no PDF.",
   },
   {
     rotuloPdf: "Problema solucionado?",
     chaveSistema: "problemaSolucionado",
-    versoes: ["empresa"],
+    versoes: ["cliente", "empresa"],
     situacao: "mapeado",
   },
   {
     rotuloPdf: "Data de conclusão",
     chaveSistema: "dataFechamento",
-    versoes: ["empresa"],
+    versoes: ["cliente", "empresa"],
     situacao: "mapeado",
   },
   {
