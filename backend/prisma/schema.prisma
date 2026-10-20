@@ -306,6 +306,8 @@ model DoubleCheckInSolicitacaoOtimiza {
   idItemPedidoCompra     Int
   campo                  String
   numero                 Int
+  /// in_progress | completed | cancelled. Null em registros anteriores à consulta de status.
+  status                 String?
   usuarioId              Int
   usuarioLogin           String
   atualizadoEm           DateTime @default(now()) @updatedAt

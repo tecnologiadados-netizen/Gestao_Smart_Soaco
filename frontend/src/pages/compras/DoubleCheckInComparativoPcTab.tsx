@@ -296,6 +296,8 @@ export default function DoubleCheckInComparativoPcTab({
   const [obs, setObs] = useState('');
   const [numeroOtimiza, setNumeroOtimiza] = useState('');
   const [numeroGravado, setNumeroGravado] = useState<number | null>(null);
+  const [statusGravado, setStatusGravado] = useState<'in_progress' | 'completed' | 'cancelled' | null>(null);
+  const [avisoOtimiza, setAvisoOtimiza] = useState<string | null>(null);
   const [aplicouNasDemais, setAplicouNasDemais] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvandoNumero, setSalvandoNumero] = useState(false);
@@ -308,9 +310,9 @@ export default function DoubleCheckInComparativoPcTab({
   const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
 
   const solicitacaoMap = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, DoubleCheckInSolicitacaoOtimiza>();
     for (const s of solicitacoesOtimiza) {
-      m.set(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo), s.numero);
+      m.set(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo), s);
     }
     return m;
   }, [solicitacoesOtimiza]);
@@ -354,16 +356,22 @@ export default function DoubleCheckInComparativoPcTab({
     );
     // Após conferida, só permite decidir campos ainda pendentes (ex.: divergência nova).
     if (conferido && existente?.vigente !== false) return;
-    const numeroSalvo = solicitacaoMap.get(
+    const salva = solicitacaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
-    setNumeroOtimiza(numeroSalvo != null ? String(numeroSalvo) : '');
-    setNumeroGravado(numeroSalvo ?? null);
+    setNumeroOtimiza(salva != null ? String(salva.numero) : '');
+    setNumeroGravado(salva?.numero ?? null);
+    setStatusGravado(salva?.status ?? null);
     setAplicouNasDemais(false);
     setJustErro(null);
+    setAvisoOtimiza(
+      salva?.status === 'in_progress'
+        ? `A solicitação ${salva.numero} do Otimiza ainda está em andamento. O número permanece nesta divergência e o aceite continua pendente.`
+        : null
+    );
   };
 
   const abrirNovaObservacao = (
@@ -380,9 +388,11 @@ export default function DoubleCheckInComparativoPcTab({
     setObsErro(null);
   };
 
+  const numeroConfereComGravado =
+    numeroGravado != null && numeroOtimiza.trim() === String(numeroGravado);
+  const solicitacaoConcluida = statusGravado === 'completed' || statusGravado === 'cancelled';
   const aceiteLiberado =
-    draft?.decisao !== 'aceita' ||
-    (numeroGravado != null && numeroOtimiza.trim() === String(numeroGravado));
+    draft?.decisao !== 'aceita' || (numeroConfereComGravado && solicitacaoConcluida);
 
   const outrasDivergenciasAbertas = useMemo(() => {
     if (!draft || draft.decisao !== 'aceita') return 0;
@@ -418,6 +428,7 @@ export default function DoubleCheckInComparativoPcTab({
     }
     setSalvandoNumero(true);
     setJustErro(null);
+    setAvisoOtimiza(null);
     try {
       const r = await saveDoubleCheckInSolicitacaoOtimiza({
         idDocumento,
@@ -443,7 +454,14 @@ export default function DoubleCheckInComparativoPcTab({
       ]);
       setNumeroGravado(r.solicitacao.numero);
       setNumeroOtimiza(String(r.solicitacao.numero));
+      setStatusGravado(r.solicitacao.status ?? null);
       setAplicouNasDemais(aplicarNasDemais);
+      if (!r.concluida) {
+        setAvisoOtimiza(
+          r.mensagem ??
+            `A solicitação ${r.solicitacao.numero} do Otimiza ainda está em andamento. O número ficou registrado nesta divergência e o aceite continua pendente.`
+        );
+      }
     } finally {
       setSalvandoNumero(false);
     }
@@ -654,12 +672,13 @@ export default function DoubleCheckInComparativoPcTab({
                     ? 'benigna'
                     : linha.naturezaDivergencias?.[c.id];
                 const hist = historicoDaDecisao(dec);
+                const solicitacaoCampo = solicitacaoMap.get(
+                  chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+                );
                 const numeroSolicitacaoOtimiza =
-                  dec?.numeroSolicitacaoOtimiza ??
-                  solicitacaoMap.get(
-                    chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
-                  ) ??
-                  null;
+                  dec?.numeroSolicitacaoOtimiza ?? solicitacaoCampo?.numero ?? null;
+                const otimizaEmAndamento =
+                  !decVigente && solicitacaoCampo?.status === 'in_progress';
                 return (
                   <div
                     key={c.id}
@@ -671,10 +690,19 @@ export default function DoubleCheckInComparativoPcTab({
                   >
                     {diverg && numeroSolicitacaoOtimiza != null ? (
                       <p
-                        className="mb-1 text-[11px] font-bold leading-tight text-sky-800 dark:text-sky-200"
-                        title={`Solicitação no Otimiza nº ${numeroSolicitacaoOtimiza}`}
+                        className={`mb-1 text-[11px] font-bold leading-tight ${
+                          otimizaEmAndamento
+                            ? 'text-amber-800 dark:text-amber-200'
+                            : 'text-sky-800 dark:text-sky-200'
+                        }`}
+                        title={
+                          otimizaEmAndamento
+                            ? `Solicitação ${numeroSolicitacaoOtimiza} do Otimiza ainda está em andamento`
+                            : `Solicitação no Otimiza nº ${numeroSolicitacaoOtimiza}`
+                        }
                       >
                         Otimiza nº {numeroSolicitacaoOtimiza}
+                        {otimizaEmAndamento ? ' · em andamento' : ''}
                       </p>
                     ) : null}
                     <div className="mb-1 flex items-center justify-between gap-1">
@@ -887,20 +915,32 @@ export default function DoubleCheckInComparativoPcTab({
                           salvandoNumero ||
                           salvando ||
                           !numeroOtimiza.trim() ||
-                          numeroOtimiza.trim() === String(numeroGravado ?? '')
+                          (numeroConfereComGravado && solicitacaoConcluida)
                         }
                         onClick={() => void gravarNumeroOtimiza()}
                       >
-                        {salvandoNumero ? 'Consultando…' : numeroGravado ? 'Atualizar' : 'Gravar'}
+                        {salvandoNumero
+                          ? 'Consultando…'
+                          : numeroConfereComGravado && !solicitacaoConcluida
+                            ? 'Consultar novamente'
+                            : numeroGravado
+                              ? 'Atualizar'
+                              : 'Gravar'}
                       </button>
                     </div>
+                    {avisoOtimiza ? (
+                      <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                        {avisoOtimiza}
+                      </p>
+                    ) : (
                     <p className="mt-1 text-[11px] text-slate-500">
                       {aceiteLiberado
                         ? aplicouNasDemais
                           ? `Solicitação ${numeroGravado} concluída no Otimiza e gravada nesta e nas outras divergências em aberto. Agora informe a justificativa.`
                           : `Solicitação ${numeroGravado} concluída no Otimiza. Agora informe a justificativa.`
-                        : 'Informe o número da solicitação no Otimiza e grave. O aceite só libera se ela estiver concluída.'}
+                        : 'Informe o número da solicitação no Otimiza e grave. Se ela ainda estiver em andamento, o número fica nesta divergência e o aceite continua pendente.'}
                     </p>
+                    )}
                     {outrasDivergenciasAbertas > 0 && (
                       <button
                         type="button"

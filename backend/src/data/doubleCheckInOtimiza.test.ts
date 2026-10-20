@@ -3,6 +3,7 @@ import {
   interpretarRespostaStatusOtimiza,
   mensagemBloqueioAceiteOtimiza,
   numeroSolicitacaoOtimizaValido,
+  solicitacaoOtimizaConcluida,
 } from './doubleCheckInOtimiza.js';
 
 describe('número da solicitação no Otimiza', () => {
@@ -47,6 +48,18 @@ describe('status da solicitação no Otimiza', () => {
       status: null,
       isCompleted: null,
     });
+  });
+
+  it('em andamento existe e pode ser registrada, mas não libera o aceite', () => {
+    const emAndamento = interpretarRespostaStatusOtimiza(
+      { found: true, number: 7565, status: 'in_progress', isCompleted: false, finishedAt: null },
+      7565
+    );
+    expect(emAndamento.found).toBe(true);
+    expect(solicitacaoOtimizaConcluida(emAndamento)).toBe(false);
+    expect(mensagemBloqueioAceiteOtimiza(emAndamento)).toBe(
+      'A solicitação 7565 do Otimiza ainda está em andamento.'
+    );
   });
 
   it('libera só solicitação encontrada e concluída', () => {

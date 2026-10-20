@@ -495,6 +495,7 @@ export type DoubleCheckInSolicitacaoOtimizaRow = {
   idItemPedidoCompra: number;
   campo: DoubleCheckInCampoComparativo;
   numero: number;
+  status: 'in_progress' | 'completed' | 'cancelled' | null;
 };
 
 export async function listarSolicitacoesOtimiza(
@@ -510,6 +511,10 @@ export async function listarSolicitacoesOtimiza(
     idItemPedidoCompra: r.idItemPedidoCompra,
     campo: r.campo as DoubleCheckInCampoComparativo,
     numero: r.numero,
+    status:
+      r.status === 'in_progress' || r.status === 'completed' || r.status === 'cancelled'
+        ? r.status
+        : null,
   }));
 }
 
@@ -519,6 +524,7 @@ export async function gravarSolicitacaoOtimiza(params: {
   idItemPedidoCompra: number;
   campo: DoubleCheckInCampoComparativo;
   numero: number;
+  status?: 'in_progress' | 'completed' | 'cancelled' | null;
   usuarioId: number;
   usuarioLogin: string;
 }): Promise<DoubleCheckInSolicitacaoOtimizaRow> {
@@ -529,6 +535,11 @@ export async function gravarSolicitacaoOtimiza(params: {
   if (numero == null) {
     throw new Error('Informe o número inteiro da solicitação no Otimiza.');
   }
+  const statusInformado = params.status !== undefined;
+  const status =
+    params.status === 'in_progress' || params.status === 'completed' || params.status === 'cancelled'
+      ? params.status
+      : null;
   const row = await prisma.doubleCheckInSolicitacaoOtimiza.upsert({
     where: {
       idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
@@ -544,11 +555,13 @@ export async function gravarSolicitacaoOtimiza(params: {
       idItemPedidoCompra: params.idItemPedidoCompra,
       campo: params.campo,
       numero,
+      status,
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },
     update: {
       numero,
+      ...(statusInformado ? { status } : {}),
       usuarioId: params.usuarioId,
       usuarioLogin: params.usuarioLogin,
     },
@@ -559,6 +572,10 @@ export async function gravarSolicitacaoOtimiza(params: {
     idItemPedidoCompra: row.idItemPedidoCompra,
     campo: row.campo as DoubleCheckInCampoComparativo,
     numero: row.numero,
+    status:
+      row.status === 'in_progress' || row.status === 'completed' || row.status === 'cancelled'
+        ? row.status
+        : null,
   };
 }
 

@@ -55,6 +55,13 @@ export function interpretarRespostaStatusOtimiza(
   };
 }
 
+export type StatusGravadoSolicitacaoOtimiza = 'in_progress' | 'completed' | 'cancelled';
+
+/** Solicitação encontrada e concluída (cancelada também vem concluída no Otimiza). */
+export function solicitacaoOtimizaConcluida(status: Pick<StatusSolicitacaoOtimiza, 'found' | 'isCompleted'>): boolean {
+  return status.found && status.isCompleted === true;
+}
+
 /** null libera o aceite. Texto bloqueia, com a mensagem que o conferente vê. */
 export function mensagemBloqueioAceiteOtimiza(status: StatusSolicitacaoOtimiza): string | null {
   if (!status.found) {

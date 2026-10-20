@@ -72,8 +72,11 @@ import {
 } from '../services/doubleCheckInConferenciaPeriodo.js';
 import { conferenciaDoubleCheckLiberadaParaMesa } from '../services/mesaDoubleCheckGate.js';
 import {
+  consultarStatusSolicitacaoOtimiza,
   exigirSolicitacaoOtimizaConcluida,
+  mensagemBloqueioAceiteOtimiza,
   numeroSolicitacaoOtimizaValido,
+  solicitacaoOtimizaConcluida,
 } from '../data/doubleCheckInOtimiza.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -397,7 +400,8 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
 /**
  * PUT /api/compras/double-checkin/solicitacao-otimiza
  * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo, numero }
- * Consulta o Otimiza e só grava se a solicitação estiver concluída.
+ * Consulta o Otimiza. Grava o número se a solicitação existir.
+ * O aceite só libera quando ela estiver concluída; em andamento fica referenciada.
  */
 export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Response): Promise<void> {
   const login = req.user?.login;
@@ -473,12 +477,18 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
       }
     }
 
-    await exigirSolicitacaoOtimizaConcluida(numero);
+    const statusOtimiza = await consultarStatusSolicitacaoOtimiza(numero);
+    if (!statusOtimiza.found) {
+      res.status(400).json({ error: mensagemBloqueioAceiteOtimiza(statusOtimiza) });
+      return;
+    }
+    const concluida = solicitacaoOtimizaConcluida(statusOtimiza);
 
     const base = {
       idDocumentoEstoque: idDocumento,
       campo,
       numero,
+      status: statusOtimiza.status,
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
     };
@@ -536,7 +546,13 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
         }
       }
     }
-    res.json({ ok: true, solicitacao, replicadas });
+    res.json({
+      ok: true,
+      solicitacao,
+      replicadas,
+      concluida,
+      mensagem: concluida ? null : mensagemBloqueioAceiteOtimiza(statusOtimiza),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });

@@ -1780,6 +1780,7 @@ export type DoubleCheckInSolicitacaoOtimiza = {
   idItemPedidoCompra: number;
   campo: DoubleCheckInCampoComparativo;
   numero: number;
+  status?: 'in_progress' | 'completed' | 'cancelled' | null;
 };
 
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
@@ -1855,6 +1856,8 @@ export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
   ok: boolean;
   solicitacao?: DoubleCheckInSolicitacaoOtimiza;
   replicadas?: DoubleCheckInSolicitacaoOtimiza[];
+  concluida?: boolean;
+  mensagem?: string | null;
   erro?: string;
 }> {
   const res = await apiFetch('/api/compras/double-checkin/solicitacao-otimiza', {
@@ -1865,6 +1868,8 @@ export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
     ok?: boolean;
     solicitacao?: DoubleCheckInSolicitacaoOtimiza;
     replicadas?: DoubleCheckInSolicitacaoOtimiza[];
+    concluida?: boolean;
+    mensagem?: string | null;
     error?: string;
   };
   if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
@@ -1872,6 +1877,8 @@ export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
     ok: true,
     solicitacao: body.solicitacao,
     replicadas: Array.isArray(body.replicadas) ? body.replicadas : [],
+    concluida: body.concluida === true,
+    mensagem: body.mensagem ?? null,
   };
 }
 
