@@ -89,7 +89,7 @@ export type GestaoEntradasPainel = {
     recusas: number;
     documentos: number;
   }>;
-  porJustificativa: Array<{ codigo: string; label: string; qtde: number }>;
+  porJustificativa: Array<{ codigo: string; label: string; qtde: number; documentos: number }>;
   porTipo: Array<{
     idTipoMovimentacao: number;
     nomeTipo: string;
@@ -147,7 +147,7 @@ export function montarPainelGestaoEntradas(params: {
   for (const c of CAMPOS_DIVERGENCIA_ENTRADA) {
     campoMap.set(c.campo, { aceitas: 0, recusas: 0, documentos: new Set() });
   }
-  const justMap = new Map<string, { label: string; qtde: number }>();
+  const justMap = new Map<string, { label: string; qtde: number; documentos: Set<number> }>();
 
   let qtdeLimpas = 0;
   let qtdeAceitas = 0;
@@ -214,8 +214,10 @@ export function montarPainelGestaoEntradas(params: {
         const just = justMap.get(codigo) ?? {
           label: dec.justificativaLabel || codigo,
           qtde: 0,
+          documentos: new Set<number>(),
         };
         just.qtde += 1;
+        just.documentos.add(doc.idDocumento);
         if (dec.justificativaLabel) just.label = dec.justificativaLabel;
         justMap.set(codigo, just);
       } else {
@@ -242,7 +244,12 @@ export function montarPainelGestaoEntradas(params: {
     .sort((a, b) => b.qtde - a.qtde || a.label.localeCompare(b.label, 'pt-BR'));
 
   const porJustificativa = [...justMap.entries()]
-    .map(([codigo, v]) => ({ codigo, label: v.label, qtde: v.qtde }))
+    .map(([codigo, v]) => ({
+      codigo,
+      label: v.label,
+      qtde: v.qtde,
+      documentos: v.documentos.size,
+    }))
     .sort((a, b) => b.qtde - a.qtde || a.label.localeCompare(b.label, 'pt-BR'));
 
   const porTipo = [...tipoMap.entries()]

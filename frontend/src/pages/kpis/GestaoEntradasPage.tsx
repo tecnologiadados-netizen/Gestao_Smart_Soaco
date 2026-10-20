@@ -464,7 +464,7 @@ export default function GestaoEntradasPage() {
     key: j.codigo,
     label: j.label,
     valor: j.qtde,
-    detalhe: `${j.qtde}`,
+    detalhe: `${j.qtde} ${j.qtde === 1 ? 'aceite' : 'aceites'} em ${j.documentos ?? 0} ${(j.documentos ?? 0) === 1 ? 'documento' : 'documentos'}`,
   }));
   const valorTipo = (tipo: GestaoEntradasPainel['porTipo'][number]) =>
     contextoMovimentacao === 'volume' ? tipo.notas : tipo.divergencias;
