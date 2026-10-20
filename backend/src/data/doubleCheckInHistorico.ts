@@ -71,6 +71,15 @@ export type ItemHistoricoVinculo = {
   qtdePC: number | null;
   valorUnitarioNF: number;
   valorUnitarioPC: number | null;
+  /** Id do vínculo NF × PC no Nomus. É sequencial: revela vínculo refeito depois. */
+  idVinculo?: number | null;
+};
+
+export type VinculoRefeitoHistorico = {
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  /** Criação de um documento posterior à primeira leitura cujo vínculo tem id menor. */
+  registradoApos: string;
 };
 
 export type SnapshotHistorico = {
@@ -153,7 +162,17 @@ export type EntradaHistoricoDoubleCheck = {
   alerta: AlertaHistorico | null;
   /** Momento da leitura atual do Nomus. */
   lidoEm?: string;
+  /** Vínculo igual ao da primeira leitura, mas registrado depois dela no Nomus. */
+  vinculosRefeitos?: VinculoRefeitoHistorico[];
 };
+
+function aindaDiverge(linha: LinhaAtualHistorico, campo: string): boolean {
+  if (campo === 'valor_unitario') return linha.divergValorUnitario;
+  if (campo === 'qtde') return linha.divergQtde;
+  if (campo === 'ipi') return linha.divergIpi;
+  if (campo === 'condicao_pagamento') return linha.divergCondicaoPagamento;
+  return false;
+}
 
 const LABEL_CAMPO: Record<string, string> = {
   valor_unitario: 'Valor unitário',
@@ -310,19 +329,40 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
     `${pedidoLabel(snap.nomePedidoCompra, snap.idPedidoCompra)} (comprador: ${snap.nomeComprador?.trim() || 'não informado'})`;
   const criadoAntesDoRegistro = Boolean(doc.dataCriacao && doc.dataCriacao.slice(0, 10) < '2026-10-09');
 
+  const refeitos = new Map<string, string>();
+  for (const r of entrada.vinculosRefeitos ?? []) {
+    const chave = chaveVinculo(r.idItemDocumentoEstoque, r.idItemPedidoCompra);
+    if (chavesPrimeiroVinculo.has(chave) && vinculosAtuais.has(chave) && !desfeitos.has(chave)) {
+      refeitos.set(chave, r.registradoApos);
+    }
+  }
+  const snapDoVinculo = (chave: string): SnapshotHistorico =>
+    entrada.snapshots.find((snap) => chaveVinculo(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra) === chave)!;
+  const houveDesvinculo = desfeitos.size > 0 || refeitos.size > 0;
+
   let vinculo: EventoHistoricoDoubleCheck;
-  if (temPrimeiraLeitura && desfeitos.size > 0) {
-    const linhas = [...desfeitos.values()].map((snaps) => {
-      const base = snaps[0]!;
-      return `• O vínculo de ${nomeProduto(base.idItemDocumentoEstoque)} com o pedido ${pedidoComComprador(base)} foi desfeito após a primeira leitura.`;
-    });
+  if (temPrimeiraLeitura && houveDesvinculo) {
+    const linhas = [
+      ...[...desfeitos.values()].map((snaps) => {
+        const base = snaps[0]!;
+        return `• O vínculo de ${nomeProduto(base.idItemDocumentoEstoque)} com o pedido ${pedidoComComprador(base)} foi desfeito após a primeira leitura.`;
+      }),
+      ...[...refeitos.keys()].map((chave) => {
+        const base = snapDoVinculo(chave);
+        return `• O vínculo de ${nomeProduto(base.idItemDocumentoEstoque)} com o pedido ${pedidoComComprador(base)} foi desfeito após a primeira leitura e refeito com o mesmo item do pedido.`;
+      }),
+    ];
+    const comoIdentificado =
+      refeitos.size > 0
+        ? ' O desfazimento do vínculo foi identificado pela sequência de registros do Nomus: o vínculo atual é posterior à primeira leitura.'
+        : '';
     vinculo = evento({
       id: 'desvinculo',
       em: null,
       precisao: 'sem_data',
       tom: 'atencao',
       titulo: 'Desvinculação do pedido',
-      detalhe: `${linhas.join('\n')}\nO Nomus não registra o horário da desvinculação.`,
+      detalhe: `${linhas.join('\n')}\nO Nomus não registra o horário da desvinculação.${comoIdentificado}`,
       ator: null,
       fonte: 'Vínculo atual do Nomus comparado com a primeira leitura',
       abreComparativo: true,
@@ -368,8 +408,41 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
   }
 
   let novoVinculo: EventoHistoricoDoubleCheck | null = null;
-  if (temPrimeiraLeitura && desfeitos.size > 0) {
-    const linhas = [...itensDesvinculados].map((idItem) => {
+  if (temPrimeiraLeitura && houveDesvinculo) {
+    const linhasRefeitos = [...refeitos.entries()].map(([chave, registradoApos]) => {
+      const base = snapDoVinculo(chave);
+      const linhaAtual = linhaPorVinculo.get(chave);
+      const regularizados = linhaAtual
+        ? [
+            ...new Set(
+              entrada.snapshots
+                .filter(
+                  (snap) =>
+                    chaveVinculo(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra) === chave &&
+                    snap.natureza !== 'benigna' &&
+                    !aindaDiverge(linhaAtual, snap.campo)
+                )
+                .map((snap) => labelCampo(snap.campo))
+            ),
+          ]
+        : [];
+      const efeito =
+        regularizados.length > 0
+          ? ` Após o novo vínculo, a nota deixou de divergir do pedido em: ${regularizados.join(', ')}.`
+          : '';
+      const decisoesAnteriores = entrada.decisoes
+        .filter(
+          (d) =>
+            chaveVinculo(d.idItemDocumentoEstoque, d.idItemPedidoCompra) === chave && d.atualizadoEm < registradoApos
+        )
+        .sort((a, b) => a.atualizadoEm.localeCompare(b.atualizadoEm));
+      const sobreOriginal =
+        decisoesAnteriores.length > 0
+          ? ` A decisão de ${decisoesAnteriores.map((d) => labelCampo(d.campo)).filter((v, i, a) => a.indexOf(v) === i).join(', ')} (${decisoesAnteriores[0]!.decisao === 'recusa' ? 'recusa' : 'aceite'} em ${fmtDataHora(decisoesAnteriores[0]!.atualizadoEm)}) foi registrada sobre o vínculo original.`
+          : '';
+      return `• ${nomeProduto(base.idItemDocumentoEstoque)} foi vinculado novamente ao pedido ${pedidoComComprador(base)}, no mesmo item do pedido. O vínculo atual foi registrado no Nomus após ${fmtDataHora(registradoApos)}.${sobreOriginal}${efeito}`;
+    });
+    const linhasDesfeitos = [...itensDesvinculados].map((idItem) => {
       const novos = posteriores.filter((item) => item.idItemDocumentoEstoque === idItem);
       if (novos.length === 0) return `• ${nomeProduto(idItem)} não foi vinculado novamente a pedido de compra.`;
       const pedidos = [
@@ -382,16 +455,17 @@ export function montarEventosHistorico(entrada: EntradaHistoricoDoubleCheck): Ev
       ].join(', ');
       return `• ${nomeProduto(idItem)} foi vinculado novamente ao pedido ${pedidos}.`;
     });
+    const houveNovo = posteriores.length > 0 || refeitos.size > 0;
     novoVinculo = evento({
-      id: posteriores.length > 0 ? 'novo-vinculo' : 'sem-novo-vinculo',
+      id: houveNovo ? 'novo-vinculo' : 'sem-novo-vinculo',
       em: null,
       precisao: 'sem_data',
-      tom: posteriores.length > 0 ? 'info' : 'neutro',
-      titulo: posteriores.length > 0 ? 'Novo vínculo com pedido' : 'Sem novo vínculo',
-      detalhe: `${linhas.join('\n')}${posteriores.length > 0 ? '\nO Nomus não registra o horário do novo vínculo.' : ''}`,
+      tom: houveNovo ? 'info' : 'neutro',
+      titulo: houveNovo ? 'Novo vínculo com pedido' : 'Sem novo vínculo',
+      detalhe: `${[...linhasDesfeitos, ...linhasRefeitos].join('\n')}${posteriores.length > 0 ? '\nO Nomus não registra o horário do novo vínculo.' : ''}`,
       ator: null,
       fonte: 'Vínculo atual do Nomus comparado com a primeira leitura',
-      abreComparativo: posteriores.length > 0 && entrada.linhasAtuais.length > 0,
+      abreComparativo: houveNovo && entrada.linhasAtuais.length > 0,
       origemComparativo: 'atual',
     });
   }
@@ -829,6 +903,7 @@ SELECT
   ide.id AS idItemDocumentoEstoque,
   p.nome AS codigoProduto,
   p.descricao AS descricaoProduto,
+  ideipc.id AS idVinculo,
   ideipc.idItemPedidoCompra AS idItemPedidoCompra,
   pc.id AS idPedidoCompra,
   pc.nome AS nomePedidoCompra,
@@ -845,6 +920,60 @@ WHERE ide.idDocumentoEstoque = ?
   AND ide.discriminador = 'ItemDocumentoEntrada'
 ORDER BY ide.id ASC, ideipc.idItemPedidoCompra ASC
 `.trim();
+
+/**
+ * O id do vínculo NF × PC é sequencial e só existe depois do documento.
+ * Se um documento criado após a primeira leitura tem vínculo com id menor,
+ * o vínculo atual foi registrado depois dele: o original foi desfeito e refeito.
+ */
+const SQL_VINCULO_POSTERIOR = `
+SELECT MAX(de.dataCriacao) AS criadoEm
+FROM documentoestoque de
+INNER JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
+INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+WHERE de.dataCriacao > ?
+  AND de.dataCriacao < ?
+  AND de.id <> ?
+  AND ideipc.id < ?
+`.trim();
+
+const JANELA_VINCULO_REFEITO_MS = 45 * 24 * 60 * 60 * 1000;
+
+async function detectarVinculosRefeitos(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  idDocumento: number,
+  itens: Array<{ idItemDocumentoEstoque: number; idItemPedidoCompra: number | null; idVinculo?: number | null }>,
+  snapshots: Array<{ idItemDocumentoEstoque: number; idItemPedidoCompra: number; apontadoEm: Date }>
+): Promise<VinculoRefeitoHistorico[]> {
+  const primeiraLeitura = new Map<string, Date>();
+  for (const snap of snapshots) {
+    const chave = chaveVinculo(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra);
+    const atual = primeiraLeitura.get(chave);
+    if (!atual || snap.apontadoEm < atual) primeiraLeitura.set(chave, snap.apontadoEm);
+  }
+  const refeitos: VinculoRefeitoHistorico[] = [];
+  for (const item of itens) {
+    if (!item.idVinculo || !item.idItemPedidoCompra) continue;
+    const lida = primeiraLeitura.get(chaveVinculo(item.idItemDocumentoEstoque, item.idItemPedidoCompra));
+    if (!lida) continue;
+    const ate = new Date(lida.getTime() + JANELA_VINCULO_REFEITO_MS);
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, SQL_VINCULO_POSTERIOR, [
+      lida,
+      ate,
+      idDocumento,
+      item.idVinculo,
+    ]);
+    const registradoApos = isoDeData(Array.isArray(rows) ? rows[0]?.criadoEm : null);
+    if (registradoApos) {
+      refeitos.push({
+        idItemDocumentoEstoque: item.idItemDocumentoEstoque,
+        idItemPedidoCompra: item.idItemPedidoCompra,
+        registradoApos,
+      });
+    }
+  }
+  return refeitos;
+}
 
 function lerRelatoConferencia(payloadJson: string | null): RelatoConferencia | null {
   if (!payloadJson) return null;
@@ -888,6 +1017,7 @@ export async function carregarHistoricoDoubleCheck(
       qtdePC: row.qtdePC == null ? null : toNum(row.qtdePC),
       valorUnitarioNF: toNum(row.valorUnitarioNF),
       valorUnitarioPC: row.valorUnitarioPC == null ? null : toNum(row.valorUnitarioPC),
+      idVinculo: row.idVinculo == null ? null : toInt(row.idVinculo) || null,
     }));
 
     const [
@@ -956,6 +1086,7 @@ export async function carregarHistoricoDoubleCheck(
     }));
     const linhasAtuais: LinhaAtualHistorico[] = comparativo.linhas ?? [];
     const relato = lerRelatoConferencia(paginaConferencia?.payloadJson ?? null);
+    const vinculosRefeitos = await detectarVinculosRefeitos(pool, idDocumento, itensBrutos, snapshotsRaw);
     const decisoes: DecisaoHistorico[] = decisoesRaw.map((decisao) => ({
       idItemDocumentoEstoque: decisao.idItemDocumentoEstoque,
       idItemPedidoCompra: decisao.idItemPedidoCompra,
@@ -1030,6 +1161,7 @@ export async function carregarHistoricoDoubleCheck(
           recebimento,
           alerta,
           lidoEm: new Date().toISOString(),
+          vinculosRefeitos,
         }),
       },
     };

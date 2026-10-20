@@ -132,6 +132,43 @@ describe('montarEventosHistorico', () => {
     expect(eventos[4]!.detalhe).toContain('conforme o pedido de compra em todos os campos');
   });
 
+  it('identifica o vínculo desfeito e refeito com o mesmo item do pedido', () => {
+    const entrada = base();
+    ligar(entrada, 21, 30, 'PC 30');
+    entrada.linhasAtuais = [linha()];
+    entrada.vinculosRefeitos = [
+      { idItemDocumentoEstoque: 11, idItemPedidoCompra: 21, registradoApos: '2026-10-14T19:09:00.000Z' },
+    ];
+    entrada.decisoes = [
+      {
+        idItemDocumentoEstoque: 11,
+        idItemPedidoCompra: 21,
+        campo: 'qtde',
+        decisao: 'aceita',
+        justificativaLabel: 'Acordo comercial',
+        usuarioLogin: 'ana',
+        atualizadoEm: '2026-10-14T16:00:00.000Z',
+        vigente: true,
+        observacoes: [],
+      },
+    ];
+    const eventos = montarEventosHistorico(entrada);
+    expect(eventos.map((e) => e.id)).toEqual([
+      'criado',
+      'divergencias-iniciais',
+      'desvinculo',
+      'novo-vinculo',
+      'tratativas',
+      'situacao-atual',
+    ]);
+    expect(eventos[2]!.detalhe).toContain('foi desfeito após a primeira leitura e refeito com o mesmo item do pedido');
+    expect(eventos[2]!.detalhe).toContain('sequência de registros do Nomus');
+    expect(eventos[3]!.detalhe).toContain('foi vinculado novamente ao pedido PC 30 (comprador: Marcilia), no mesmo item do pedido');
+    expect(eventos[3]!.detalhe).toContain('A decisão de Quantidade (aceite em');
+    expect(eventos[3]!.detalhe).toContain('foi registrada sobre o vínculo original');
+    expect(eventos[3]!.detalhe).toContain('a nota deixou de divergir do pedido em: Quantidade');
+  });
+
   it('não chama de novo vínculo o item que já estava ligado sem divergência', () => {
     const entrada = base();
     ligar(entrada, 21, 30, 'PC 30');
