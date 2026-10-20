@@ -6,12 +6,7 @@ import { buttonVariants } from "@qualidade/components/ui/button";
 import { Badge } from "@qualidade/components/ui/badge";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
 import { useDocumentsStore } from "@qualidade/lib/store/documents-store";
-import { resolveTaskAssignee } from "@qualidade/lib/documents/task-assignee";
-import {
-  documentoExigeRevalidacao,
-  revalidacaoQuadroSituacaoLabels,
-  situacaoRevalidacaoQuadro,
-} from "@qualidade/lib/documents/validity";
+import { situacaoRevalidacaoQuadro } from "@qualidade/lib/documents/validity";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { formatDocumentCodigoExibicao } from "@qualidade/lib/documents/document-codigo";
 import { taskTypeLabels } from "@qualidade/lib/utils/status-labels";
@@ -34,10 +29,30 @@ const ETAPAS_FLUXO: Task["tipo"][] = [
   "revisar_documento",
 ];
 
+type SituacaoRevalidacaoCard = "disponivel" | "vencida" | "aberta";
+
 interface RevalidacaoItem {
   doc: Document;
-  situacao: "disponivel" | "vencida";
-  task?: Task;
+  situacao: SituacaoRevalidacaoCard;
+  task: Task;
+  responsavelNome: string;
+}
+
+const situacaoCardLabels: Record<SituacaoRevalidacaoCard, string> = {
+  disponivel: "Disponível",
+  vencida: "Vencida",
+  aberta: "Pendente",
+};
+
+function nomeDoResponsavel(
+  users: { id: string; nome: string }[],
+  login: string
+): string {
+  const norm = login.trim().toLowerCase();
+  return (
+    users.find((u) => u.id.trim().toLowerCase() === norm)?.nome?.trim() ||
+    login
+  );
 }
 
 function KanbanColumn({
@@ -47,6 +62,7 @@ function KanbanColumn({
   tasks,
   emptyMessage,
   accent,
+  nomeResponsavel,
 }: {
   titulo: string;
   descricao: string;
@@ -54,6 +70,7 @@ function KanbanColumn({
   tasks: Task[];
   emptyMessage: string;
   accent: "primary" | "warning";
+  nomeResponsavel?: (login: string) => string;
 }) {
   return (
     <section
@@ -104,6 +121,9 @@ function KanbanColumn({
                     {task.titulo}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
+                    {nomeResponsavel
+                      ? `${nomeResponsavel(task.responsavelId)} · `
+                      : ""}
                     {taskTypeLabels[task.tipo]}
                     {task.prazo ? (
                       <>
@@ -161,8 +181,12 @@ function KanbanColumn({
 
 function RevalidacaoKanbanColumn({
   items,
+  descricao,
+  mostrarResponsavel,
 }: {
   items: RevalidacaoItem[];
+  descricao: string;
+  mostrarResponsavel: boolean;
 }) {
   return (
     <section className="sgq-kanban-column sgq-kanban-column--primary">
@@ -176,9 +200,7 @@ function RevalidacaoKanbanColumn({
               <h2 className="text-sm font-semibold text-foreground">
                 Revalidações
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Disponíveis hoje e vencidas — alertas antecipados ficam no sino
-              </p>
+              <p className="text-xs text-muted-foreground">{descricao}</p>
             </div>
           </div>
           <Badge variant={items.length > 0 ? "warning" : "secondary"}>
@@ -192,13 +214,13 @@ function RevalidacaoKanbanColumn({
           <div className="sgq-kanban-empty">
             <CheckCircle2 className="mb-3 size-8 text-primary/60" />
             <p className="text-sm text-muted-foreground">
-              Nenhuma revalidação disponível ou vencida no momento.
+              Nenhuma revalidação pendente.
             </p>
           </div>
         ) : (
-          items.map(({ doc, situacao }) => (
+          items.map(({ doc, situacao, task, responsavelNome }) => (
             <article
-              key={doc.id}
+              key={task.id}
               className="rounded-lg border border-border bg-muted/30 p-4 shadow-sm transition-shadow hover:border-primary/30 hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-3">
@@ -207,22 +229,33 @@ function RevalidacaoKanbanColumn({
                     {formatDocumentCodigoExibicao(doc.codigo, doc.versaoAtual)} — {doc.titulo}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
+                    {mostrarResponsavel ? `${responsavelNome} · ` : ""}
                     Vencimento:{" "}
                     {doc.validade?.dataValidade
                       ? formatarData(doc.validade.dataValidade)
                       : "—"}
+                    {task.prazo ? ` · Prazo: ${formatarData(task.prazo)}` : ""}
                   </p>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                     {situacao === "disponivel"
                       ? "Validade vence hoje — revalidação liberada."
-                      : "Validade vencida — revalidação necessária."}
+                      : situacao === "vencida"
+                        ? "Validade vencida — revalidação necessária."
+                        : task.descricao?.trim() ||
+                          "Revalidação ainda pendente no sistema."}
                   </p>
                 </div>
                 <Badge
-                  variant={situacao === "vencida" ? "destructive" : "warning"}
+                  variant={
+                    situacao === "vencida"
+                      ? "destructive"
+                      : situacao === "disponivel"
+                        ? "warning"
+                        : "outline"
+                  }
                   className="shrink-0 text-[10px]"
                 >
-                  {revalidacaoQuadroSituacaoLabels[situacao]}
+                  {situacaoCardLabels[situacao]}
                 </Badge>
               </div>
               <div className="mt-4">
@@ -247,63 +280,49 @@ function RevalidacaoKanbanColumn({
 
 export function DocumentosPendenciasBoards({ showAll = false }: Props) {
   const currentUserId = useConfigStore((s) => s.currentUserId);
+  const users = useConfigStore((s) => s.users);
   const documents = useDocumentsStore((s) => s.documents);
-  const versions = useDocumentsStore((s) => s.versions);
   const getPendingTasks = useDocumentsStore((s) => s.getPendingTasks);
 
   const tasks = getPendingTasks(currentUserId, showAll).filter(
     (t) => t.referenciaTipo === "documento"
   );
 
+  const nomeResponsavel = (login: string) => nomeDoResponsavel(users, login);
+
   const revalidacaoItems = useMemo(() => {
-    const pendingRevalidacaoTasks = tasks.filter(
-      (t) => t.tipo === "revalidar_documento"
-    );
+    const docsById = new Map(documents.map((doc) => [doc.id, doc]));
+    const ordem: Record<SituacaoRevalidacaoCard, number> = {
+      vencida: 0,
+      disponivel: 1,
+      aberta: 2,
+    };
 
-    return documents
-      .filter((doc) => documentoExigeRevalidacao(doc))
-      .filter((doc) => {
-        if (showAll) return true;
-
-        const version = versions.find(
-          (v) => v.documentId === doc.id && v.versao === doc.versaoAtual
-        );
-        const responsavelId = resolveTaskAssignee(version?.elaboradorId);
-        const task = pendingRevalidacaoTasks.find(
-          (t) => t.referenciaId === doc.id
-        );
-
-        const mesmoUsuario = (id?: string) =>
-          String(id ?? "")
-            .trim()
-            .toLowerCase() ===
-          String(currentUserId ?? "")
-            .trim()
-            .toLowerCase();
-        return (
-          mesmoUsuario(responsavelId) || mesmoUsuario(task?.responsavelId)
-        );
-      })
-      .map((doc) => {
-        const situacao = situacaoRevalidacaoQuadro(doc.validade?.dataValidade);
-        const task = pendingRevalidacaoTasks.find(
-          (t) => t.referenciaId === doc.id
-        );
-        return {
-          doc,
-          situacao: situacao ?? ("vencida" as const),
-          task,
-        };
+    return tasks
+      .filter((task) => task.tipo === "revalidar_documento")
+      .flatMap((task) => {
+        const doc = docsById.get(task.referenciaId);
+        if (!doc) return [];
+        const situacao =
+          situacaoRevalidacaoQuadro(doc.validade?.dataValidade) ?? "aberta";
+        return [
+          {
+            doc,
+            task,
+            situacao,
+            responsavelNome: nomeDoResponsavel(users, task.responsavelId),
+          },
+        ];
       })
       .sort((a, b) => {
         if (a.situacao !== b.situacao) {
-          return a.situacao === "disponivel" ? -1 : 1;
+          return ordem[a.situacao] - ordem[b.situacao];
         }
-        const dateA = a.doc.validade?.dataValidade ?? "";
-        const dateB = b.doc.validade?.dataValidade ?? "";
-        return dateA.localeCompare(dateB);
+        const resp = a.responsavelNome.localeCompare(b.responsavelNome, "pt-BR");
+        if (resp !== 0) return resp;
+        return (a.task.prazo ?? "").localeCompare(b.task.prazo ?? "");
       });
-  }, [currentUserId, documents, showAll, tasks, versions]);
+  }, [documents, tasks, users]);
 
   const etapaTasks = tasks.filter((t) => ETAPAS_FLUXO.includes(t.tipo));
 
@@ -312,14 +331,27 @@ export function DocumentosPendenciasBoards({ showAll = false }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="grid min-h-0 flex-1 items-stretch gap-6 lg:grid-cols-2">
-        <RevalidacaoKanbanColumn items={revalidacaoItems} />
+        <RevalidacaoKanbanColumn
+          items={revalidacaoItems}
+          mostrarResponsavel={showAll}
+          descricao={
+            showAll
+              ? "Todas as revalidações pendentes no sistema"
+              : "Revalidações atribuídas a você"
+          }
+        />
         <KanbanColumn
           titulo="Etapas do fluxo"
-          descricao="Elaboração, consenso, aprovação e revisão"
+          descricao={
+            showAll
+              ? "Elaboração, consenso, aprovação e revisão de todos"
+              : "Elaboração, consenso, aprovação e revisão"
+          }
           icon={GitBranch}
           tasks={etapaTasks}
           emptyMessage="Nenhuma etapa do fluxo pendente."
           accent="warning"
+          nomeResponsavel={showAll ? nomeResponsavel : undefined}
         />
       </div>
 

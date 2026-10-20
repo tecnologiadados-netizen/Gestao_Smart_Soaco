@@ -673,7 +673,7 @@ export async function getQualidadeBootstrap() {
   // Anexos antigos em base64 no JSON → disco (não apaga; só reorganiza).
   await migrateEmbeddedAnexosToDisk();
   await limparOrfaosRelacaoSgq();
-  await fecharRevalidacoesObsoletas();
+  await reabrirRevalidacoesAindaPendentes();
 
   const [
     setores,
@@ -820,76 +820,29 @@ const SGQ_TAREFAS_POR_STATUS: Record<string, string> = {
 
 const SGQ_TAREFAS_ETAPA = Object.values(SGQ_TAREFAS_POR_STATUS);
 
-function parseValidadeSgq(
-  raw: string | null
-): { ativa?: boolean; dataValidade?: string } | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { ativa?: boolean; dataValidade?: string };
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Vigente, validade ativa e vencimento hoje ou no passado (dia local do servidor). */
-function documentoExigeRevalidacaoSgq(status: string, validadeJson: string | null): boolean {
-  if (status !== 'vigente') return false;
-  const validade = parseValidadeSgq(validadeJson);
-  if (!validade?.ativa || !validade.dataValidade?.trim()) return false;
-  const alvo = new Date(validade.dataValidade);
-  if (Number.isNaN(alvo.getTime())) return false;
-  const agora = new Date();
-  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  const inicioAlvo = new Date(alvo.getFullYear(), alvo.getMonth(), alvo.getDate());
-  return inicioAlvo.getTime() <= inicioHoje.getTime();
-}
-
 /**
- * Fecha revalidações que o quadro não exibe: documento já prorrogado, inativo
- * ou duplicata. Um cliente com snapshot antigo reabria a tarefa no upsert.
+ * O fechamento automático marcou concluída a tarefa cujo metadado ainda diz
+ * pendente. A rotina da qualidade precisa ver esses cards de novo.
  */
-async function fecharRevalidacoesObsoletas(): Promise<Set<string>> {
-  const fechadas = new Set<string>();
-  const pendentes = await prisma.sgqTarefa.findMany({
-    where: {
-      concluida: false,
-      tipo: 'revalidar_documento',
-      referenciaTipo: 'documento',
-    },
-    select: { id: true, uid: true, referenciaId: true, createdAt: true },
-    orderBy: { createdAt: 'desc' },
+async function reabrirRevalidacoesAindaPendentes(): Promise<void> {
+  const rows = await prisma.sgqTarefa.findMany({
+    where: { tipo: 'revalidar_documento', concluida: true },
+    select: { id: true, metadadosJson: true },
   });
-  if (pendentes.length === 0) return fechadas;
-
-  const docs = await prisma.sgqDocumento.findMany({
-    where: { uid: { in: [...new Set(pendentes.map((t) => t.referenciaId))] } },
-    select: { uid: true, status: true, validadeJson: true },
-  });
-  const docByUid = new Map(docs.map((d) => [d.uid, d]));
-  const idsFechar: number[] = [];
-  const manterPorDoc = new Set<string>();
-
-  for (const task of pendentes) {
-    const doc = docByUid.get(task.referenciaId);
-    const exige = doc
-      ? documentoExigeRevalidacaoSgq(doc.status, doc.validadeJson)
-      : false;
-    if (!exige || manterPorDoc.has(task.referenciaId)) {
-      idsFechar.push(task.id);
-      fechadas.add(task.uid);
-      continue;
+  const ids: number[] = [];
+  for (const row of rows) {
+    try {
+      const meta = JSON.parse(row.metadadosJson || '{}') as { status?: string };
+      if (meta.status === 'pendente') ids.push(row.id);
+    } catch {
+      /* metadado inválido não reabre */
     }
-    manterPorDoc.add(task.referenciaId);
   }
-
-  if (idsFechar.length > 0) {
-    await prisma.sgqTarefa.updateMany({
-      where: { id: { in: idsFechar } },
-      data: { concluida: true },
-    });
-  }
-  return fechadas;
+  if (ids.length === 0) return;
+  await prisma.sgqTarefa.updateMany({
+    where: { id: { in: ids } },
+    data: { concluida: false },
+  });
 }
 
 export async function documentosQuePassamAObsoleto(
@@ -1736,10 +1689,7 @@ export async function syncQualidadeDocuments(payload: {
     });
   }
 
-  const revalidacoesFechadas = await fecharRevalidacoesObsoletas();
-
   const tarefasParaNotificar = novasTarefas.filter((tarefa) => {
-    if (revalidacoesFechadas.has(tarefa.uid)) return false;
     if (!SGQ_TAREFAS_ETAPA.includes(tarefa.tipo)) return true;
     const statusDoc = statusFinalByUid.get(tarefa.referenciaId);
     if (!statusDoc) return true;

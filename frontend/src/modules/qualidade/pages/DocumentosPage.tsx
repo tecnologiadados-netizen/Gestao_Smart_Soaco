@@ -65,9 +65,13 @@ export function DocumentosPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Minhas pendências</h1>
+          <h1 className="text-xl font-semibold">
+            {showAll ? "Pendências de todos" : "Minhas pendências"}
+          </h1>
           <p className="text-xs text-muted-foreground">
-            Documentos aguardando sua ação
+            {showAll
+              ? "Tudo que está pendente no sistema"
+              : "Documentos aguardando sua ação"}
             {pendenciasCount > 0 ? ` · ${pendenciasCount} tarefa(s)` : ""}
           </p>
         </div>

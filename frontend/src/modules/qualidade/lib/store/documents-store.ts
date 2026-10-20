@@ -287,9 +287,7 @@ function reconcileWorkflowTasks(
     if (!doc) return { ...t, status: "concluida" as const };
 
     if (t.tipo === "revalidar_documento") {
-      return documentoExigeRevalidacao(doc)
-        ? t
-        : { ...t, status: "concluida" as const };
+      return doc.status === "vigente" ? t : { ...t, status: "concluida" as const };
     }
 
     const esperado = tipoTarefaEsperadaPorStatus(doc.status);
@@ -335,28 +333,6 @@ function reconcileWorkflowTasks(
   if (duplicatas.size > 0) {
     next = next.map((t) =>
       duplicatas.has(t.id) ? { ...t, status: "concluida" as const } : t
-    );
-  }
-
-  // Uma revalidação pendente por documento. As demais ficam concluídas
-  // para o sync gravar o fechamento (senão o contador volta no próximo bootstrap).
-  const revalVistas = new Set<string>();
-  const revalDuplicadas = new Set<string>();
-  const revalPendentes = next
-    .filter(
-      (t) =>
-        t.referenciaTipo === "documento" &&
-        t.tipo === "revalidar_documento" &&
-        t.status === "pendente"
-    )
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  for (const t of revalPendentes) {
-    if (revalVistas.has(t.referenciaId)) revalDuplicadas.add(t.id);
-    else revalVistas.add(t.referenciaId);
-  }
-  if (revalDuplicadas.size > 0) {
-    next = next.map((t) =>
-      revalDuplicadas.has(t.id) ? { ...t, status: "concluida" as const } : t
     );
   }
 
@@ -1353,7 +1329,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           if (!doc) return false;
 
           if (t.tipo === "revalidar_documento") {
-            return documentoExigeRevalidacao(doc);
+            return doc.status === "vigente";
           }
 
           const esperado = tipoTarefaEsperadaPorStatus(doc.status);
@@ -1367,13 +1343,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
 
           return true;
         });
-        const revalVistas = new Set<string>();
-        return pendentes.filter((t) => {
-          if (t.tipo !== "revalidar_documento") return true;
-          if (revalVistas.has(t.referenciaId)) return false;
-          revalVistas.add(t.referenciaId);
-          return true;
-        });
+        return pendentes;
       },
 
       getDocumentTasks: () =>
