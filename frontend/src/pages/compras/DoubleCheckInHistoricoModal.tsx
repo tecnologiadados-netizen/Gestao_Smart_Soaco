@@ -112,7 +112,7 @@ function ComparativoHistoricoModal({
   }, [modo, nota.idDocumento]);
 
   const regime = regimeDaNota(nota);
-  const titulo = modo === 'leitura' ? 'Divergências da primeira leitura' : 'NF × Pedido de compra';
+  const titulo = modo === 'leitura' ? 'Comparativo da primeira leitura' : 'Comparativo atual · NF × pedido de compra';
 
   return createPortal(
     <div className="fixed inset-0 z-[18000] flex items-center justify-center p-4 sm:p-6" role="presentation">
@@ -289,7 +289,9 @@ export default function DoubleCheckInHistoricoModal({
                           className="mt-2 text-xs font-semibold text-primary-700 hover:underline dark:text-primary-300"
                           onClick={() => setComparativoModo(evento.origemComparativo === 'leitura' ? 'leitura' : 'atual')}
                         >
-                          {evento.origemComparativo === 'leitura' ? 'Ver divergências da leitura' : 'Ver NF × pedido'}
+                          {evento.origemComparativo === 'leitura'
+                            ? 'Ver comparativo da primeira leitura'
+                            : 'Ver comparativo atual'}
                         </button>
                       ) : null}
                       {evento.fonte ? (
