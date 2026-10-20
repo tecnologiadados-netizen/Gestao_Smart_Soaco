@@ -3300,3 +3300,15 @@ model DiarioCartorio {
   @@unique([origem, codigo])
   @@map("diario_cartorio")
 }
+
+/// Medidas de corte digitadas para peças da ficha Nomus de gôndolas e porta-paletes.
+/// O Nomus não traz medida 01/02; o valor fica só neste sistema, por código da peça.
+model GondolaMedidaPeca {
+  id           Int      @id @default(autoincrement())
+  codigo       String   @unique
+  medida01     String   @default("")
+  medida02     String   @default("")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@map("gondola_medida_peca")
+}

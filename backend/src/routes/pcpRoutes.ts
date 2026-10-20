@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -48,6 +49,12 @@ import {
   getDetalheAcompanhamento,
   getPipelineAcompanhamento,
 } from '../controllers/acompanhamentoSolicitacaoController.js';
+import {
+  getGondolasItemDetalhe,
+  getGondolasItens,
+  postGondolasPlanilha,
+  putGondolasMedida,
+} from '../controllers/gondolasPortaPaleteController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -64,6 +71,19 @@ const podeAcompanhamentoSolicitacao = requirePermission(
   PERMISSOES.PCP_TOTAL,
   PERMISSOES.PEDIDOS_VER
 );
+
+const podeGondolas = requirePermission(
+  PERMISSOES.PCP_VER_TELA,
+  PERMISSOES.PCP_TOTAL,
+  PERMISSOES.PEDIDOS_VER,
+  PERMISSOES.PCP_ORDEM_PRODUCAO_VER,
+  PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR
+);
+
+const uploadPlanilhaGondolas = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 const podeDecomposicao = requirePermission(
   PERMISSOES.PCP_ORDEM_PRODUCAO_VER,
@@ -165,6 +185,17 @@ router.get(
   podeAcompanhamentoSolicitacao,
   async503(getDetalheAcompanhamento)
 );
+
+router.get('/gondolas-porta-paletes/itens', podeGondolas, async503(getGondolasItens));
+router.get('/gondolas-porta-paletes/itens/:idItem', podeGondolas, async503(getGondolasItemDetalhe));
+router.post(
+  '/gondolas-porta-paletes/planilha',
+  validateCsrf,
+  podeGondolas,
+  uploadPlanilhaGondolas.single('arquivo'),
+  async503(postGondolasPlanilha)
+);
+router.put('/gondolas-porta-paletes/medidas', validateCsrf, podeGondolas, async503(putGondolasMedida));
 
 router.get('/decomposicao/produtos-nomus', podeDecomposicao, async503(getDecomposicaoProdutosNomus));
 router.get('/decomposicao/materias-primas-pp', podeDecomposicao, async503(getDecomposicaoMateriasPrimasPp));

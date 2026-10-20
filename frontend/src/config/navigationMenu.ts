@@ -31,6 +31,7 @@ export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/sequenciamento-carradas', label: 'Sequenciamento carradas' },
   { kind: 'link', to: '/pedidos', label: 'Gerenciador de pedidos' },
   { kind: 'link', to: '/pedidos/decomposicao', label: 'Ordem de produção' },
+  { kind: 'link', to: '/pedidos/gondolas-porta-paletes', label: 'Gôndolas e porta-paletes' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
   {
     kind: 'submenu',
@@ -234,6 +235,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/sequenciamento-carradas': 'Sequenciamento carradas',
   '/pedidos': 'Gerenciador de Pedidos',
   '/pedidos/decomposicao': 'Ordem de produção',
+  '/pedidos/gondolas-porta-paletes': 'Gôndolas e porta-paletes',
   '/pedidos/encerrados': 'Pedidos encerrados',
   '/pedidos/sycroorder': 'Comunicação PD',
   '/suporte': 'Chamados',
@@ -497,6 +499,16 @@ export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[
           hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_VER) ||
           hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR) ||
           hasPermission(PERMISSOES.PCP_TOTAL)
+        ) {
+          filtered.push(entry);
+        }
+        continue;
+      }
+      if (entry.to === '/pedidos/gondolas-porta-paletes') {
+        if (
+          podeGerenciador ||
+          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_VER) ||
+          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR)
         ) {
           filtered.push(entry);
         }
