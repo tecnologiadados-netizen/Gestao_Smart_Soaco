@@ -287,7 +287,9 @@ function reconcileWorkflowTasks(
     if (!doc) return { ...t, status: "concluida" as const };
 
     if (t.tipo === "revalidar_documento") {
-      return doc.status === "vigente" ? t : { ...t, status: "concluida" as const };
+      return documentoExigeRevalidacao(doc)
+        ? t
+        : { ...t, status: "concluida" as const };
     }
 
     const esperado = tipoTarefaEsperadaPorStatus(doc.status);
@@ -333,6 +335,28 @@ function reconcileWorkflowTasks(
   if (duplicatas.size > 0) {
     next = next.map((t) =>
       duplicatas.has(t.id) ? { ...t, status: "concluida" as const } : t
+    );
+  }
+
+  // Uma revalidação pendente por documento. As demais ficam concluídas
+  // para o sync gravar o fechamento (senão o contador volta no próximo bootstrap).
+  const revalVistas = new Set<string>();
+  const revalDuplicadas = new Set<string>();
+  const revalPendentes = next
+    .filter(
+      (t) =>
+        t.referenciaTipo === "documento" &&
+        t.tipo === "revalidar_documento" &&
+        t.status === "pendente"
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  for (const t of revalPendentes) {
+    if (revalVistas.has(t.referenciaId)) revalDuplicadas.add(t.id);
+    else revalVistas.add(t.referenciaId);
+  }
+  if (revalDuplicadas.size > 0) {
+    next = next.map((t) =>
+      revalDuplicadas.has(t.id) ? { ...t, status: "concluida" as const } : t
     );
   }
 
@@ -826,10 +850,17 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                 }
               : v
           );
+          const synced = applyValidadeSync(
+            documents,
+            versions,
+            state.validadeAlertas,
+            state.tasks
+          );
           return {
             documents,
             versions,
-            tasks: reconcileWorkflowTasks(documents, versions, state.tasks).map(
+            validadeAlertas: synced.alertas,
+            tasks: reconcileWorkflowTasks(documents, versions, synced.tasks).map(
               (t) =>
                 t.referenciaId === documentId &&
                 t.status === "pendente" &&
@@ -863,8 +894,8 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         const principal = anexos?.[0];
         const now = new Date().toISOString();
 
-        set((state) => ({
-          documents: state.documents.map((d) =>
+        set((state) => {
+          const documents = state.documents.map((d) =>
             d.id === documentId
               ? {
                   ...d,
@@ -877,8 +908,8 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                   updatedAt: now,
                 }
               : d
-          ),
-          versions: state.versions.map((v) =>
+          );
+          const versions = state.versions.map((v) =>
             v.id === versaoAtual.id
               ? {
                   ...v,
@@ -892,8 +923,20 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
                     : {}),
                 }
               : v
-          ),
-        }));
+          );
+          const synced = applyValidadeSync(
+            documents,
+            versions,
+            state.validadeAlertas,
+            state.tasks
+          );
+          return {
+            documents,
+            versions,
+            validadeAlertas: synced.alertas,
+            tasks: reconcileWorkflowTasks(documents, versions, synced.tasks),
+          };
+        });
         return true;
       },
 
@@ -1294,7 +1337,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
         const userNorm = String(userId ?? "")
           .trim()
           .toLowerCase();
-        return tasks.filter((t) => {
+        const pendentes = tasks.filter((t) => {
           if (t.status !== "pendente") return false;
           if (
             !allUsers &&
@@ -1310,7 +1353,7 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
           if (!doc) return false;
 
           if (t.tipo === "revalidar_documento") {
-            return doc.status === "vigente";
+            return documentoExigeRevalidacao(doc);
           }
 
           const esperado = tipoTarefaEsperadaPorStatus(doc.status);
@@ -1322,6 +1365,13 @@ export const useDocumentsStore = create<DocumentsState>()((set, get) => ({
             return esperado === t.tipo;
           }
 
+          return true;
+        });
+        const revalVistas = new Set<string>();
+        return pendentes.filter((t) => {
+          if (t.tipo !== "revalidar_documento") return true;
+          if (revalVistas.has(t.referenciaId)) return false;
+          revalVistas.add(t.referenciaId);
           return true;
         });
       },

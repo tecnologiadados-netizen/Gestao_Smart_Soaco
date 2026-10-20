@@ -273,9 +273,15 @@ export function DocumentosPendenciasBoards({ showAll = false }: Props) {
           (t) => t.referenciaId === doc.id
         );
 
+        const mesmoUsuario = (id?: string) =>
+          String(id ?? "")
+            .trim()
+            .toLowerCase() ===
+          String(currentUserId ?? "")
+            .trim()
+            .toLowerCase();
         return (
-          responsavelId === currentUserId ||
-          task?.responsavelId === currentUserId
+          mesmoUsuario(responsavelId) || mesmoUsuario(task?.responsavelId)
         );
       })
       .map((doc) => {
