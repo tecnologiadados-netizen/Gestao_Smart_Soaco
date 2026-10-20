@@ -34,7 +34,7 @@ export type GestaoEntradasPainel = {
     recusas: number;
     documentos: number;
   }>;
-  porJustificativa: Array<{ codigo: string; label: string; qtde: number }>;
+  porJustificativa: Array<{ codigo: string; label: string; qtde: number; documentos: number }>;
   porTipo: Array<{
     idTipoMovimentacao: number;
     nomeTipo: string;

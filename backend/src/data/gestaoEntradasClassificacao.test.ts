@@ -205,7 +205,28 @@ describe('montarPainelGestaoEntradas', () => {
     expect(painel.porJustificativa[0]).toMatchObject({
       codigo: 'qtde_parcial',
       qtde: 2,
+      documentos: 2,
     });
+  });
+
+  it('conta aceites e documentos distintos por motivo', () => {
+    const mesmoDocumento = montarPainelGestaoEntradas({
+      dataInicio: '2026-09-21',
+      dataFim: '2026-09-21',
+      docs: [doc({ idDocumento: 9, itens: 5 })],
+      idsConferidos: new Set([9]),
+      idsComDivergenciaAtual: new Set([9]),
+      decisoes: [1, 2, 3].map(() => ({
+        idDocumentoEstoque: 9,
+        campo: 'qtde',
+        decisao: 'aceita',
+        justificativaCodigo: 'peso_da_peca',
+        justificativaLabel: 'Diferença de peso da peça',
+      })),
+    });
+    expect(mesmoDocumento.porJustificativa).toEqual([
+      { codigo: 'peso_da_peca', label: 'Diferença de peso da peça', qtde: 3, documentos: 1 },
+    ]);
   });
 
   it('soma a série do dia e os tipos de movimento', () => {
