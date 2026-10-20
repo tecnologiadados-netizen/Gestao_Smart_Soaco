@@ -252,6 +252,49 @@ function comNaturezaDaLeitura(
   return { ...linha, naturezaDivergencias, observacaoNaturezaDivergencias };
 }
 
+export type PrimeiraLeituraDocumento = {
+  /** Uma linha por vínculo NF × PC cuja primeira leitura guardou o comparativo. */
+  retratos: DoubleCheckInComparativoLinha[];
+  /** Todo campo apontado, inclusive das leituras anteriores ao retrato. */
+  campos: Array<{
+    idItemDocumentoEstoque: number;
+    idItemPedidoCompra: number;
+    nomePedidoCompra: string;
+    campo: string;
+    natureza: NaturezaDivergencia;
+  }>;
+};
+
+export async function carregarPrimeirasLeituras(
+  idsDocumento: number[]
+): Promise<Map<number, PrimeiraLeituraDocumento>> {
+  const porDocumento = new Map<number, PrimeiraLeituraDocumento>();
+  if (idsDocumento.length === 0) return porDocumento;
+  const snaps = await prisma.doubleCheckInDivergenciaApontada.findMany({
+    where: { idDocumentoEstoque: { in: idsDocumento } },
+    orderBy: { apontadoEm: 'asc' },
+  });
+  const vinculosComRetrato = new Set<string>();
+  for (const snap of snaps) {
+    const atual = porDocumento.get(snap.idDocumentoEstoque) ?? { retratos: [], campos: [] };
+    atual.campos.push({
+      idItemDocumentoEstoque: snap.idItemDocumentoEstoque,
+      idItemPedidoCompra: snap.idItemPedidoCompra,
+      nomePedidoCompra: snap.nomePedidoCompra,
+      campo: snap.campo,
+      natureza: snap.natureza === 'benigna' ? 'benigna' : 'real',
+    });
+    const chave = `${snap.idDocumentoEstoque}:${snap.idItemDocumentoEstoque}:${snap.idItemPedidoCompra}`;
+    const retrato = vinculosComRetrato.has(chave) ? null : lerRetrato(snap.retratoJson);
+    if (retrato) {
+      vinculosComRetrato.add(chave);
+      atual.retratos.push(retrato);
+    }
+    porDocumento.set(snap.idDocumentoEstoque, atual);
+  }
+  return porDocumento;
+}
+
 /** Comparativo gravado na primeira leitura. Leituras antigas só informam quantas divergências houve. */
 export async function carregarRetratoPrimeiraLeitura(idDocumento: number): Promise<{
   origem: 'retrato' | 'nao_gravada';

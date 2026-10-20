@@ -5,7 +5,9 @@ import {
   filtrarLinhasComprador,
   montarLinhasComprador,
   resolverNaturezaAceita,
+  type AceiteCompradorOrigem,
   type DocCompradorGestao,
+  type SnapshotDivergenciaApontada,
 } from './gestaoEntradasComprador.js';
 
 function doc(id: number): DocCompradorGestao {
@@ -96,139 +98,111 @@ describe('resolverNaturezaAceita', () => {
   });
 });
 
-describe('montarLinhasComprador', () => {
-  const docs = [doc(1), doc(2)];
+function snap(
+  idDocumento: number,
+  idItem: number,
+  idPedido: number,
+  nomeComprador: string,
+  campo: string,
+  natureza: 'real' | 'benigna' = 'real'
+): SnapshotDivergenciaApontada {
+  return {
+    idDocumentoEstoque: idDocumento,
+    idItemDocumentoEstoque: idItem,
+    idItemPedidoCompra: idItem + 10,
+    idPedidoCompra: idPedido,
+    nomePedidoCompra: `PC ${idPedido}`,
+    nomeComprador,
+    campo,
+    natureza,
+  };
+}
 
-  it('separa apontada de aceita e marca o vínculo que deixou de divergir', () => {
+function aceite(
+  idDocumento: number,
+  idItem: number,
+  idPedido: number,
+  nomeComprador: string,
+  campo: string
+): AceiteCompradorOrigem {
+  return { ...snap(idDocumento, idItem, idPedido, nomeComprador, campo), natureza: 'real' };
+}
+
+describe('montarLinhasComprador', () => {
+  const docs = [doc(1), doc(2), doc(3)];
+
+  it('aceita traz só a nota conferida que ainda diverge no campo aceito', () => {
+    const linhas = montarLinhasComprador({
+      escopo: 'reais',
+      docs,
+      snapshots: [],
+      aceites: [aceite(1, 11, 10, 'Ana', 'qtde'), aceite(2, 12, 20, 'Ana', 'qtde'), aceite(3, 13, 30, 'Ana', 'qtde')],
+      chavesAtuais: new Map([
+        [1, new Set(['11:21:qtde'])],
+        [3, new Set(['13:23:qtde'])],
+      ]),
+      idsDivergeAgora: new Set([1, 3]),
+      idsConferidasDivergentes: new Set([1]),
+    });
+    const aceitas = filtrarLinhasComprador(linhas, 'aceita', 'Ana');
+    expect(aceitas.map((linha) => linha.idDocumento)).toEqual([1]);
+    expect(aceitas[0]).toMatchObject({ situacao: 'aceita', campos: ['Quantidade'] });
+    const apontadas = filtrarLinhasComprador(linhas, 'apontada', 'Ana');
+    expect(apontadas.map((linha) => linha.idDocumento)).toEqual([2]);
+  });
+
+  it('não leva para aceita o campo aceito que já deixou de divergir', () => {
+    const linhas = montarLinhasComprador({
+      escopo: 'reais',
+      docs,
+      snapshots: [],
+      aceites: [aceite(1, 11, 10, 'Ana', 'qtde'), aceite(1, 14, 40, 'Bia', 'ipi')],
+      chavesAtuais: new Map([[1, new Set(['11:21:qtde'])]]),
+      idsDivergeAgora: new Set([1]),
+      idsConferidasDivergentes: new Set([1]),
+    });
+    expect(agregarRankingComprador(linhas.filter((l) => l.mundo === 'aceita'))).toEqual([
+      { nomeComprador: 'Ana', documentos: 1, pedidos: 1, ajustados: 0 },
+    ]);
+    expect(linhas.filter((l) => l.mundo === 'apontada')).toEqual([]);
+  });
+
+  it('apontada traz a nota que divergiu e hoje não diverge mais', () => {
     const linhas = montarLinhasComprador({
       escopo: 'reais',
       docs,
       snapshots: [
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 11,
-          idItemPedidoCompra: 21,
-          idPedidoCompra: 10,
-          nomePedidoCompra: 'PC 10',
-          nomeComprador: 'Ana',
-          campo: 'qtde',
-          natureza: 'real',
-        },
-        {
-          idDocumentoEstoque: 2,
-          idItemDocumentoEstoque: 12,
-          idItemPedidoCompra: 22,
-          idPedidoCompra: 20,
-          nomePedidoCompra: 'PC 20',
-          nomeComprador: 'Ana',
-          campo: 'qtde',
-          natureza: 'real',
-        },
-        {
-          idDocumentoEstoque: 2,
-          idItemDocumentoEstoque: 12,
-          idItemPedidoCompra: 22,
-          idPedidoCompra: 20,
-          nomePedidoCompra: 'PC 20',
-          nomeComprador: 'Ana',
-          campo: 'valor_unitario',
-          natureza: 'benigna',
-        },
+        snap(1, 11, 10, 'Ana', 'qtde'),
+        snap(2, 12, 20, 'Ana', 'qtde'),
+        snap(3, 13, 30, 'Ana', 'valor_unitario', 'benigna'),
       ],
-      aceites: [
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 11,
-          idItemPedidoCompra: 21,
-          idPedidoCompra: 10,
-          nomePedidoCompra: 'PC 10',
-          nomeComprador: 'Ana',
-          campo: 'qtde',
-          natureza: 'real',
-        },
-      ],
+      aceites: [],
       chavesAtuais: new Map([[2, new Set(['12:22:qtde'])]]),
-      chavesAceitas: new Set(['1:11:21:qtde']),
+      idsDivergeAgora: new Set([2]),
+      idsConferidasDivergentes: new Set([2]),
     });
-
     const apontadas = filtrarLinhasComprador(linhas, 'apontada', 'Ana');
-    const aceitas = filtrarLinhasComprador(linhas, 'aceita', 'Ana');
     expect(apontadas).toHaveLength(1);
     expect(apontadas[0]).toMatchObject({
-      idDocumento: 2,
-      situacao: 'ainda_divergente',
+      idDocumento: 1,
+      situacao: 'vinculo_ajustado',
       campos: ['Quantidade'],
     });
-    expect(aceitas).toHaveLength(1);
-    expect(aceitas[0]).toMatchObject({ idDocumento: 1, situacao: 'aceita', campos: ['Quantidade'] });
   });
 
-  it('conta a nota ajustada uma vez, mesmo com dois pedidos', () => {
+  it('conta a nota regularizada uma vez, mesmo com dois pedidos e com aceite', () => {
     const linhas = montarLinhasComprador({
       escopo: 'reais',
       docs,
-      snapshots: [
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 11,
-          idItemPedidoCompra: 21,
-          idPedidoCompra: 10,
-          nomePedidoCompra: 'PC 10',
-          nomeComprador: 'Bia',
-          campo: 'qtde',
-          natureza: 'real',
-        },
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 13,
-          idItemPedidoCompra: 23,
-          idPedidoCompra: 30,
-          nomePedidoCompra: 'PC 30',
-          nomeComprador: 'Bia',
-          campo: 'ipi',
-          natureza: 'real',
-        },
-      ],
-      aceites: [],
+      snapshots: [snap(1, 11, 10, 'Bia', 'qtde')],
+      aceites: [aceite(1, 13, 30, 'Bia', 'ipi')],
       chavesAtuais: new Map(),
-      chavesAceitas: new Set(),
+      idsDivergeAgora: new Set(),
+      idsConferidasDivergentes: new Set(),
     });
-    const ranking = agregarRankingComprador(filtrarLinhasComprador(linhas, 'apontada', 'Bia'));
-    expect(ranking).toEqual([
+    expect(agregarRankingComprador(filtrarLinhasComprador(linhas, 'apontada', 'Bia'))).toEqual([
       { nomeComprador: 'Bia', documentos: 1, pedidos: 2, ajustados: 1 },
     ]);
-  });
-
-  it('não marca ajustada a nota que ainda tem um pedido divergente', () => {
-    const linhas = montarLinhasComprador({
-      escopo: 'geral',
-      docs: [doc(1)],
-      snapshots: [
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 11,
-          idItemPedidoCompra: 21,
-          idPedidoCompra: 10,
-          nomePedidoCompra: 'PC 10',
-          nomeComprador: 'Bia',
-          campo: 'qtde',
-          natureza: 'real',
-        },
-        {
-          idDocumentoEstoque: 1,
-          idItemDocumentoEstoque: 13,
-          idItemPedidoCompra: 23,
-          idPedidoCompra: 30,
-          nomePedidoCompra: 'PC 30',
-          nomeComprador: 'Bia',
-          campo: 'valor_unitario',
-          natureza: 'benigna',
-        },
-      ],
-      aceites: [],
-      chavesAtuais: new Map([[1, new Set(['11:21:qtde'])]]),
-      chavesAceitas: new Set(),
-    });
-    expect(agregarRankingComprador(linhas)[0]?.ajustados).toBe(0);
+    expect(filtrarLinhasComprador(linhas, 'aceita', 'Bia')).toEqual([]);
   });
 });

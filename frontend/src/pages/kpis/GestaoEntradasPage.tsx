@@ -498,10 +498,7 @@ export default function GestaoEntradasPage() {
     key: item.nomeComprador,
     label: item.nomeComprador,
     valor: item.documentos,
-    detalhe:
-      mundoComprador === 'apontada'
-        ? `${fmtNum(item.documentos)} ${item.documentos === 1 ? 'nota' : 'notas'} · ${fmtNum(item.pedidos)} ${item.pedidos === 1 ? 'pedido' : 'pedidos'} · ${fmtNum(item.ajustados)} ${item.ajustados === 1 ? 'ajustada' : 'ajustadas'}`
-        : `${fmtNum(item.documentos)} ${item.documentos === 1 ? 'nota' : 'notas'} · ${fmtNum(item.pedidos)} ${item.pedidos === 1 ? 'pedido' : 'pedidos'}`,
+    detalhe: `${fmtNum(item.documentos)} ${item.documentos === 1 ? 'nota' : 'notas'} · ${fmtNum(item.pedidos)} ${item.pedidos === 1 ? 'pedido' : 'pedidos'}`,
   }));
   const liderComprador = rankingComprador[0];
   const liderMovimento = tiposMaisUsados[0];
@@ -1031,11 +1028,11 @@ export default function GestaoEntradasPage() {
                     {liderComprador
                       ? `${liderComprador.nomeComprador} lidera com ${fmtNum(liderComprador.documentos)} ${liderComprador.documentos === 1 ? 'nota' : 'notas'}.`
                       : mundoComprador === 'apontada'
-                        ? 'Ainda não há divergência apontada no vínculo neste período.'
-                        : 'Nenhuma NF aceita com divergência neste período.'}{' '}
+                        ? 'Nenhuma nota regularizada neste período.'
+                        : 'Nenhuma NF conferida segue com divergência neste período.'}{' '}
                     {mundoComprador === 'apontada'
-                      ? 'A primeira leitura do Double Check guarda o pedido e o comprador, mesmo se o vínculo for desfeito depois.'
-                      : 'Entram as notas aceitas com divergência desde 21/09/2026, mesmo que o pedido tenha sido corrigido depois.'}{' '}
+                      ? 'Entram as notas que tiveram divergência, apontada no vínculo ou aceita, e hoje já não divergem do pedido.'
+                      : 'Entram as notas conferidas que ainda divergem do pedido hoje: as mesmas do card de NFs divergentes.'}{' '}
                     Clique no comprador para ver as notas e os pedidos.
                   </p>
                 </div>
@@ -1068,8 +1065,8 @@ export default function GestaoEntradasPage() {
                 itens={barrasComprador}
                 vazio={
                   mundoComprador === 'apontada'
-                    ? 'Nenhuma divergência apontada no vínculo neste período. Essa leitura começa a ser gravada quando o Double Check lê a NF ligada ao pedido.'
-                    : 'Nenhuma NF aceita com divergência neste período.'
+                    ? 'Nenhuma nota regularizada neste período.'
+                    : 'Nenhuma NF conferida segue com divergência neste período.'
                 }
                 gradiente={
                   mundoComprador === 'apontada'

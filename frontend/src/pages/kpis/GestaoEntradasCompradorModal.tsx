@@ -76,7 +76,7 @@ export default function GestaoEntradasCompradorModal({
     };
   }, [cacheRef, comprador, dataFim, dataInicio, escopo, mundo]);
 
-  const tituloMundo = mundo === 'apontada' ? 'Divergência apontada no vínculo' : 'NF aceita com divergência';
+  const tituloMundo = mundo === 'apontada' ? 'Divergência regularizada' : 'NF aceita que ainda diverge';
   const leitura = escopo === 'reais' ? 'visão real' : 'visão geral';
   const notas = detalhe?.documentos ?? 0;
   const pedidos = detalhe?.pedidos ?? 0;
@@ -99,11 +99,7 @@ export default function GestaoEntradasCompradorModal({
             <p className="text-xs text-slate-500">
               {loading
                 ? 'Carregando divergências…'
-                : `${tituloMundo} · ${qtde} ${qtde === 1 ? 'divergência' : 'divergências'} · ${notas} ${notas === 1 ? 'nota' : 'notas'} · ${pedidos} ${pedidos === 1 ? 'pedido' : 'pedidos'}${
-                    mundo === 'apontada' && detalhe
-                      ? ` · ${detalhe.ajustados} ${detalhe.ajustados === 1 ? 'ajustada' : 'ajustadas'}`
-                      : ''
-                  } · ${leitura}`}
+                : `${tituloMundo} · ${qtde} ${qtde === 1 ? 'divergência' : 'divergências'} · ${notas} ${notas === 1 ? 'nota' : 'notas'} · ${pedidos} ${pedidos === 1 ? 'pedido' : 'pedidos'} · ${leitura}`}
             </p>
           </div>
           <button
