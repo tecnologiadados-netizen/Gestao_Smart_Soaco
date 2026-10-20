@@ -71,6 +71,10 @@ import {
   type RegimeConferenciaDoubleCheck,
 } from '../services/doubleCheckInConferenciaPeriodo.js';
 import { conferenciaDoubleCheckLiberadaParaMesa } from '../services/mesaDoubleCheckGate.js';
+import {
+  exigirSolicitacaoOtimizaConcluida,
+  numeroSolicitacaoOtimizaValido,
+} from '../data/doubleCheckInOtimiza.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -393,7 +397,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
 /**
  * PUT /api/compras/double-checkin/solicitacao-otimiza
  * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo, numero }
- * Grava a solicitação antes de liberar o aceite da divergência.
+ * Consulta o Otimiza e só grava se a solicitação estiver concluída.
  */
 export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Response): Promise<void> {
   const login = req.user?.login;
@@ -405,7 +409,9 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
   const idItemDocumentoEstoque = Math.trunc(Number(req.body?.idItemDocumentoEstoque));
   const idItemPedidoCompra = Math.trunc(Number(req.body?.idItemPedidoCompra));
   const campo = String(req.body?.campo ?? '').trim() as DoubleCheckInCampoComparativo;
-  const numero = Number(typeof req.body?.numero === 'string' ? req.body.numero.trim() : req.body?.numero);
+  const numero = numeroSolicitacaoOtimizaValido(
+    typeof req.body?.numero === 'string' ? req.body.numero.trim() : req.body?.numero
+  );
   const aplicarNasDemais = req.body?.aplicarNasDemais === true;
 
   if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
@@ -422,6 +428,10 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
   }
   if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
     res.status(400).json({ error: 'campo inválido.' });
+    return;
+  }
+  if (numero == null) {
+    res.status(400).json({ error: 'Informe o número inteiro da solicitação no Otimiza.' });
     return;
   }
 
@@ -462,6 +472,8 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
         return;
       }
     }
+
+    await exigirSolicitacaoOtimizaConcluida(numero);
 
     const base = {
       idDocumentoEstoque: idDocumento,
@@ -626,6 +638,17 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       usuarioId: usuario.id,
       usuarioLogin: usuario.login,
     };
+
+    if (decisaoRaw === 'aceita') {
+      const sols = await listarSolicitacoesOtimiza(idDocumento);
+      const sol = sols.find(
+        (item) =>
+          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          item.idItemPedidoCompra === idItemPedidoCompra &&
+          item.campo === campo
+      );
+      if (sol) await exigirSolicitacaoOtimizaConcluida(sol.numero);
+    }
 
     let decisao = await upsertDecisaoComparativo({
       ...baseParams,

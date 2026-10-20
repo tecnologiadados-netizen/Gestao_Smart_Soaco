@@ -29,7 +29,7 @@ import {
   type DoubleCheckInUsuarioDest,
 } from '../../api/compras';
 import { PERMISSOES } from '../../config/permissoes';
-import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
+import { PLACEHOLDER_BUSCA_TEXTO_LIVRE, criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const POLL_MS = 120_000;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -660,7 +660,7 @@ export default function DoubleCheckInPage() {
     if (regimeConferencia === 'completa' && pendentes > 0) {
       setModalAba('nf_pc');
       setCompBloqueioMsg(
-        `Há ${pendentes} divergência(s) NF × PC sem decisão. Para aceitar, grave antes a solicitação no Otimiza.`
+        `Há ${pendentes} divergência(s) NF × PC sem decisão. Para aceitar, a solicitação no Otimiza precisa estar concluída.`
       );
       return;
     }
