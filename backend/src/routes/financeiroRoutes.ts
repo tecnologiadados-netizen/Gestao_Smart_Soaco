@@ -4,6 +4,7 @@ import { requirePermission } from '../middleware/requirePermission.js';
 import {
   PERMISSOES_ACESSO_FINANCEIRO_DFC,
   PERMISSOES_ACESSO_FINANCEIRO_DRE,
+  PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD,
   PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   PERMISSOES_ACESSO_FINANCEIRO_CRM,
   PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA,
@@ -151,6 +152,7 @@ router.use(requireAuth);
 
 const verFinanceiroDfc = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DFC);
 const verFinanceiroDre = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DRE);
+const verFinanceiroDashboard = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD);
 const verFinanceiroPainelComercial = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL);
 const verFinanceiroCrm = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM);
 const verFinanceiroCrmEmpresa = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CRM_EMPRESA);
@@ -225,7 +227,7 @@ router.put('/dre/relacao-pc', verFinanceiroDre, putDreRelacaoPc);
 router.delete('/dre/relacao-pc', verFinanceiroDre, deleteDreRelacaoPcOverrides);
 router.get('/dre/rateio-config', verFinanceiroDre, getDreRateioConfig);
 router.put('/dre/rateio-config', verFinanceiroDre, putDreRateioConfig);
-router.get('/dre/dashboard', verFinanceiroDre, getDreDashboard);
+router.get('/dre/dashboard', verFinanceiroDashboard, getDreDashboard);
 router.get('/dre/export/detalhe', verFinanceiroDre, getDreExportDetalhe);
 
 // Prioridade DFC (plano de contas + lançamento)

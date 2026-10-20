@@ -10,6 +10,13 @@ export const PERMISSOES_ACESSO_FINANCEIRO_DRE: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_DRE_VER,
 ];
 
+/** Dashboard Financeiro. A permissão antiga de resumo também abre esta tela. */
+export const PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_DRE_VER,
+  PERMISSOES.FINANCEIRO_RESUMO_VER,
+];
+
 export const PERMISSOES_ACESSO_FINANCEIRO_DFC: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_VER,
   PERMISSOES.FINANCEIRO_DFC_VER,

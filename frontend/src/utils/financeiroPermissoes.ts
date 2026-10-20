@@ -26,6 +26,13 @@ export const PERMISSOES_ACESSO_FINANCEIRO_DRE: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_DRE_VER,
 ];
 
+/** Dashboard Financeiro (a rota antiga /financeiro/resumo também cai aqui). */
+export const PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_DRE_VER,
+  PERMISSOES.FINANCEIRO_RESUMO_VER,
+];
+
 export const PERMISSOES_ACESSO_FINANCEIRO_DFC: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_VER,
   PERMISSOES.FINANCEIRO_DFC_VER,
@@ -92,7 +99,7 @@ export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
   '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_MENU,
   '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_MENU,
   '/financeiro/dre': PERMISSOES_ACESSO_FINANCEIRO_DRE,
-  '/financeiro/dashboard': PERMISSOES_ACESSO_FINANCEIRO_DRE,
+  '/financeiro/dashboard': PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD,
   '/financeiro/dfc': PERMISSOES_ACESSO_FINANCEIRO_DFC,
   '/financeiro/painel-financeiro-comercial': PERMISSOES_ACESSO_FINANCEIRO_PAINEL_COMERCIAL,
   '/financeiro/renegociacao-contratos': PERMISSOES_ACESSO_FINANCEIRO_RENEGOCIACAO,
@@ -112,4 +119,28 @@ export function podeAcessarRotaFinanceiro(
 
 export function podeVerMenuFinanceiro(hasPermission: (c: CodigoPermissao) => boolean): boolean {
   return PERMISSOES_ACESSO_FINANCEIRO_MENU.some((p) => hasPermission(p));
+}
+
+/**
+ * Telas reais do Financeiro, na ordem em que o usuário deve cair ao entrar.
+ * /financeiro e /financeiro/resumo ficam de fora: só redirecionam. Se entrarem
+ * nesta lista, o guardião de rota devolve o usuário para elas e a tela fica
+ * em "Carregando tela…" para sempre.
+ */
+export const ROTAS_ENTRADA_FINANCEIRO = [
+  '/financeiro/dashboard',
+  '/financeiro/dre',
+  '/financeiro/dfc',
+  '/financeiro/painel-financeiro-comercial',
+  '/financeiro/renegociacao-contratos',
+  '/financeiro/crm',
+  '/financeiro/carteira-financeira',
+  '/financeiro/diario',
+] as const;
+
+export function rotaInicialFinanceiro(hasPermission: (c: CodigoPermissao) => boolean): string | null {
+  for (const path of ROTAS_ENTRADA_FINANCEIRO) {
+    if (podeAcessarRotaFinanceiro(path, hasPermission)) return path;
+  }
+  return null;
 }

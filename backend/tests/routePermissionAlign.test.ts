@@ -7,7 +7,12 @@ import {
   PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
   PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
 } from '../../frontend/src/config/kpisCatalog';
-import { ROTA_PERMISSAO, resolverPermissoesRota } from '../../frontend/src/utils/routePermission';
+import { PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD } from '../../frontend/src/utils/financeiroPermissoes';
+import {
+  ROTA_PERMISSAO,
+  primeiraRotaPermitida,
+  resolverPermissoesRota,
+} from '../../frontend/src/utils/routePermission';
 
 const LEGACY_FALLBACKS = [
   PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
@@ -75,5 +80,23 @@ describe('ROTA_PERMISSAO cobertura', () => {
 
   it.each(rotasProtegidas)('%s tem permissões definidas', (rota) => {
     expect(ROTA_PERMISSAO[rota]?.length).toBeGreaterThan(0);
+  });
+});
+
+describe('entrada no Financeiro', () => {
+  it('quem só tem uma tela específica não cai no atalho /financeiro', () => {
+    const destino = primeiraRotaPermitida((c) => c === PERMISSOES.FINANCEIRO_CRM_CLIENTE_VER);
+    expect(destino).toBe('/financeiro/crm');
+  });
+
+  it('quem pode o dashboard continua entrando nele', () => {
+    expect(primeiraRotaPermitida((c) => c === PERMISSOES.FINANCEIRO_VER)).toBe('/financeiro/dashboard');
+    expect(primeiraRotaPermitida((c) => c === PERMISSOES.FINANCEIRO_DRE_VER)).toBe('/financeiro/dashboard');
+    expect(primeiraRotaPermitida((c) => c === PERMISSOES.FINANCEIRO_RESUMO_VER)).toBe('/financeiro/dashboard');
+  });
+
+  it('resumo legado abre o dashboard', () => {
+    expect(PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD).toContain(PERMISSOES.FINANCEIRO_RESUMO_VER);
+    expect(ROTA_PERMISSAO['/financeiro/dashboard']).toEqual(PERMISSOES_ACESSO_FINANCEIRO_DASHBOARD);
   });
 });
