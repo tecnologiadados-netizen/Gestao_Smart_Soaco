@@ -66,7 +66,7 @@ export type GestaoEntradasCompradorLinha = {
   idPedidoCompra: number;
   nomePedidoCompra: string;
   campos: string[];
-  situacao: 'ainda_divergente' | 'vinculo_ajustado' | 'aceita';
+  situacao: 'vinculo_ajustado' | 'aceita';
 };
 
 export type GestaoEntradasCompradorDetalhe = {

@@ -1,7 +1,7 @@
 /**
  * Gestão entradas — divergência por comprador do pedido.
- * Apontada: primeira leitura do vínculo NF × PC (retrabalho se o vínculo some).
- * Aceita: divergência aceita na conferência, mesmo que o ERP seja corrigido depois.
+ * Apontada: nota que teve divergência (primeira leitura do vínculo ou aceite) e hoje já não diverge.
+ * Aceita: nota conferida que ainda diverge hoje, pelo campo aceito que continua divergente.
  */
 import { CAMPOS_DIVERGENCIA_ENTRADA } from './gestaoEntradasClassificacao.js';
 import type { EscopoDivergenciaGestaoEntrada } from './gestaoEntradasClassificacao.js';
@@ -12,7 +12,7 @@ export const SEM_COMPRADOR = 'Sem comprador';
 
 export type MundoCompradorGestao = 'apontada' | 'aceita';
 
-export type SituacaoCompradorGestao = 'ainda_divergente' | 'vinculo_ajustado' | 'aceita';
+export type SituacaoCompradorGestao = 'vinculo_ajustado' | 'aceita';
 
 export type DocCompradorGestao = {
   idDocumento: number;
@@ -71,15 +71,6 @@ const ORDEM_CAMPO = new Map<string, number>(CAMPOS_DIVERGENCIA_ENTRADA.map((c, i
 
 export function chaveCampoComprador(idItemNf: number, idItemPc: number, campo: string): string {
   return `${idItemNf}:${idItemPc}:${campo}`;
-}
-
-export function chaveAceiteComprador(
-  idDocumento: number,
-  idItemNf: number,
-  idItemPc: number,
-  campo: string
-): string {
-  return `${idDocumento}:${chaveCampoComprador(idItemNf, idItemPc, campo)}`;
 }
 
 function normalizarPedido(valor: string | null | undefined): string {
@@ -166,8 +157,10 @@ export function montarLinhasComprador(params: {
   aceites: AceiteCompradorOrigem[];
   /** Item × pedido × campo que ainda diverge na leitura do painel. */
   chavesAtuais: ReadonlyMap<number, ReadonlySet<string>>;
-  /** Documento × item × pedido × campo com decisão aceita. */
-  chavesAceitas: ReadonlySet<string>;
+  /** Notas que ainda divergem do pedido na leitura do painel, conferidas ou não. */
+  idsDivergeAgora: ReadonlySet<number>;
+  /** Notas conferidas que ainda divergem: o mesmo universo do card de NFs divergentes. */
+  idsConferidasDivergentes: ReadonlySet<number>;
 }): LinhaCompradorGestao[] {
   const docs = new Map(params.docs.map((doc) => [doc.idDocumento, doc]));
   const grupos = new Map<string, GrupoCampo>();
@@ -197,62 +190,49 @@ export function montarLinhasComprador(params: {
     return criado;
   };
 
+  const marcar = (grupo: GrupoCampo, campo: string) => {
+    if (!grupo.campos.some((item) => item.campo === campo)) {
+      grupo.campos.push({ campo, ainda: grupo.mundo === 'aceita' });
+    }
+  };
+
   for (const snap of params.snapshots) {
     const doc = docs.get(snap.idDocumentoEstoque);
     if (!doc) continue;
     if (params.escopo === 'reais' && snap.natureza !== 'real') continue;
-    if (
-      params.chavesAceitas.has(
-        chaveAceiteComprador(
-          snap.idDocumentoEstoque,
-          snap.idItemDocumentoEstoque,
-          snap.idItemPedidoCompra,
-          snap.campo
-        )
-      )
-    ) {
-      continue;
-    }
-    const grupo = garantir(
-      'apontada',
-      snap.nomeComprador,
-      doc,
-      snap.idPedidoCompra,
-      snap.nomePedidoCompra
+    if (params.idsDivergeAgora.has(snap.idDocumentoEstoque)) continue;
+    marcar(
+      garantir('apontada', snap.nomeComprador, doc, snap.idPedidoCompra, snap.nomePedidoCompra),
+      snap.campo
     );
-    const ainda = params.chavesAtuais
-      .get(snap.idDocumentoEstoque)
-      ?.has(chaveCampoComprador(snap.idItemDocumentoEstoque, snap.idItemPedidoCompra, snap.campo));
-    if (!grupo.campos.some((item) => item.campo === snap.campo)) {
-      grupo.campos.push({ campo: snap.campo, ainda: Boolean(ainda) });
-    }
   }
 
   for (const aceite of params.aceites) {
     const doc = docs.get(aceite.idDocumentoEstoque);
     if (!doc) continue;
     if (params.escopo === 'reais' && aceite.natureza !== 'real') continue;
-    const grupo = garantir(
-      'aceita',
-      aceite.nomeComprador,
-      doc,
-      aceite.idPedidoCompra,
-      aceite.nomePedidoCompra
-    );
-    if (!grupo.campos.some((item) => item.campo === aceite.campo)) {
-      grupo.campos.push({ campo: aceite.campo, ainda: false });
+    if (!params.idsDivergeAgora.has(aceite.idDocumentoEstoque)) {
+      marcar(
+        garantir('apontada', aceite.nomeComprador, doc, aceite.idPedidoCompra, aceite.nomePedidoCompra),
+        aceite.campo
+      );
+      continue;
     }
+    if (!params.idsConferidasDivergentes.has(aceite.idDocumentoEstoque)) continue;
+    const aindaDiverge = params.chavesAtuais
+      .get(aceite.idDocumentoEstoque)
+      ?.has(chaveCampoComprador(aceite.idItemDocumentoEstoque, aceite.idItemPedidoCompra, aceite.campo));
+    if (!aindaDiverge) continue;
+    marcar(
+      garantir('aceita', aceite.nomeComprador, doc, aceite.idPedidoCompra, aceite.nomePedidoCompra),
+      aceite.campo
+    );
   }
 
   const linhas: LinhaCompradorGestao[] = [];
   for (const grupo of grupos.values()) {
     if (grupo.campos.length === 0) continue;
-    const situacao: SituacaoCompradorGestao =
-      grupo.mundo === 'aceita'
-        ? 'aceita'
-        : grupo.campos.some((item) => item.ainda)
-          ? 'ainda_divergente'
-          : 'vinculo_ajustado';
+    const situacao: SituacaoCompradorGestao = grupo.mundo === 'aceita' ? 'aceita' : 'vinculo_ajustado';
     linhas.push({
       mundo: grupo.mundo,
       nomeComprador: grupo.nomeComprador,

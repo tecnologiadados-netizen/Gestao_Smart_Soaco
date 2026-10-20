@@ -6,7 +6,6 @@ import type { DoubleCheckInComparativoLinha } from './doubleCheckInRepository.js
 import type { DecisaoGestaoEntrada, EscopoDivergenciaGestaoEntrada } from './gestaoEntradasClassificacao.js';
 import {
   SEM_COMPRADOR,
-  chaveAceiteComprador,
   chaveCampoComprador,
   montarLinhasComprador,
   resolverNaturezaAceita,
@@ -47,29 +46,21 @@ export async function linhasCompradorGestao(params: {
   decisoes: DecisaoGestaoEntrada[];
   linhasPorDocumento: Map<number, DoubleCheckInComparativoLinha[]>;
   chavesAtuais: ReadonlyMap<number, ReadonlySet<string>>;
+  idsDivergeAgora: ReadonlySet<number>;
+  idsConferidasDivergentes: ReadonlySet<number>;
 }): Promise<LinhaCompradorGestao[]> {
   const ids = params.docs.map((doc) => doc.idDocumento);
   if (ids.length === 0) return [];
 
   const decisoesPorCampo = new Map<string, DecisaoGestaoEntrada>();
-  const chavesAceitas = new Set<string>();
   const aceitas: DecisaoGestaoEntrada[] = [];
   for (const decisao of params.decisoes) {
     if (decisao.idItemDocumentoEstoque == null || decisao.idItemPedidoCompra == null) continue;
-    const chaveDoc = chaveAceiteComprador(
-      decisao.idDocumentoEstoque,
-      decisao.idItemDocumentoEstoque,
-      decisao.idItemPedidoCompra,
-      decisao.campo
-    );
     decisoesPorCampo.set(
       `${decisao.idDocumentoEstoque}:${chaveCampoComprador(decisao.idItemDocumentoEstoque, decisao.idItemPedidoCompra, decisao.campo)}`,
       decisao
     );
-    if (decisao.decisao === 'aceita') {
-      chavesAceitas.add(chaveDoc);
-      aceitas.push(decisao);
-    }
+    if (decisao.decisao === 'aceita') aceitas.push(decisao);
   }
 
   const naturezaAtual = new Map<string, NaturezaDivergencia>();
@@ -184,6 +175,7 @@ export async function linhasCompradorGestao(params: {
     snapshots,
     aceites,
     chavesAtuais: params.chavesAtuais,
-    chavesAceitas,
+    idsDivergeAgora: params.idsDivergeAgora,
+    idsConferidasDivergentes: params.idsConferidasDivergentes,
   });
 }
