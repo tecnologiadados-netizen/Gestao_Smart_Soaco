@@ -12,15 +12,38 @@ export function normalizeEmpresaText(value: string): string {
     .toUpperCase();
 }
 
+const EMPRESA_SO_MOVEIS = "SÓ MÓVEIS";
+const EMPRESA_REFRIGERACAO = "SO REFRIGERAÇÃO";
+const EMPRESA_RN_MARQUES = "R N MARQUES ARAUJO";
+const EMPRESA_LOJA = "LOJA";
+
+function textoIndicaLoja(norm: string): boolean {
+  return norm === "LOJA" || norm.startsWith("LOJA ") || norm.endsWith(" LOJA") || norm.includes(" LOJA ");
+}
+
+/**
+ * Unidade específica do grupo. Móveis, refrigeração, R N Marques e Loja vencem
+ * o nome genérico "Só Aço", senão "SÓ AÇO MÓVEIS" e "SÓ AÇO - LOJA" caem todos
+ * na mesma aba.
+ */
+export function unidadeEspecificaEmpresa(parts: Array<string | null | undefined>): string | null {
+  const norms = parts.map((part) => normalizeEmpresaText(String(part ?? "").trim())).filter(Boolean);
+  if (norms.length === 0) return null;
+  const joined = norms.join(" ");
+  if (joined.includes("REFRIGER")) return EMPRESA_REFRIGERACAO;
+  if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return EMPRESA_SO_MOVEIS;
+  if (joined.includes("RN MARQUES") || joined.includes("R N MARQUES")) return EMPRESA_RN_MARQUES;
+  if (norms.some(textoIndicaLoja)) return EMPRESA_LOJA;
+  return null;
+}
+
 export function normalizeEmpresaTabName(value: string): string {
   const raw = String(value ?? "").trim();
   if (!raw) return ORGANICO_EMPRESA_SO_ACO;
+  const especifica = unidadeEspecificaEmpresa([raw]);
+  if (especifica) return especifica;
   const norm = normalizeEmpresaText(raw);
   if (norm.includes("SO ACO") || norm.includes("ACO INDUSTRIAL")) return ORGANICO_EMPRESA_SO_ACO;
-  if (norm.includes("SO MOVEIS") || norm.includes("MOVEIS")) return "SÓ MÓVEIS";
-  if (norm.includes("REFRIGER")) return "SO REFRIGERAÇÃO";
-  if (norm.includes("RN MARQUES") || norm.includes("R N MARQUES")) return "R N MARQUES ARAUJO";
-  if (norm === "LOJA" || norm.startsWith("LOJA ") || norm.includes(" LOJA")) return "LOJA";
   return raw;
 }
 
@@ -34,20 +57,8 @@ export function resolveEmpresaFromOrganicoCells(input: {
   diretoria?: string | null;
   historicoLocal?: boolean;
 }): string {
-  const setor = normalizeEmpresaText(String(input.setor ?? "").trim());
-  const area = normalizeEmpresaText(String(input.area ?? "").trim());
-  const diretoria = normalizeEmpresaText(String(input.diretoria ?? "").trim());
-  const joined = `${setor} ${area} ${diretoria}`;
-
-  if (joined.includes("REFRIGER")) return normalizeEmpresaTabName("SO REFRIGERAÇÃO");
-  if (joined.includes("MOVEIS") || joined.includes("MOVEL")) return normalizeEmpresaTabName("SÓ MÓVEIS");
-  if (joined.includes("RN MARQUES") || joined.includes("R N MARQUES")) {
-    return normalizeEmpresaTabName("R N MARQUES ARAUJO");
-  }
-  // Unidade Loja (ex.: PAULO CEZAR com ÁREA=LOJA) — fora do organograma da fábrica.
-  if (area === "LOJA" || setor.includes("LOJA")) {
-    return "LOJA";
-  }
+  const especifica = unidadeEspecificaEmpresa([input.setor, input.area, input.diretoria]);
+  if (especifica) return especifica;
   if (input.historicoLocal && String(input.diretoria ?? "").trim()) {
     return normalizeEmpresaTabName(String(input.diretoria ?? "").trim());
   }
@@ -68,9 +79,6 @@ export function resolveEmpresaTabFromSecullumFuncionario(f: {
   area?: string | null;
   [key: string]: unknown;
 }): string {
-  const empresaNomeDireta = String(f.empresaNome ?? "").trim();
-  if (empresaNomeDireta) return normalizeEmpresaTabName(empresaNomeDireta);
-
   const raw = f as Record<string, unknown>;
   const estrutura = String(
     raw.Estrutura && typeof raw.Estrutura === "object"
@@ -82,7 +90,7 @@ export function resolveEmpresaTabFromSecullumFuncionario(f: {
       ? (raw.Departamento as Record<string, unknown>).Descricao ?? ""
       : "",
   ).trim();
-  const empresa = String(
+  const empresaExtra = String(
     raw.EmpresaDescricao ??
       raw.empresaDescricao ??
       raw.Empresa ??
@@ -91,9 +99,17 @@ export function resolveEmpresaTabFromSecullumFuncionario(f: {
       raw.filialDescricao ??
       "",
   ).trim();
-  return resolveEmpresaFromOrganicoCells({
-    setor: String(f.setor ?? ""),
-    area: String(f.area ?? ""),
-    diretoria: `${empresa} ${estrutura} ${departamento}`,
-  });
+  const empresaNomeDireta = String(f.empresaNome ?? "").trim();
+  const especifica = unidadeEspecificaEmpresa([
+    empresaNomeDireta,
+    empresaExtra,
+    f.setor,
+    f.area,
+    estrutura,
+    departamento,
+  ]);
+  if (especifica) return especifica;
+  if (empresaNomeDireta) return normalizeEmpresaTabName(empresaNomeDireta);
+  if (empresaExtra) return normalizeEmpresaTabName(empresaExtra);
+  return ORGANICO_EMPRESA_SO_ACO;
 }

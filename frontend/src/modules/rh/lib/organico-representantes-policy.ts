@@ -50,10 +50,41 @@ export function isOrganicoRepresentanteNegado(nomeFantasia: string, nomeRazaoSoc
   return labels.some((label) => ORGANICO_REPRESENTANTES_NEGADOS.has(label));
 }
 
+const EMPRESAS_INTERNAS_GRUPO = new Set([
+  "SO ACO",
+  "SO ACO INDUSTRIAL",
+  "SO MOVEIS",
+  "SO REFRIGERACAO",
+  "R N MARQUES",
+  "R N MARQUES ARAUJO",
+  "RN MARQUES",
+]);
+
+function semSufixoJuridico(label: string): string {
+  return label
+    .replace(/\b(LTDA|ME|EPP|EIRELI|SA|S A)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Cadastro interno do grupo usado no Nomus para emitir pedido, não é representante comercial. */
+export function isRegistroEmpresaInternaGrupo(nomeFantasia: string, nomeRazaoSocial: string): boolean {
+  const labels = [nomeFantasia, nomeRazaoSocial]
+    .map((item) => normalizeRepresentanteLabel(item))
+    .filter(Boolean);
+  for (const label of labels) {
+    if (label.includes("CONTROLE DE ESTOQUE")) return true;
+    if (label.includes("EMISSAO DE PEDIDOS")) return true;
+    if (EMPRESAS_INTERNAS_GRUPO.has(semSufixoJuridico(label))) return true;
+  }
+  return false;
+}
+
 export function shouldIncludeOrganicoRepresentante(nomeFantasia: string, nomeRazaoSocial: string): boolean {
   const fantasia = String(nomeFantasia ?? "").trim();
   const razao = String(nomeRazaoSocial ?? "").trim();
   if (!fantasia && !razao) return false;
+  if (isRegistroEmpresaInternaGrupo(fantasia, razao)) return false;
   return !isOrganicoRepresentanteNegado(fantasia, razao);
 }
 
