@@ -33,6 +33,7 @@ export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/decomposicao', label: 'Ordem de produção' },
   { kind: 'link', to: '/pedidos/gondolas-porta-paletes', label: 'Gôndolas e porta-paletes' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
+  { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Acompanhamento de solicitação' },
   {
     kind: 'submenu',
     label: 'Estoque',
@@ -44,7 +45,6 @@ export const PCP_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/pedidos/ressup-almox', label: 'Ressuprimento Almox' },
       { kind: 'link', to: '/pedidos/ressup-nao-almox', label: 'Ressup Não Almox' },
       { kind: 'link', to: '/pedidos/consulta-estoque', label: 'Consulta de Estoque' },
-      { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Acompanhamento de solicitação' },
     ],
   },
   {
