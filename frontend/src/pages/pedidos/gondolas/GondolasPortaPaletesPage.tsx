@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Printer, RefreshCw, Upload, Warehouse } from 'lucide-react';
+import { ChevronDown, Download, Printer, RefreshCw, Upload, Warehouse } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PERMISSOES } from '../../../config/permissoes';
 import { ComoLerBtn } from '../../../components/AjudaTelaModal';
@@ -11,6 +11,7 @@ import GradeFiltroExcelPortal from '../../../components/grade/GradeFiltroExcelPo
 import { MensagemSemRegistros } from '../../../components/MensagemSemRegistros';
 import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import {
+  baixarPlanilhaModeloGondolas,
   detalharItemGondola,
   importarPlanilhaGondola,
   listarItensGondolas,
@@ -109,6 +110,8 @@ export default function GondolasPortaPaletesPage() {
   const [setor, setSetor] = useState<'' | SetorGondola>('');
   const [ajuda, setAjuda] = useState(false);
   const [importando, setImportando] = useState<SetorGondola | null>(null);
+  const [baixandoPlanilha, setBaixandoPlanilha] = useState(false);
+  const [menuModelo, setMenuModelo] = useState(false);
   const [avisoImportacao, setAvisoImportacao] = useState<string | null>(null);
 
   const [detalheId, setDetalheId] = useState<number | null>(null);
@@ -187,8 +190,6 @@ export default function GondolasPortaPaletesPage() {
   }, []);
 
   const carregarFicha = useCallback(async (item: ItemCarteiraGondola) => {
-    const cache = detalheCacheRef.current.get(item.idItem);
-    if (cache) return cache;
     const data = await detalharItemGondola(item.idItem);
     detalheCacheRef.current.set(item.idItem, data);
     return data;
@@ -203,7 +204,6 @@ export default function GondolasPortaPaletesPage() {
     setErroOrdem(null);
     try {
       await imprimirOrdemGondolas(detalhes);
-      setOrdemAberta(false);
     } catch (e) {
       setErroOrdem(e instanceof Error ? e.message : 'Erro ao gerar a ordem.');
     } finally {
@@ -214,11 +214,6 @@ export default function GondolasPortaPaletesPage() {
   async function abrirItem(item: ItemCarteiraGondola) {
     setDetalheId(item.idItem);
     setErroDetalhe(null);
-    const cache = detalheCacheRef.current.get(item.idItem);
-    if (cache) {
-      setDetalhe(cache);
-      return;
-    }
     setDetalhe(null);
     setCarregandoDetalhe(true);
     try {
@@ -248,6 +243,19 @@ export default function GondolasPortaPaletesPage() {
       setErro(e instanceof Error ? e.message : 'Erro ao importar a planilha.');
     } finally {
       setImportando(null);
+    }
+  }
+
+  async function baixarPlanilha(setorModelo: SetorGondola) {
+    setMenuModelo(false);
+    setBaixandoPlanilha(true);
+    setErro(null);
+    try {
+      await baixarPlanilhaModeloGondolas(setorModelo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao baixar a planilha.');
+    } finally {
+      setBaixandoPlanilha(false);
     }
   }
 
@@ -353,6 +361,42 @@ export default function GondolasPortaPaletesPage() {
               porta-paletes
             </span>
           </p>
+          <div className="relative">
+            <button
+              type="button"
+              disabled={baixandoPlanilha}
+              onClick={() => setMenuModelo((aberto) => !aberto)}
+              aria-haspopup="menu"
+              aria-expanded={menuModelo}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-soaco-gray/40 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:text-slate-100 dark:hover:bg-soaco-navy/60"
+              title="Baixar a última planilha guardada no Gestão"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {baixandoPlanilha ? 'Baixando…' : 'Baixar modelo'}
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            {menuModelo && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuModelo(false)} />
+                <div
+                  role="menu"
+                  className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-lg border border-soaco-gray/40 bg-white py-1 shadow-lg dark:bg-soaco-graphite"
+                >
+                  {(['Gôndolas', 'Porta Paletes'] as const).map((opcao) => (
+                    <button
+                      key={opcao}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void baixarPlanilha(opcao)}
+                      className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-soaco-navy/60"
+                    >
+                      {opcao === 'Gôndolas' ? 'Gôndolas' : 'Porta-paletes'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-soaco-gray/40 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-soaco-navy/60">
             <Upload className="h-3.5 w-3.5" />
             {importando === 'Gôndolas' ? 'Importando…' : 'Importar gôndolas'}

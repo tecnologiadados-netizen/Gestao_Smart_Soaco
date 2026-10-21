@@ -52,6 +52,7 @@ import {
 import {
   getGondolasItemDetalhe,
   getGondolasItens,
+  getGondolasPlanilhaModelo,
   postGondolasPlanilha,
   putGondolasMedida,
 } from '../controllers/gondolasPortaPaleteController.js';
@@ -188,6 +189,7 @@ router.get(
 
 router.get('/gondolas-porta-paletes/itens', podeGondolas, async503(getGondolasItens));
 router.get('/gondolas-porta-paletes/itens/:idItem', podeGondolas, async503(getGondolasItemDetalhe));
+router.get('/gondolas-porta-paletes/planilha-modelo', podeGondolas, async503(getGondolasPlanilhaModelo));
 router.post(
   '/gondolas-porta-paletes/planilha',
   validateCsrf,

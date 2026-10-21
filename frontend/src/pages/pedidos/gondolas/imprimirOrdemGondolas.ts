@@ -7,6 +7,8 @@ type LinhaOrdem = {
   descricao: string;
   materiaPrima: string;
   medida: string;
+  modelo: string;
+  observacao: string;
   quantidadeTotal: number;
 };
 
@@ -41,6 +43,8 @@ function linhasDoDetalhe(detalhe: DetalheItemGondola): LinhaOrdem[] {
         descricao: detalhe.item.descricao || 'Sem componentes na ficha',
         materiaPrima: '',
         medida: '—',
+        modelo: '',
+        observacao: '',
         quantidadeTotal: detalhe.item.qtdePendenteReal,
       },
     ];
@@ -50,6 +54,8 @@ function linhasDoDetalhe(detalhe: DetalheItemGondola): LinhaOrdem[] {
     descricao: componente.descricao || componente.codigo || '—',
     materiaPrima: componente.materiaPrima,
     medida: medida(componente),
+    modelo: (componente.modelo ?? '').trim(),
+    observacao: (componente.observacao ?? '').trim(),
     quantidadeTotal: componente.quantidadeTotal,
   }));
 }
@@ -58,18 +64,27 @@ function chaveConsolidada(linha: LinhaOrdem): string {
   return [linha.descricao, linha.materiaPrima, linha.medida].join('|');
 }
 
-function consolidar(linhas: LinhaOrdem[]): LinhaOrdem[] {
+/** Soma a mesma peça numa linha só. No pedido mantém a ordem da ficha e junta as observações. */
+function somarPecasIguais(linhas: LinhaOrdem[]): LinhaOrdem[] {
   const mapa = new Map<string, LinhaOrdem>();
   for (const linha of linhas) {
     const chave = chaveConsolidada(linha);
     const atual = mapa.get(chave);
-    if (atual) {
-      atual.quantidadeTotal += linha.quantidadeTotal;
+    if (!atual) {
+      mapa.set(chave, { ...linha });
       continue;
     }
-    mapa.set(chave, { ...linha, pedido: 'Consolidado', cliente: '' });
+    atual.quantidadeTotal += linha.quantidadeTotal;
+    if (atual.modelo !== linha.modelo) atual.modelo = '';
+    if (linha.observacao && !atual.observacao.split('; ').includes(linha.observacao)) {
+      atual.observacao = atual.observacao ? `${atual.observacao}; ${linha.observacao}` : linha.observacao;
+    }
   }
-  return [...mapa.values()].sort(
+  return [...mapa.values()];
+}
+
+function consolidar(linhas: LinhaOrdem[]): LinhaOrdem[] {
+  return somarPecasIguais(linhas.map((linha) => ({ ...linha, pedido: 'Consolidado', cliente: '', observacao: '' }))).sort(
     (a, b) =>
       a.descricao.localeCompare(b.descricao, 'pt-BR') || a.materiaPrima.localeCompare(b.materiaPrima, 'pt-BR')
   );
@@ -126,10 +141,10 @@ function folha(
       <tr>
         <td class="cell-strong">${esc(linha.pedido)}</td>
         <td>${esc(linha.descricao)}</td>
-        <td>—</td>
+        <td>${esc(linha.modelo || '—')}</td>
         <td>${esc(linha.materiaPrima || '—')}</td>
         <td>${esc(linha.medida)}</td>
-        <td>—</td>
+        <td>${esc(linha.observacao || '—')}</td>
         <td class="text-right font-mono">${num(linha.quantidadeTotal)}</td>
       </tr>`
     )
@@ -184,7 +199,16 @@ export async function imprimirOrdemGondolas(detalhes: DetalheItemGondola[]): Pro
     .map((pedido) => {
       const doPedido = linhas.filter((linha) => linha.pedido === pedido);
       const cliente = doPedido[0]?.cliente || '—';
-      return folha(`Detalhamento — pedido ${pedido}`, doPedido, [pedido], cliente, data, hora, logo, true);
+      return folha(
+        `Detalhamento — pedido ${pedido}`,
+        somarPecasIguais(doPedido),
+        [pedido],
+        cliente,
+        data,
+        hora,
+        logo,
+        true
+      );
     })
     .join('');
 

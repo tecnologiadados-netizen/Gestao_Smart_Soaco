@@ -9,6 +9,7 @@ export type LinhaPlanilha = {
   medida02: string;
   pesoPeca: number;
   codigoNomus: string;
+  modelo?: string;
 };
 
 export type ComponenteDetalhe = {
@@ -20,6 +21,7 @@ export type ComponenteDetalhe = {
   materiaPrima: string;
   medida01: string;
   medida02: string;
+  modelo?: string;
 };
 
 /** Casa `PI 2860.2` com `PI 2860`, como na planilha de inspiração. */
@@ -113,5 +115,64 @@ export function componentesDaPlanilha(
       materiaPrima: linha.materiaPrima,
       medida01: linha.medida01,
       medida02: linha.medida02,
+      modelo: linha.modelo ?? '',
     }));
+}
+
+export type PecaListaFilha = {
+  codigoPai: string;
+  codigo: string;
+  descricao: string;
+  tipo: 'PI' | 'PP';
+  quantidade: number;
+};
+
+/** Junta os PI/PP da lista de cada componente, logo abaixo do componente. Não repete o que a lista do pai já trouxe. */
+export function incluirPecasDasListasFilhas(
+  componentes: ComponenteDetalhe[],
+  filhos: PecaListaFilha[],
+  qtdeReal: number
+): ComponenteDetalhe[] {
+  const filhosPorPai = new Map<string, PecaListaFilha[]>();
+  for (const filho of filhos) {
+    if (!filho.codigo.trim() || filho.codigo.toUpperCase() === filho.codigoPai.toUpperCase()) continue;
+    const chavePai = filho.codigoPai.toUpperCase();
+    const lista = filhosPorPai.get(chavePai) ?? [];
+    lista.push(filho);
+    filhosPorPai.set(chavePai, lista);
+  }
+
+  const jaNaListaPai = new Set(componentes.map((componente) => `${componente.tipo}|${componente.codigo.toUpperCase()}`));
+  const saida: ComponenteDetalhe[] = [];
+  const indiceExtra = new Map<string, number>();
+
+  for (const componente of componentes) {
+    saida.push({ ...componente });
+    for (const filho of filhosPorPai.get(componente.codigo.toUpperCase()) ?? []) {
+      const chave = `${filho.tipo}|${filho.codigo.toUpperCase()}`;
+      if (jaNaListaPai.has(chave)) continue;
+      const quantidade = filho.quantidade * componente.quantidade;
+      const existente = indiceExtra.get(chave);
+      if (existente != null) {
+        const atual = saida[existente];
+        if (!atual) continue;
+        atual.quantidade += quantidade;
+        atual.quantidadeTotal = multiplicarPelaCarteira(atual.quantidade, qtdeReal);
+        continue;
+      }
+      indiceExtra.set(chave, saida.length);
+      saida.push({
+        codigo: filho.codigo,
+        descricao: filho.descricao,
+        tipo: filho.tipo,
+        quantidade,
+        quantidadeTotal: multiplicarPelaCarteira(quantidade, qtdeReal),
+        materiaPrima: '',
+        medida01: '',
+        medida02: '',
+      });
+    }
+  }
+
+  return saida;
 }

@@ -2,7 +2,13 @@ import type { Request, Response } from 'express';
 import { buscarItemCarteira, listarItensCarteira } from '../pcp/gondolas/carteiraItens.js';
 import { montarDetalheItem } from '../pcp/gondolas/detalheItem.js';
 import { paisComListaProducao } from '../pcp/gondolas/fichaNomus.js';
-import { lerPlanilhaXlsx, linhasDoSetor, resumoPlanilha, salvarPlanilhaSetor } from '../pcp/gondolas/fichaPlanilha.js';
+import {
+  gerarPlanilhaModeloXlsx,
+  lerPlanilhaXlsx,
+  linhasDoSetor,
+  resumoPlanilha,
+  salvarPlanilhaSetor,
+} from '../pcp/gondolas/fichaPlanilha.js';
 import { classificarSetor, origemDaFicha } from '../pcp/gondolas/regras.js';
 import { salvarMedidaPeca } from '../pcp/gondolas/medidasPeca.js';
 
@@ -53,6 +59,19 @@ export async function getGondolasItemDetalhe(req: Request, res: Response) {
   res.json(detalhe.detalhe);
 }
 
+export async function getGondolasPlanilhaModelo(req: Request, res: Response) {
+  const setor = classificarSetor(String(req.query.setor ?? ''));
+  if (!setor) {
+    res.status(400).json({ error: 'Informe o setor: Gôndolas ou Porta Paletes.' });
+    return;
+  }
+  const data = new Date().toISOString().slice(0, 10);
+  const nome = setor === 'Gôndolas' ? 'gondolas' : 'porta-paletes';
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="ficha-${nome}-${data}.xlsx"`);
+  res.send(gerarPlanilhaModeloXlsx(setor));
+}
+
 export async function postGondolasPlanilha(req: Request, res: Response) {
   const setor = classificarSetor(String(req.body?.setor ?? ''));
   const arquivo = req.file;
@@ -64,7 +83,7 @@ export async function postGondolasPlanilha(req: Request, res: Response) {
     res.status(400).json({ error: 'Envie a planilha .xlsx da ficha.' });
     return;
   }
-  const linhas = lerPlanilhaXlsx(arquivo.buffer);
+  const linhas = lerPlanilhaXlsx(arquivo.buffer, setor);
   if (linhas.length === 0) {
     res.status(400).json({ error: 'A planilha não tem linhas com código do produto.' });
     return;

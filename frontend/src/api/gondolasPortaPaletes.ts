@@ -31,6 +31,8 @@ export type ComponenteFicha = {
   materiaPrima: string;
   medida01: string;
   medida02: string;
+  modelo?: string;
+  observacao?: string;
 };
 
 export type DetalheItemGondola = {
@@ -65,7 +67,32 @@ export async function salvarMedidaPecaGondola(
 }
 
 export async function detalharItemGondola(idItem: number): Promise<DetalheItemGondola> {
-  return apiJson(`/api/pcp/gondolas-porta-paletes/itens/${idItem}`);
+  return apiJson(`/api/pcp/gondolas-porta-paletes/itens/${idItem}`, { cache: 'no-store' });
+}
+
+export async function baixarPlanilhaModeloGondolas(setor: SetorGondola): Promise<void> {
+  const token = getStoredToken();
+  const query = new URLSearchParams({ setor }).toString();
+  const res = await fetch(`${getApiBase()}/api/pcp/gondolas-porta-paletes/planilha-modelo?${query}`, {
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || 'Não foi possível baixar a planilha.');
+  }
+  const blob = await res.blob();
+  const nome =
+    res.headers.get('content-disposition')?.match(/filename="?([^"]+)"?/i)?.[1] ??
+    `ficha-${setor === 'Gôndolas' ? 'gondolas' : 'porta-paletes'}.xlsx`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function importarPlanilhaGondola(

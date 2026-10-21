@@ -3,6 +3,7 @@ import {
   chaveFicha,
   classificarSetor,
   componentesDaPlanilha,
+  incluirPecasDasListasFilhas,
   itemTemFicha,
   origemDaFicha,
   qtdePendenteReal,
@@ -73,5 +74,34 @@ describe('ficha de gôndolas e porta-paletes', () => {
     expect(linhas).toHaveLength(1);
     expect(linhas[0]?.descricao).toBe('BANDA DA COLUNA');
     expect(linhas[0]?.quantidadeTotal).toBe(6);
+  });
+
+  it('inclui o PP da lista de produção de cada PI', () => {
+    const pi = {
+      codigo: 'PI 0015',
+      descricao: 'MÃO FRANCESA',
+      tipo: 'PI' as const,
+      quantidade: 16,
+      quantidadeTotal: 16,
+      materiaPrima: '',
+      medida01: '',
+      medida02: '',
+    };
+    const lista = incluirPecasDasListasFilhas(
+      [pi],
+      [
+        {
+          codigoPai: 'PI 0015',
+          codigo: 'PP 2308',
+          descricao: 'MÃO FRANCESA SEM PINTURA',
+          tipo: 'PP',
+          quantidade: 1,
+        },
+      ],
+      1
+    );
+    expect(lista.map((peca) => peca.codigo)).toEqual(['PI 0015', 'PP 2308']);
+    expect(lista[1]?.quantidade).toBe(16);
+    expect(lista[1]?.quantidadeTotal).toBe(16);
   });
 });

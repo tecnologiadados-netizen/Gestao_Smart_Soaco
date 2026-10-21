@@ -16,6 +16,8 @@ function chaveMedida(codigo: string): string {
   return texto;
 }
 
+type TipoImpressao = 'PI' | 'PP' | 'ambos';
+
 type PecaLinha = {
   chave: string;
   idItem: number;
@@ -28,6 +30,7 @@ type PecaLinha = {
   materiaPrima: string;
   medida01: string;
   medida02: string;
+  modelo: string;
   quantidadeTotal: number;
   origem: DetalheItemGondola['origem'];
 };
@@ -45,6 +48,7 @@ function pecasDoDetalhe(detalhe: DetalheItemGondola): PecaLinha[] {
     materiaPrima: componente.materiaPrima,
     medida01: componente.medida01,
     medida02: componente.medida02,
+    modelo: componente.modelo ?? '',
     quantidadeTotal: componente.quantidadeTotal,
     origem: detalhe.origem,
   }));
@@ -79,9 +83,13 @@ export default function ModalGerarOrdem({
   const [rascunho, setRascunho] = useState({ medida01: '', medida02: '' });
   const [salvandoMedida, setSalvandoMedida] = useState(false);
   const [erroMedida, setErroMedida] = useState<string | null>(null);
+  const [escolhendoTipo, setEscolhendoTipo] = useState(false);
+  const [observacoes, setObservacoes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!aberto) return;
+    setEscolhendoTipo(false);
+    setObservacoes({});
     setSetor(null);
     setBusca('');
     setDetalhes([]);
@@ -158,6 +166,24 @@ export default function ModalGerarOrdem({
     return [...mapa.values()];
   }, [pecasVisiveis]);
 
+  const chavesParaImprimir = useMemo(
+    () => new Set(pecasVisiveis.filter((peca) => marcados.has(peca.chave)).map((peca) => peca.chave)),
+    [pecasVisiveis, marcados]
+  );
+
+  const marcadosPorTipo = useMemo(() => {
+    let pi = 0;
+    let pp = 0;
+    for (const detalhe of detalhes) {
+      detalhe.componentes.forEach((componente, indice) => {
+        if (!chavesParaImprimir.has(`${detalhe.item.idItem}|${indice}`)) return;
+        if (componente.tipo === 'PI') pi += 1;
+        else if (componente.tipo === 'PP') pp += 1;
+      });
+    }
+    return { pi, pp };
+  }, [detalhes, chavesParaImprimir]);
+
   if (!aberto) return null;
 
   const gondolas = itens.filter((item) => item.setor === 'Gôndolas').length;
@@ -217,11 +243,25 @@ export default function ModalGerarOrdem({
     }
   }
 
-  function confirmar() {
+  function confirmar(tipos: TipoImpressao) {
+    setEscolhendoTipo(false);
     const escolhidos = detalhes
       .map((detalhe) => ({
         ...detalhe,
-        componentes: detalhe.componentes.filter((_, indice) => marcados.has(`${detalhe.item.idItem}|${indice}`)),
+        componentes: detalhe.componentes
+          .map((componente, indice) => ({
+            componente: {
+              ...componente,
+              observacao: (observacoes[`${detalhe.item.idItem}|${indice}`] ?? '').trim(),
+            },
+            chave: `${detalhe.item.idItem}|${indice}`,
+          }))
+          .filter(
+            ({ componente, chave }) =>
+              chavesParaImprimir.has(chave) &&
+              (tipos === 'ambos' || componente.tipo === '' || componente.tipo === tipos)
+          )
+          .map(({ componente }) => componente),
       }))
       .filter((detalhe) => detalhe.componentes.length > 0);
     onGerar(escolhidos);
@@ -292,7 +332,8 @@ export default function ModalGerarOrdem({
                 onChange={(e) => setBusca(e.target.value)}
               />
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                {marcados.size.toLocaleString('pt-BR')} de {pecas.length.toLocaleString('pt-BR')} peças marcadas
+                {chavesParaImprimir.size.toLocaleString('pt-BR')} de {pecasVisiveis.length.toLocaleString('pt-BR')} peças
+                marcadas{busca.trim() ? ' no filtro' : ''}
               </p>
             </div>
 
@@ -304,7 +345,7 @@ export default function ModalGerarOrdem({
               ) : pecas.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-slate-500">Nenhuma peça de ficha neste setor.</p>
               ) : (
-                <table className="w-full min-w-[860px] text-left text-sm">
+                <table className="w-full min-w-[1100px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-soaco-navy text-xs text-white">
                     <tr>
                       <th className="w-12 px-3 py-2">
@@ -322,9 +363,11 @@ export default function ModalGerarOrdem({
                         />
                       </th>
                       <th className="px-3 py-2 font-semibold">Descrição da peça</th>
+                      <th className="px-3 py-2 font-semibold">Modelo</th>
                       <th className="px-3 py-2 font-semibold">Matéria-prima</th>
                       <th className="px-3 py-2 text-right font-semibold">Medida 01</th>
                       <th className="px-3 py-2 text-right font-semibold">Medida 02</th>
+                      <th className="px-3 py-2 font-semibold">Observações</th>
                       <th className="px-3 py-2 text-right font-semibold">Qtd total</th>
                     </tr>
                   </thead>
@@ -344,7 +387,7 @@ export default function ModalGerarOrdem({
                                 className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
                               />
                             </td>
-                            <td colSpan={5} className="px-3 py-2 font-semibold text-white">
+                            <td colSpan={7} className="px-3 py-2 font-semibold text-white">
                               {grupo.pedido}
                               <span className="ml-2 font-normal text-slate-300">{grupo.cliente}</span>
                             </td>
@@ -353,7 +396,16 @@ export default function ModalGerarOrdem({
                             <Fragment key={`${grupo.pedido}-${item.codigo}`}>
                               <tr className="bg-soaco-navy/25">
                                 <td />
-                                <td colSpan={5} className="px-3 py-1.5 text-xs text-slate-300">
+                                <td colSpan={7} className="px-3 py-1.5 text-xs text-slate-300">
+                                  {item.pecas[0]?.origem === 'nomus' ? (
+                                    <span className="mr-2 rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                      Nomus
+                                    </span>
+                                  ) : item.pecas[0]?.origem === 'planilha' ? (
+                                    <span className="mr-2 rounded bg-[#FFAD00] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-black">
+                                      Planilha
+                                    </span>
+                                  ) : null}
                                   <span className="font-semibold text-slate-100">{item.codigo}</span>
                                   {item.descricao ? ` · ${item.descricao}` : ''}
                                 </td>
@@ -375,6 +427,7 @@ export default function ModalGerarOrdem({
                                       <span className="ml-2 text-xs text-slate-400">{peca.codigo}</span>
                                     ) : null}
                                   </td>
+                                  <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{peca.modelo || '—'}</td>
                                   <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{peca.materiaPrima || '—'}</td>
                                   <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
                                     {editando === peca.chave ? (
@@ -436,6 +489,17 @@ export default function ModalGerarOrdem({
                                       </span>
                                     )}
                                   </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      value={observacoes[peca.chave] ?? ''}
+                                      onChange={(e) =>
+                                        setObservacoes((atual) => ({ ...atual, [peca.chave]: e.target.value }))
+                                      }
+                                      placeholder="Observação"
+                                      aria-label={`Observação de ${peca.descricao} do ${peca.pedido}`}
+                                      className="h-8 w-full min-w-[9rem] rounded border border-soaco-gray/40 bg-white px-2 text-sm text-slate-900 placeholder:text-slate-400 dark:bg-black dark:text-white"
+                                    />
+                                  </td>
                                   <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900 dark:text-white">
                                     {fmt(peca.quantidadeTotal)}
                                   </td>
@@ -457,15 +521,42 @@ export default function ModalGerarOrdem({
           <p className="px-5 py-2 text-sm text-red-600 dark:text-red-300">{erroMedida || erro}</p>
         )}
 
+        {escolhendoTipo && (
+          <div className="border-t border-soaco-gray/25 bg-slate-50 px-5 py-3 dark:bg-black/40">
+            <p className="text-sm font-semibold text-slate-800 dark:text-white">O que deseja imprimir?</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ['PI', 'Apenas PI', marcadosPorTipo.pi],
+                  ['PP', 'Apenas PP', marcadosPorTipo.pp],
+                ] as const
+              ).map(([tipo, rotulo, quantidade]) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  disabled={gerando || quantidade === 0}
+                  onClick={() => confirmar(tipo)}
+                  className="rounded-lg border border-soaco-gray/40 bg-white px-3 py-2.5 text-left transition hover:border-primary-500 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-soaco-graphite dark:hover:bg-soaco-navy/60"
+                >
+                  <span className="block text-sm font-semibold text-slate-900 dark:text-white">{rotulo}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-300">
+                    {quantidade.toLocaleString('pt-BR')} {quantidade === 1 ? 'peça marcada' : 'peças marcadas'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2 border-t border-soaco-gray/25 px-5 py-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={escolhendoTipo ? () => setEscolhendoTipo(false) : onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-soaco-navy/60"
           >
             Cancelar
           </button>
-          {setor != null && (
+          {setor != null && !escolhendoTipo && (
             <button
               type="button"
               onClick={() => setSetor(null)}
@@ -474,11 +565,14 @@ export default function ModalGerarOrdem({
               Trocar setor
             </button>
           )}
-          {setor != null && (
+          {setor != null && !escolhendoTipo && (
             <button
               type="button"
-              disabled={gerando || carregandoPecas || marcados.size === 0}
-              onClick={confirmar}
+              disabled={gerando || carregandoPecas || chavesParaImprimir.size === 0}
+              onClick={() => {
+                if (marcadosPorTipo.pi + marcadosPorTipo.pp === 0) confirmar('ambos');
+                else setEscolhendoTipo(true);
+              }}
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
             >
               {gerando ? 'Gerando…' : 'Gerar ordem'}

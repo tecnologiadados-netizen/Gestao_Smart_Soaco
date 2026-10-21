@@ -88,9 +88,43 @@ function valorColuna(row: Record<string, unknown>, nomes: string[]): unknown {
   return undefined;
 }
 
-export function lerPlanilhaXlsx(buffer: Buffer): LinhaPlanilha[] {
+function nomeAbaSetor(setor: SetorGondola): string {
+  return setor === 'Gôndolas' ? 'Gôndolas' : 'Porta-paletes';
+}
+
+export function gerarPlanilhaModeloXlsx(setor: SetorGondola): Buffer {
+  const cabecalhos = [
+    'Código PA',
+    'Descrição da peça',
+    'Quantidade',
+    'Espessura/Matéria Prima',
+    'Medida 01 [mm]',
+    'Medida 02 [mm]',
+    'Modelo',
+  ];
+  const dados = linhasDoSetor(setor).map((linha) => [
+    linha.codigo,
+    linha.descricaoPeca,
+    linha.quantidade,
+    linha.materiaPrima,
+    linha.medida01,
+    linha.medida02,
+    linha.modelo ?? '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([cabecalhos, ...dados]);
+  ws['!cols'] = [{ wch: 18 }, { wch: 55 }, { wch: 12 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 20 }];
+  ws['!autofilter'] = { ref: `A1:G${Math.max(1, dados.length + 1)}` };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, nomeAbaSetor(setor));
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+export function lerPlanilhaXlsx(buffer: Buffer, setor?: SetorGondola): LinhaPlanilha[] {
   const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0] ?? ''];
+  const abaSetor = setor
+    ? wb.SheetNames.find((nome) => nome.trim().toLowerCase() === nomeAbaSetor(setor).toLowerCase())
+    : undefined;
+  const ws = wb.Sheets[abaSetor ?? wb.SheetNames[0] ?? ''];
   if (!ws) return [];
   const cru = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1 });
   let header = 0;
@@ -137,6 +171,7 @@ export function lerPlanilhaXlsx(buffer: Buffer): LinhaPlanilha[] {
         valorColuna(row, ['Peso da peça', 'Peso Peca', 'Peso', 'Peso Unitário', 'Peso Unit'])
       ),
       codigoNomus: texto(valorColuna(row, ['Código Nomus', 'Codigo Nomus'])),
+      modelo: texto(valorColuna(row, ['Modelo', 'Model'])),
     }))
     .filter((linha) => linha.codigo);
 }

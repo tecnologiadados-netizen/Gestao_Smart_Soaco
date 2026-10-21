@@ -2,6 +2,7 @@ import type { RowDataPacket } from 'mysql2';
 import { getNomusPool, isNomusEnabled } from '../../config/nomusDb.js';
 import {
   chaveFicha,
+  incluirPecasDasListasFilhas,
   multiplicarPelaCarteira,
   tipoComponente,
   type ComponenteDetalhe,
@@ -19,6 +20,54 @@ type LinhaNomus = {
 function numero(valor: unknown): number {
   const n = Number(valor);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** PP (e PI) da lista de produção de cada componente da ficha do pai. */
+async function incluirPecasDasListasPi(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  componentes: ComponenteDetalhe[],
+  qtdeReal: number
+): Promise<ComponenteDetalhe[]> {
+  const codigos = [...new Set(componentes.map((componente) => componente.codigo.trim()).filter(Boolean))];
+  if (codigos.length === 0) return componentes;
+  const ph = codigos.map(() => '?').join(', ');
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+    SELECT
+      TRIM(pai.nome) AS codigoPai,
+      TRIM(comp.nome) AS codigo,
+      TRIM(comp.descricao) AS descricao,
+      tp.nome AS tipoNome,
+      CAST(REPLACE(IFNULL(pq.qtdeNecessaria, '0'), ',', '.') AS DECIMAL(18, 6)) AS quantidade
+    FROM produto pai
+    INNER JOIN listamateriais lm
+      ON lm.idProduto = pai.id
+      AND lm.padrao = 1
+      AND lm.descricao LIKE 'Lista%Produ__o'
+    INNER JOIN produtoqtde pq ON pq.idListaMateriais = lm.id
+    INNER JOIN produto comp ON comp.id = pq.idProdutoComponente AND comp.ativo = 1
+    INNER JOIN tipoproduto tp
+      ON tp.id = comp.idTipoProduto
+      AND tp.nome IN ('Produto intermediário', 'Produto em processo')
+    WHERE pai.ativo = 1
+      AND UPPER(TRIM(pai.nome)) IN (${ph})
+    `,
+    codigos.map((codigo) => codigo.toUpperCase())
+  );
+  const filhos = rows.flatMap((row) => {
+    const tipo = tipoComponente(String(row.tipoNome ?? ''));
+    if (!tipo) return [];
+    return [
+      {
+        codigoPai: String(row.codigoPai ?? '').trim(),
+        codigo: String(row.codigo ?? '').trim(),
+        descricao: String(row.descricao ?? '').trim(),
+        tipo,
+        quantidade: numero(row.quantidade),
+      },
+    ];
+  });
+  return incluirPecasDasListasFilhas(componentes, filhos, qtdeReal);
 }
 
 /** Pais que têm lista de produção padrão, para pintar a grade sem abrir cada ficha. */
@@ -67,8 +116,8 @@ export async function paisComListaProducao(
 }
 
 /**
- * Ficha de produção padrão do Nomus. A lista existe mesmo quando não há PI/PP
- * (só matéria-prima, por exemplo): nesse caso a planilha não entra.
+ * Ficha de produção padrão do Nomus: PI e PP da lista do item e, em seguida,
+ * os PI e PP da lista de produção de cada um desses componentes.
  */
 export async function lerFichaProducaoNomus(
   codigoItem: string,
@@ -147,9 +196,8 @@ export async function lerFichaProducaoNomus(
         medida02: '',
       });
     }
-    const componentes = [...porChave.values()].sort(
-      (a, b) => a.tipo.localeCompare(b.tipo) || a.codigo.localeCompare(b.codigo)
-    );
+    const daListaPai = [...porChave.values()];
+    const componentes = await incluirPecasDasListasPi(pool, daListaPai, qtdeReal);
 
     return { disponivel: true, temFicha, componentes };
   } catch (err) {

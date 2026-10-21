@@ -60,6 +60,8 @@ backend/var/rh-geocode-rua-v1.json
 backend/var/rh-geocode-rua-v2.json
 backend/var/rh-geocode-cep-v3.json
 backend/var/rh-geocode-bairro-osm-v1.json
+# Ficha local de gôndolas (override de runtime, não vai para o Git)
+backend/var/gondolas-porta-palete/
 deploy/ssl/*.pem
 deploy/ssl/*.crt
 deploy/ssl/*.key
