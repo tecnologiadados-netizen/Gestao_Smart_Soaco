@@ -87,7 +87,7 @@ export async function excluirQuadroHandler(req: Request, res: Response): Promise
       res.status(400).json({ error: 'Senha incorreta.' });
       return;
     }
-    res.json(await excluirQuadro(String(req.params.id ?? '')));
+    res.json(await excluirQuadro(String(req.params.id ?? ''), ator(req)));
   } catch (err) {
     responder(res, err);
   }
@@ -119,7 +119,7 @@ export async function moverListaHandler(req: Request, res: Response): Promise<vo
 
 export async function excluirListaHandler(req: Request, res: Response): Promise<void> {
   try {
-    res.json(await excluirLista(String(req.params.id ?? '')));
+    res.json(await excluirLista(String(req.params.id ?? ''), ator(req)));
   } catch (err) {
     responder(res, err);
   }
@@ -136,14 +136,19 @@ export async function criarCardHandler(req: Request, res: Response): Promise<voi
 export async function atualizarCardHandler(req: Request, res: Response): Promise<void> {
   try {
     res.json(
-      await atualizarCard(String(req.params.id ?? ''), {
-        titulo: req.body?.titulo,
-        observacao: req.body?.observacao,
-        concluido: req.body?.concluido,
-        checklists: req.body?.checklists,
-        cor: req.body?.cor,
-        prazo: req.body?.prazo,
-      }),
+      await atualizarCard(
+        String(req.params.id ?? ''),
+        {
+          titulo: req.body?.titulo,
+          observacao: req.body?.observacao,
+          concluido: req.body?.concluido,
+          checklists: req.body?.checklists,
+          cor: req.body?.cor,
+          prazo: req.body?.prazo,
+          emailsNotificacao: req.body?.emailsNotificacao,
+        },
+        ator(req),
+      ),
     );
   } catch (err) {
     responder(res, err);
@@ -152,7 +157,9 @@ export async function atualizarCardHandler(req: Request, res: Response): Promise
 
 export async function moverCardHandler(req: Request, res: Response): Promise<void> {
   try {
-    res.json(await moverCard(String(req.params.id ?? ''), String(req.body?.listaId ?? ''), texto(req.body?.antesDeId)));
+    res.json(
+      await moverCard(String(req.params.id ?? ''), String(req.body?.listaId ?? ''), texto(req.body?.antesDeId), ator(req)),
+    );
   } catch (err) {
     responder(res, err);
   }
@@ -160,7 +167,7 @@ export async function moverCardHandler(req: Request, res: Response): Promise<voi
 
 export async function excluirCardHandler(req: Request, res: Response): Promise<void> {
   try {
-    res.json(await excluirCard(String(req.params.id ?? '')));
+    res.json(await excluirCard(String(req.params.id ?? ''), ator(req)));
   } catch (err) {
     responder(res, err);
   }
@@ -171,11 +178,15 @@ export async function anexarPrintHandler(req: Request, res: Response): Promise<v
     const arquivo = req.file;
     if (!arquivo) throw new DemandaErro('Selecione um print.');
     res.json(
-      await anexarPrint(String(req.params.id ?? ''), {
-        buffer: arquivo.buffer,
-        mimetype: arquivo.mimetype,
-        originalname: arquivo.originalname,
-      }),
+      await anexarPrint(
+        String(req.params.id ?? ''),
+        {
+          buffer: arquivo.buffer,
+          mimetype: arquivo.mimetype,
+          originalname: arquivo.originalname,
+        },
+        ator(req),
+      ),
     );
   } catch (err) {
     responder(res, err);
@@ -184,7 +195,7 @@ export async function anexarPrintHandler(req: Request, res: Response): Promise<v
 
 export async function excluirAnexoHandler(req: Request, res: Response): Promise<void> {
   try {
-    res.json(await excluirAnexo(String(req.params.id ?? '')));
+    res.json(await excluirAnexo(String(req.params.id ?? ''), ator(req)));
   } catch (err) {
     responder(res, err);
   }

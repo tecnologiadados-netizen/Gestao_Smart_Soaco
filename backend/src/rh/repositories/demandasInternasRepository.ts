@@ -2,15 +2,63 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../../config/prisma.js';
 import {
   DemandaErro,
+  descreverMudancasCard,
   inserirAntes,
   lerChecklists,
+  lerEmails,
   nomeObrigatorio,
   normalizarChecklists,
   normalizarCor,
+  normalizarEmails,
   normalizarPrazo,
   type Checklist,
 } from '../lib/demandasInternas.js';
 import { deleteRhFileIfExists, rhStoragePath, saveRhFile } from '../utils/rhUpload.js';
+import {
+  carregarSnapshotCardDemanda,
+  registrarMudancasCardDemanda,
+  type SnapshotCardDemanda,
+} from '../../services/demandaCardAlertaEmailService.js';
+
+async function avisarMudancas(cardId: string, descricoes: string[], por: string): Promise<void> {
+  if (!descricoes.length) return;
+  try {
+    const snapshot = await carregarSnapshotCardDemanda(cardId);
+    if (snapshot) registrarMudancasCardDemanda(snapshot, descricoes, por);
+  } catch (err) {
+    console.error('[demandas-internas] aviso por e-mail:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** Antes de apagar cards (card, lista ou quadro), guarda quem precisa ser avisado. */
+async function avisarExclusao(
+  where: { id?: string; listaId?: string; quadroId?: string },
+  descricao: string,
+  por: string,
+): Promise<void> {
+  try {
+    const cards = await prisma.rhDemandaCard.findMany({
+      where: { ...where, emailsNotificacao: { not: '[]' } },
+      include: { lista: { include: { quadro: true } } },
+    });
+    for (const card of cards) {
+      const snapshot: SnapshotCardDemanda = {
+        cardId: card.id,
+        quadroId: card.quadroId,
+        titulo: card.titulo,
+        quadroNome: card.lista.quadro.nome,
+        listaNome: card.lista.nome,
+        prazo: card.prazo || null,
+        concluido: card.concluido,
+        emails: lerEmails(card.emailsNotificacao),
+        excluido: true,
+      };
+      registrarMudancasCardDemanda(snapshot, [descricao], por);
+    }
+  } catch (err) {
+    console.error('[demandas-internas] aviso de exclusão por e-mail:', err instanceof Error ? err.message : err);
+  }
+}
 
 const LISTAS_INICIAIS = ['A fazer', 'Em andamento', 'Concluído'] as const;
 const MIMES_PRINT = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -33,6 +81,7 @@ export type DemandaCard = {
   prazo: string | null;
   ordem: number;
   checklists: Checklist[];
+  emailsNotificacao: string[];
   anexos: DemandaAnexo[];
 };
 
@@ -63,6 +112,7 @@ type CardRow = {
   prazo: string | null;
   ordem: number;
   checklists: string;
+  emailsNotificacao: string;
   anexos: DemandaAnexo[];
 };
 
@@ -78,6 +128,7 @@ function mapearCard(card: CardRow, quadroId: string): DemandaCard {
     prazo: card.prazo || null,
     ordem: card.ordem,
     checklists: lerChecklists(card.checklists),
+    emailsNotificacao: lerEmails(card.emailsNotificacao),
     anexos: card.anexos.map((anexo) => ({
       id: anexo.id,
       nome: anexo.nome,
@@ -175,9 +226,10 @@ export async function renomearQuadro(id: string, nomeBruto: unknown): Promise<De
   return listarDemandas();
 }
 
-export async function excluirQuadro(id: string): Promise<DemandasArvore> {
+export async function excluirQuadro(id: string, por = 'sistema'): Promise<DemandasArvore> {
   const atual = await prisma.rhDemandaQuadro.findUnique({ where: { id } });
   if (!atual) throw new DemandaErro('Quadro não encontrado.', 404);
+  await avisarExclusao({ quadroId: id }, `Card excluído junto com o quadro “${atual.nome}”.`, por);
   await apagarArquivos({ card: { lista: { quadroId: id } } });
   await prisma.rhDemandaQuadro.delete({ where: { id } });
   return listarDemandas();
@@ -222,8 +274,9 @@ export async function moverLista(id: string, antesDeId: string | null): Promise<
   return listarDemandas();
 }
 
-export async function excluirLista(id: string): Promise<DemandasArvore> {
-  await exigirLista(id);
+export async function excluirLista(id: string, por = 'sistema'): Promise<DemandasArvore> {
+  const lista = await exigirLista(id);
+  await avisarExclusao({ listaId: id }, `Card excluído junto com a lista “${lista.nome}”.`, por);
   await apagarArquivos({ card: { listaId: id } });
   await prisma.rhDemandaLista.delete({ where: { id } });
   return listarDemandas();
@@ -252,9 +305,18 @@ export async function criarCard(listaId: string, tituloBruto: unknown, createdBy
 
 export async function atualizarCard(
   id: string,
-  patch: { titulo?: unknown; observacao?: unknown; concluido?: unknown; checklists?: unknown; cor?: unknown; prazo?: unknown },
+  patch: {
+    titulo?: unknown;
+    observacao?: unknown;
+    concluido?: unknown;
+    checklists?: unknown;
+    cor?: unknown;
+    prazo?: unknown;
+    emailsNotificacao?: unknown;
+  },
+  por = 'sistema',
 ): Promise<DemandasArvore> {
-  await exigirCard(id);
+  const antes = await exigirCard(id);
   const data: {
     titulo?: string;
     observacao?: string;
@@ -262,6 +324,7 @@ export async function atualizarCard(
     checklists?: string;
     cor?: string;
     prazo?: string | null;
+    emailsNotificacao?: string;
   } = {};
   if (patch.titulo !== undefined) data.titulo = nomeObrigatorio(patch.titulo, 'o título do card', 200);
   if (patch.observacao !== undefined) data.observacao = String(patch.observacao ?? '').slice(0, 8000);
@@ -269,16 +332,46 @@ export async function atualizarCard(
   if (patch.cor !== undefined) data.cor = normalizarCor(patch.cor);
   if (patch.prazo !== undefined) data.prazo = normalizarPrazo(patch.prazo);
   if (patch.checklists !== undefined) data.checklists = JSON.stringify(normalizarChecklists(patch.checklists));
+  if (patch.emailsNotificacao !== undefined) data.emailsNotificacao = JSON.stringify(normalizarEmails(patch.emailsNotificacao));
   if (Object.keys(data).length) {
-    await prisma.rhDemandaCard.update({ where: { id }, data });
+    const depois = await prisma.rhDemandaCard.update({ where: { id }, data });
+    const estado = (card: typeof antes) => ({
+      titulo: card.titulo,
+      observacao: card.observacao,
+      concluido: card.concluido,
+      prazo: card.prazo || null,
+      checklists: lerChecklists(card.checklists),
+    });
+    await avisarMudancas(id, descreverMudancasCard(estado(antes), estado(depois)), por);
   }
   return listarDemandas();
 }
 
-export async function moverCard(id: string, listaId: string, antesDeId: string | null): Promise<DemandasArvore> {
+export async function moverCard(id: string, listaId: string, antesDeId: string | null, por = 'sistema'): Promise<DemandasArvore> {
   const card = await exigirCard(id);
   const lista = await exigirLista(listaId);
   if (antesDeId === id) return listarDemandas();
+  if (card.listaId !== listaId) {
+    const origem = await prisma.rhDemandaLista.findUnique({ where: { id: card.listaId }, include: { quadro: true } });
+    const destinoQuadro = await prisma.rhDemandaQuadro.findUnique({ where: { id: lista.quadroId } });
+    const mesmoQuadro = origem?.quadroId === lista.quadroId;
+    const descricao = mesmoQuadro
+      ? `Movido de “${origem?.nome ?? '—'}” para “${lista.nome}”.`
+      : `Movido do quadro “${origem?.quadro.nome ?? '—'}” (lista “${origem?.nome ?? '—'}”) para o quadro “${destinoQuadro?.nome ?? '—'}” (lista “${lista.nome}”).`;
+    const resultado = await moverCardEntreListas(card, lista, antesDeId);
+    await avisarMudancas(id, [descricao], por);
+    return resultado;
+  }
+  return moverCardEntreListas(card, lista, antesDeId);
+}
+
+async function moverCardEntreListas(
+  card: { id: string; listaId: string },
+  lista: { id: string; quadroId: string },
+  antesDeId: string | null,
+): Promise<DemandasArvore> {
+  const id = card.id;
+  const listaId = lista.id;
 
   const origem = await prisma.rhDemandaCard.findMany({
     where: { listaId: card.listaId },
@@ -313,8 +406,9 @@ export async function moverCard(id: string, listaId: string, antesDeId: string |
   return listarDemandas();
 }
 
-export async function excluirCard(id: string): Promise<DemandasArvore> {
+export async function excluirCard(id: string, por = 'sistema'): Promise<DemandasArvore> {
   await exigirCard(id);
+  await avisarExclusao({ id }, 'Card excluído.', por);
   await apagarArquivos({ cardId: id });
   await prisma.rhDemandaCard.delete({ where: { id } });
   return listarDemandas();
@@ -334,6 +428,7 @@ export function mimeDePrint(mime: string, nome: string): string {
 export async function anexarPrint(
   cardId: string,
   arquivo: { buffer: Buffer; mimetype: string; originalname: string },
+  por = 'sistema',
 ): Promise<DemandasArvore> {
   await exigirCard(cardId);
   if (!arquivo.buffer?.length) throw new DemandaErro('O arquivo do print está vazio.');
@@ -349,13 +444,15 @@ export async function anexarPrint(
     deleteRhFileIfExists(storagePath);
     throw err;
   }
+  await avisarMudancas(cardId, [`Print anexado: ${nome}`], por);
   return listarDemandas();
 }
 
-export async function excluirAnexo(id: string): Promise<DemandasArvore> {
+export async function excluirAnexo(id: string, por = 'sistema'): Promise<DemandasArvore> {
   const anexo = await prisma.rhDemandaAnexo.findUnique({ where: { id } });
   if (!anexo) throw new DemandaErro('Print não encontrado.', 404);
   deleteRhFileIfExists(anexo.storagePath);
   await prisma.rhDemandaAnexo.delete({ where: { id } });
+  await avisarMudancas(anexo.cardId, [`Print removido: ${anexo.nome}`], por);
   return listarDemandas();
 }

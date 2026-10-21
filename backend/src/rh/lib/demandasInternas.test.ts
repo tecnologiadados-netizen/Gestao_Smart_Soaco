@@ -5,7 +5,64 @@ import {
   granularPermissionFallback,
   normalizeRhPermissions,
 } from './rh-permissions.js';
-import { inserirAntes, normalizarChecklists, normalizarCor, normalizarPrazo } from './demandasInternas.js';
+import {
+  descreverMudancasCard,
+  inserirAntes,
+  normalizarChecklists,
+  normalizarCor,
+  normalizarEmails,
+  normalizarPrazo,
+  type EstadoCardNotificavel,
+} from './demandasInternas.js';
+
+describe('e-mails notificados do card', () => {
+  it('aceita vários, em minúsculo e sem repetir', () => {
+    expect(normalizarEmails([' Ana@SoAco.com.br ', 'bia@soaco.com.br', 'ana@soaco.com.br', ''])).toEqual([
+      'ana@soaco.com.br',
+      'bia@soaco.com.br',
+    ]);
+  });
+
+  it('recusa e-mail inválido', () => {
+    expect(() => normalizarEmails(['ana@soaco'])).toThrow(/E-mail inválido/);
+    expect(() => normalizarEmails('ana@soaco.com.br')).toThrow(/lista/);
+  });
+});
+
+describe('mudanças que geram aviso por e-mail', () => {
+  const base: EstadoCardNotificavel = {
+    titulo: 'PGR',
+    observacao: '',
+    concluido: false,
+    prazo: '2026-10-16',
+    checklists: [{ id: 'lista-0001', titulo: 'Etapas', itens: [{ id: 'item-0001', texto: 'Enviar laudo', feito: false }] }],
+  };
+
+  it('sem mudança relevante não gera aviso', () => {
+    expect(descreverMudancasCard(base, { ...base })).toEqual([]);
+  });
+
+  it('descreve conclusão, prazo e item do checklist', () => {
+    const depois: EstadoCardNotificavel = {
+      ...base,
+      concluido: true,
+      prazo: '2026-10-20',
+      checklists: [{ ...base.checklists[0], itens: [{ id: 'item-0001', texto: 'Enviar laudo', feito: true }] }],
+    };
+    expect(descreverMudancasCard(base, depois)).toEqual([
+      'Card concluído.',
+      'Prazo alterado de 16/10/2026 para 20/10/2026.',
+      'Item concluído em “Etapas”: Enviar laudo',
+    ]);
+  });
+
+  it('descreve prazo removido e card reaberto', () => {
+    expect(descreverMudancasCard({ ...base, concluido: true }, { ...base, prazo: null })).toEqual([
+      'Card reaberto.',
+      'Prazo removido (era 16/10/2026).',
+    ]);
+  });
+});
 
 describe('ordem dos cards', () => {
   it('insere o card antes de outro e tira a posição antiga', () => {

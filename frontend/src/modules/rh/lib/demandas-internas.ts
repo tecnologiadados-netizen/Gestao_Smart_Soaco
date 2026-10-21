@@ -21,6 +21,8 @@ export type DemandaCard = {
   prazo: string | null;
   ordem: number;
   checklists: DemandaChecklist[];
+  /** E-mails avisados quando o card muda de lista/quadro, é concluído, etc. */
+  emailsNotificacao: string[];
   anexos: DemandaAnexo[];
 };
 
@@ -48,7 +50,24 @@ export type CardPatch = {
   checklists?: DemandaChecklist[];
   cor?: string;
   prazo?: string | null;
+  emailsNotificacao?: string[];
 };
+
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+
+/** Separa o texto digitado/colado em e-mails (vírgula, ponto e vírgula, espaço ou quebra de linha). */
+export function separarEmails(texto: string): { validos: string[]; invalidos: string[] } {
+  const validos: string[] = [];
+  const invalidos: string[] = [];
+  for (const parte of texto.split(/[\s,;]+/)) {
+    const email = parte.trim().replace(/^<|>$/g, '').toLowerCase();
+    if (!email) continue;
+    if (EMAIL_RE.test(email)) {
+      if (!validos.includes(email)) validos.push(email);
+    } else invalidos.push(parte.trim());
+  }
+  return { validos, invalidos };
+}
 
 export const CORES_POSTIT = [
   { id: 'branco', rotulo: 'Branco', fundo: '#FFFFFF', texto: '#10233f', dobra: '#D5DEE8' },

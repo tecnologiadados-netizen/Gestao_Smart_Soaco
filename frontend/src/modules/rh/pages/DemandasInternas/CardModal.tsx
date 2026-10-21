@@ -3,6 +3,7 @@ import { AlignLeft, Calendar, Check, ImagePlus, ListChecks, Trash2, X } from 'lu
 import { toast } from 'sonner';
 import { resolveUploadUrl } from '@/api/client';
 import { prazoAtrasado, rotuloPrazo, type DemandaCard, type DemandaChecklist, type DemandaQuadro } from '@rh/lib/demandas-internas';
+import NotificarEmails from '@rh/pages/DemandasInternas/NotificarEmails';
 import SeletorCorCard from '@rh/pages/DemandasInternas/SeletorCorCard';
 
 type CardModalProps = {
@@ -19,6 +20,7 @@ type CardModalProps = {
     checklists?: DemandaChecklist[];
     cor?: string;
     prazo?: string | null;
+    emailsNotificacao?: string[];
   }) => Promise<void>;
   onExcluir: () => Promise<void>;
   onAnexar: (arquivo: File) => Promise<void>;
@@ -192,6 +194,11 @@ export default function CardModal({
                   </p>
                 )}
               </div>
+              <NotificarEmails
+                emails={card.emailsNotificacao ?? []}
+                podeEditar={podeEditar}
+                onSalvar={(emailsNotificacao) => onSalvar({ emailsNotificacao })}
+              />
             </div>
             <button type="button" aria-label="Fechar" onClick={fechar} className="rounded p-1 text-muted-foreground hover:bg-muted">
               <X className="h-5 w-5" />

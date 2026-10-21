@@ -117,3 +117,97 @@ export function lerChecklists(bruto: string): Checklist[] {
     return [];
   }
 }
+
+const MAX_EMAILS = 30;
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+
+/** Lista de e-mails do card: minúsculos, sem repetição. E-mail inválido é recusado. */
+export function normalizarEmails(valor: unknown): string[] {
+  if (!Array.isArray(valor)) throw new DemandaErro('Informe os e-mails como uma lista.');
+  const emails: string[] = [];
+  for (const bruto of valor) {
+    const email = String(bruto ?? '').trim().toLowerCase();
+    if (!email) continue;
+    if (!EMAIL_RE.test(email) || email.length > 254) throw new DemandaErro(`E-mail inválido: ${email}`);
+    if (!emails.includes(email)) emails.push(email);
+  }
+  if (emails.length > MAX_EMAILS) throw new DemandaErro(`Informe no máximo ${MAX_EMAILS} e-mails por card.`);
+  return emails;
+}
+
+export function lerEmails(bruto: string): string[] {
+  try {
+    return normalizarEmails(JSON.parse(bruto));
+  } catch {
+    return [];
+  }
+}
+
+export type EstadoCardNotificavel = {
+  titulo: string;
+  observacao: string;
+  concluido: boolean;
+  prazo: string | null;
+  checklists: Checklist[];
+};
+
+export function formatarPrazo(prazo: string | null): string {
+  if (!prazo) return 'sem prazo';
+  const [ano, mes, dia] = prazo.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+function resumir(texto: string, max = 300): string {
+  const limpo = texto.trim();
+  return limpo.length > max ? `${limpo.slice(0, max - 1)}…` : limpo;
+}
+
+/** Descreve, em frases curtas, o que mudou no card (cor e e-mails não geram aviso). */
+export function descreverMudancasCard(antes: EstadoCardNotificavel, depois: EstadoCardNotificavel): string[] {
+  const mudancas: string[] = [];
+  if (antes.concluido !== depois.concluido) mudancas.push(depois.concluido ? 'Card concluído.' : 'Card reaberto.');
+  if (antes.titulo !== depois.titulo) mudancas.push(`Título alterado de “${antes.titulo}” para “${depois.titulo}”.`);
+  if (antes.prazo !== depois.prazo) {
+    if (!antes.prazo) mudancas.push(`Prazo definido para ${formatarPrazo(depois.prazo)}.`);
+    else if (!depois.prazo) mudancas.push(`Prazo removido (era ${formatarPrazo(antes.prazo)}).`);
+    else mudancas.push(`Prazo alterado de ${formatarPrazo(antes.prazo)} para ${formatarPrazo(depois.prazo)}.`);
+  }
+  if (antes.observacao.trim() !== depois.observacao.trim()) {
+    mudancas.push(
+      depois.observacao.trim() ? `Observação alterada: ${resumir(depois.observacao)}` : 'Observação apagada.',
+    );
+  }
+
+  const listasAntes = new Map(antes.checklists.map((lista) => [lista.id, lista]));
+  const idsDepois = new Set(depois.checklists.map((lista) => lista.id));
+  for (const lista of antes.checklists) {
+    if (!idsDepois.has(lista.id)) mudancas.push(`Checklist “${lista.titulo}” excluído.`);
+  }
+  for (const lista of depois.checklists) {
+    const anterior = listasAntes.get(lista.id);
+    if (!anterior) {
+      mudancas.push(`Checklist “${lista.titulo}” criado.`);
+      for (const item of lista.itens) mudancas.push(`Item adicionado em “${lista.titulo}”: ${item.texto}`);
+      continue;
+    }
+    if (anterior.titulo !== lista.titulo) {
+      mudancas.push(`Checklist “${anterior.titulo}” renomeado para “${lista.titulo}”.`);
+    }
+    const itensAntes = new Map(anterior.itens.map((item) => [item.id, item]));
+    const itensDepois = new Set(lista.itens.map((item) => item.id));
+    for (const item of anterior.itens) {
+      if (!itensDepois.has(item.id)) mudancas.push(`Item removido de “${lista.titulo}”: ${item.texto}`);
+    }
+    for (const item of lista.itens) {
+      const itemAntes = itensAntes.get(item.id);
+      if (!itemAntes) {
+        mudancas.push(`Item adicionado em “${lista.titulo}”: ${item.texto}`);
+      } else if (itemAntes.feito !== item.feito) {
+        mudancas.push(`${item.feito ? 'Item concluído' : 'Item reaberto'} em “${lista.titulo}”: ${item.texto}`);
+      } else if (itemAntes.texto !== item.texto) {
+        mudancas.push(`Item alterado em “${lista.titulo}”: ${itemAntes.texto} → ${item.texto}`);
+      }
+    }
+  }
+  return mudancas;
+}

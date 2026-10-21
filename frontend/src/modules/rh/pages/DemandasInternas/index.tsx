@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, Check, ImageIcon, ListChecks, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ImageIcon, ListChecks, Mail, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { resolveUploadUrl } from '@/api/client';
 import AppLayout from '@rh/components/AppLayout';
@@ -138,6 +138,23 @@ export default function DemandasInternas() {
   const [quadroParaExcluir, setQuadroParaExcluir] = useState<DemandaQuadro | null>(null);
   const [listaParaExcluir, setListaParaExcluir] = useState<DemandaLista | null>(null);
   const consulta = useQuery({ queryKey: CHAVE, queryFn: getDemandas });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const cardDoLink = searchParams.get('card');
+
+  useEffect(() => {
+    if (!cardDoLink || !consulta.data) return;
+    const existe = consulta.data.quadros.some((item) => item.listas.some((lista) => lista.cards.some((card) => card.id === cardDoLink)));
+    if (existe) setCardAbertoId(cardDoLink);
+    else toast.error('O card do link não existe mais.');
+    setSearchParams(
+      (atual) => {
+        const proximo = new URLSearchParams(atual);
+        proximo.delete('card');
+        return proximo;
+      },
+      { replace: true },
+    );
+  }, [cardDoLink, consulta.data, setSearchParams]);
 
   useEffect(() => {
     if (!listaParaExcluir) return;
@@ -687,7 +704,7 @@ function CardFace({
           {card.titulo}
         </button>
       </div>
-      {progresso || card.anexos.length || card.prazo ? (
+      {progresso || card.anexos.length || card.prazo || card.emailsNotificacao?.length ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-xs">
           {card.prazo ? (
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${atrasado ? 'bg-[#b42318] text-white' : 'bg-black/15'}`}>
@@ -706,6 +723,14 @@ function CardFace({
           {card.anexos.length ? (
             <span className="inline-flex items-center gap-1 opacity-80">
               <ImageIcon className="h-3.5 w-3.5" /> {card.anexos.length}
+            </span>
+          ) : null}
+          {card.emailsNotificacao?.length ? (
+            <span
+              className="inline-flex items-center gap-1 opacity-80"
+              title={`Avisa por e-mail: ${card.emailsNotificacao.join(', ')}`}
+            >
+              <Mail className="h-3.5 w-3.5" /> {card.emailsNotificacao.length}
             </span>
           ) : null}
         </div>

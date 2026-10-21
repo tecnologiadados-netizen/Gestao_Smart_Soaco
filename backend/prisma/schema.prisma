@@ -3152,6 +3152,8 @@ model RhDemandaCard {
   prazo      String?
   ordem      Int            @default(0)
   checklists String         @default("[]")
+  /// JSON: e-mails avisados quando o card muda.
+  emailsNotificacao String  @default("[]") @map("emails_notificacao")
   createdBy  String?        @map("created_by")
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")

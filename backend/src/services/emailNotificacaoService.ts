@@ -41,6 +41,11 @@ import {
   executarAlertaComentarioOrganicoAmostra,
   previewAlertaComentarioOrganico,
 } from './organicoComentarioAlertaEmailService.js';
+import {
+  DEMANDA_CARD_ALERTA_EMAIL_CODE,
+  executarAlertaDemandaCardAmostra,
+  previewAlertaDemandaCard,
+} from './demandaCardAlertaEmailService.js';
 import { envioNotificacoesHabilitado } from '../config/envioNotificacoes.js';
 import {
   comExecucaoRegistrada,
@@ -82,6 +87,12 @@ const BUILDERS: Record<string, (ctx: BuilderContext) => Promise<BuilderResult>> 
       return Promise.resolve({ enviados: 0, ignorados: 0, erros: [] });
     }
     return executarAlertaComentarioOrganicoAmostra(ctx.prisma, ctx.destinatarios);
+  },
+  [DEMANDA_CARD_ALERTA_EMAIL_CODE]: (ctx) => {
+    if (!ctx.ignorarDedup) {
+      return Promise.resolve({ enviados: 0, ignorados: 0, erros: [] });
+    }
+    return executarAlertaDemandaCardAmostra(ctx.prisma, ctx.destinatarios);
   },
   [SGQ_ALERTA_VALIDADE_CODE]: (ctx) =>
     executarAlertaSgqValidade(ctx.prisma, {
@@ -348,6 +359,16 @@ export async function previewEmailDoTipo(tipoId: number): Promise<{
 
   if (builderCode === 'rh_organico_comentario_sensivel') {
     const preview = await previewAlertaComentarioOrganico();
+    return {
+      subject: preview.subject,
+      html: preview.html,
+      resumo: preview.resumo,
+      quantidadeAlertas: preview.quantidade,
+    };
+  }
+
+  if (builderCode === DEMANDA_CARD_ALERTA_EMAIL_CODE) {
+    const preview = await previewAlertaDemandaCard();
     return {
       subject: preview.subject,
       html: preview.html,
