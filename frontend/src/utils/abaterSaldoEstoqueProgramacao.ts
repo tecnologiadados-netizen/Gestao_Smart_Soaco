@@ -16,7 +16,22 @@ export type AbaterSaldoEstoqueOpts<T> = {
   getRequestedQty: (item: T) => number;
   /** Timestamp ms para ordenação ASC; empates preservam ordem de entrada. */
   getSortTime: (item: T) => number;
+  /**
+   * Quando verdadeiro, a linha fica com a quantidade pedida inteira e não consome estoque.
+   * O saldo segue disponível para as demais linhas do mesmo código.
+   */
+  ignorarAbate?: (item: T) => boolean;
 };
+
+/** Programação Setorial: Cadeiras não abate PA. A produzir é o saldo em aberto da carteira. */
+export function setorProgramacaoIgnoraAbateEstoque(setor: string | null | undefined): boolean {
+  const n = String(setor ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
+  return n === 'cadeiras';
+}
 
 /** Parse dd/MM/yyyy ou yyyy-MM-dd → Date (local). Inválido → epoch. */
 export function parseDataBaseProgramacao(dateStr: string | null | undefined): Date {
@@ -68,6 +83,15 @@ export function abaterSaldoEstoquePorDataAsc<T>(
   for (const { item } of indexed) {
     const cod = opts.getCod(item);
     const requested = opts.getRequestedQty(item);
+    if (opts.ignorarAbate?.(item)) {
+      result.push({
+        ...item,
+        originalQty: requested,
+        qtyToProduce: Math.ceil(Math.max(0, requested)),
+        fulfilledByStock: 0,
+      });
+      continue;
+    }
     let available = stockRemaining[cod] || 0;
 
     let usedFromStock = 0;

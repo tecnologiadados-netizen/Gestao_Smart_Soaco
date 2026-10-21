@@ -11,6 +11,7 @@ import { isRecursoPcp } from '../../utils/programacaoSetorialRecursoPcp';
 import {
   abaterSaldoEstoquePorDataAsc,
   parseDataBaseProgramacao,
+  setorProgramacaoIgnoraAbateEstoque,
 } from '../../utils/abaterSaldoEstoqueProgramacao';
 
 type PlanningRow = {
@@ -239,6 +240,8 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
       getRequestedQty: (item) => Number(item['Qtde Pendente Real'] ?? 0) || 0,
       getSortTime: (item) =>
         parseDataBaseProgramacao(String(item.DataBase ?? item.Previsao)).getTime(),
+      // Cadeiras: A produzir = saldo em aberto do pedido. Estoque de PA não reduz.
+      ignorarAbate: (item) => setorProgramacaoIgnoraAbateEstoque(item['Setor de Producao']),
     });
 
     return items as ProcessedItem[];
@@ -656,7 +659,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
               className={`mb-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 flex flex-col gap-3 ${loadingData ? 'opacity-60 pointer-events-none' : ''}`}
             >
               <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                O <strong>setor</strong> escolhido filtra só a tabela. Ao salvar, a programação registrada inclui <strong>todos os setores</strong>, respeitando o período de datas (e as observações usadas ao carregar).
+                O <strong>setor</strong> escolhido filtra só a tabela. Ao salvar, a programação registrada inclui <strong>todos os setores</strong>, respeitando o período de datas (e as observações usadas ao carregar). No setor <strong>Cadeiras</strong>, A produzir é o saldo em aberto do pedido: produzir e enviar ao estoque não reduz a quantidade; ela só cai quando o pedido da linha é atendido, no todo ou em parte.
               </p>
               <div className="flex flex-wrap items-end justify-between gap-4 w-full">
               <div className="flex flex-wrap gap-4 items-end min-w-0 flex-1">

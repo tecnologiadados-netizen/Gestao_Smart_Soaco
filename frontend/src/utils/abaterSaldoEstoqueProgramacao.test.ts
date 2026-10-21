@@ -6,6 +6,7 @@ import {
   parseDataBaseProgramacao,
   processarPlanningComEstoque,
   qtdeLiquidaPorLinhaSnapshot,
+  setorProgramacaoIgnoraAbateEstoque,
 } from './abaterSaldoEstoqueProgramacao';
 
 describe('parseDataBaseProgramacao', () => {
@@ -59,6 +60,37 @@ describe('abaterSaldoEstoquePorDataAsc', () => {
     });
     expect(out[0].fulfilledByStock).toBe(5);
     expect(out[0].qtyToProduce).toBe(6); // ceil(5.2)
+  });
+
+  it('Cadeiras mantém o saldo do pedido e não consome o estoque do código', () => {
+    const items = [
+      { id: 'cad', Cod: 'PA-1', DataBase: '01/07/2026', setor: 'Cadeiras', 'Qtde Pendente Real': 20 },
+      { id: 'out', Cod: 'PA-1', DataBase: '02/07/2026', setor: 'Gôndolas', 'Qtde Pendente Real': 10 },
+    ];
+    const { items: out, stockRemaining } = abaterSaldoEstoquePorDataAsc(items, { 'PA-1': 15 }, {
+      getCod: (i) => i.Cod,
+      getRequestedQty: (i) => i['Qtde Pendente Real'],
+      getSortTime: (i) => parseDataBaseProgramacao(i.DataBase).getTime(),
+      ignorarAbate: (i) => setorProgramacaoIgnoraAbateEstoque(i.setor),
+    });
+    const cad = out.find((x) => x.id === 'cad')!;
+    const outro = out.find((x) => x.id === 'out')!;
+    expect(cad.qtyToProduce).toBe(20);
+    expect(cad.fulfilledByStock).toBe(0);
+    expect(cad.originalQty).toBe(20);
+    expect(outro.fulfilledByStock).toBe(10);
+    expect(outro.qtyToProduce).toBe(0);
+    expect(stockRemaining['PA-1']).toBe(5);
+  });
+});
+
+describe('setorProgramacaoIgnoraAbateEstoque', () => {
+  it('reconhece só o setor Cadeiras', () => {
+    expect(setorProgramacaoIgnoraAbateEstoque('Cadeiras')).toBe(true);
+    expect(setorProgramacaoIgnoraAbateEstoque(' cadeiras ')).toBe(true);
+    expect(setorProgramacaoIgnoraAbateEstoque('Gôndolas')).toBe(false);
+    expect(setorProgramacaoIgnoraAbateEstoque('Cadeiras e similares')).toBe(false);
+    expect(setorProgramacaoIgnoraAbateEstoque('')).toBe(false);
   });
 });
 
