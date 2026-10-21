@@ -577,6 +577,7 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
   const justificativaOpcaoId = Math.trunc(Number(req.body?.justificativaOpcaoId));
   const observacao =
     typeof req.body?.observacao === 'string' ? req.body.observacao : null;
+  const dispensarOtimiza = req.body?.dispensarOtimiza === true;
 
   if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
     res.status(400).json({ error: 'idDocumento inválido.' });
@@ -655,21 +656,47 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       usuarioLogin: usuario.login,
     };
 
+    let dispensarSolicitacaoOtimiza = false;
     if (decisaoRaw === 'aceita') {
-      const sols = await listarSolicitacoesOtimiza(idDocumento);
-      const sol = sols.find(
-        (item) =>
-          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
-          item.idItemPedidoCompra === idItemPedidoCompra &&
-          item.campo === campo
-      );
-      if (sol) await exigirSolicitacaoOtimizaConcluida(sol.numero);
+      if (dispensarOtimiza) {
+        const { linhas, erro: erroLinhas } = await queryDoubleCheckInComparativoPc({ idDocumento });
+        if (erroLinhas) {
+          res.status(503).json({ error: erroLinhas });
+          return;
+        }
+        const linha = linhas.find(
+          (item) =>
+            item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+            item.idItemPedidoCompra === idItemPedidoCompra
+        );
+        const natureza = linha
+          ? classificarNaturezaDivergencia({ linha, campo })
+          : 'real';
+        if (natureza !== 'benigna') {
+          res.status(400).json({
+            error:
+              'Só divergência benigna pode ser aceita sem o número da solicitação no Otimiza.',
+          });
+          return;
+        }
+        dispensarSolicitacaoOtimiza = true;
+      } else {
+        const sols = await listarSolicitacoesOtimiza(idDocumento);
+        const sol = sols.find(
+          (item) =>
+            item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+            item.idItemPedidoCompra === idItemPedidoCompra &&
+            item.campo === campo
+        );
+        if (sol) await exigirSolicitacaoOtimizaConcluida(sol.numero);
+      }
     }
 
     let decisao = await upsertDecisaoComparativo({
       ...baseParams,
       idItemDocumentoEstoque,
       idItemPedidoCompra,
+      dispensarSolicitacaoOtimiza,
     });
 
     // Cond. pagamento é do documento×PC: replica a decisão em todos os vínculos do mesmo PC.
@@ -715,10 +742,14 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
               usuarioLogin: usuario.login,
             });
           }
+          const dispensarIrmao =
+            dispensarSolicitacaoOtimiza &&
+            classificarNaturezaDivergencia({ linha: irmao, campo }) === 'benigna';
           const d = await upsertDecisaoComparativo({
             ...baseParams,
             idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,
             idItemPedidoCompra: irmao.idItemPedidoCompra,
+            dispensarSolicitacaoOtimiza: dispensarIrmao,
           });
           decisoesReplicadas.push(d);
         }

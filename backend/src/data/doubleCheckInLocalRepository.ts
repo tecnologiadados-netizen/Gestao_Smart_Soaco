@@ -589,6 +589,8 @@ export async function upsertDecisaoComparativo(params: {
   observacao: string | null;
   usuarioId: number;
   usuarioLogin: string;
+  /** Divergência benigna: o usuário optou por aceitar sem número no Otimiza. */
+  dispensarSolicitacaoOtimiza?: boolean;
 }): Promise<DoubleCheckInComparativoDecisaoRow> {
   if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
     throw new Error(`Campo inválido: ${params.campo}`);
@@ -612,8 +614,10 @@ export async function upsertDecisaoComparativo(params: {
     throw new Error('Informe a observação quando a justificativa for "Outros".');
   }
 
+  const dispensarOtimiza =
+    params.decisao === 'aceita' && params.dispensarSolicitacaoOtimiza === true;
   const solicitacao =
-    params.decisao === 'aceita'
+    params.decisao === 'aceita' && !dispensarOtimiza
       ? await prisma.doubleCheckInSolicitacaoOtimiza.findUnique({
           where: {
             idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
@@ -626,8 +630,10 @@ export async function upsertDecisaoComparativo(params: {
         })
       : null;
   const numeroSolicitacaoOtimiza =
-    params.decisao === 'aceita' ? numeroSolicitacaoOtimizaValido(solicitacao?.numero) : null;
-  if (params.decisao === 'aceita' && numeroSolicitacaoOtimiza == null) {
+    params.decisao === 'aceita' && !dispensarOtimiza
+      ? numeroSolicitacaoOtimizaValido(solicitacao?.numero)
+      : null;
+  if (params.decisao === 'aceita' && !dispensarOtimiza && numeroSolicitacaoOtimiza == null) {
     throw new Error('Grave o número da solicitação no Otimiza antes de aceitar a divergência.');
   }
 

@@ -295,6 +295,7 @@ export default function DoubleCheckInComparativoPcTab({
   const [opcaoId, setOpcaoId] = useState<number | ''>('');
   const [obs, setObs] = useState('');
   const [numeroOtimiza, setNumeroOtimiza] = useState('');
+  const [querInserirOtimiza, setQuerInserirOtimiza] = useState<boolean | null>(null);
   const [numeroGravado, setNumeroGravado] = useState<number | null>(null);
   const [statusGravado, setStatusGravado] = useState<'in_progress' | 'completed' | 'cancelled' | null>(null);
   const [avisoOtimiza, setAvisoOtimiza] = useState<string | null>(null);
@@ -359,9 +360,15 @@ export default function DoubleCheckInComparativoPcTab({
     const salva = solicitacaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
+    const benigna = linha.naturezaDivergencias?.[campo] === 'benigna';
+    const solicitacaoJaConcluida =
+      salva?.status === 'completed' || salva?.status === 'cancelled';
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
+    setQuerInserirOtimiza(
+      decisao === 'aceita' && benigna && solicitacaoJaConcluida ? true : null
+    );
     setNumeroOtimiza(salva != null ? String(salva.numero) : '');
     setNumeroGravado(salva?.numero ?? null);
     setStatusGravado(salva?.status ?? null);
@@ -391,8 +398,13 @@ export default function DoubleCheckInComparativoPcTab({
   const numeroConfereComGravado =
     numeroGravado != null && numeroOtimiza.trim() === String(numeroGravado);
   const solicitacaoConcluida = statusGravado === 'completed' || statusGravado === 'cancelled';
+  const divergenciaBenigna =
+    draft?.decisao === 'aceita' && draft.linha.naturezaDivergencias?.[draft.campo] === 'benigna';
+  const dispensouOtimiza = divergenciaBenigna && querInserirOtimiza === false;
   const aceiteLiberado =
-    draft?.decisao !== 'aceita' || (numeroConfereComGravado && solicitacaoConcluida);
+    draft?.decisao !== 'aceita' ||
+    dispensouOtimiza ||
+    (numeroConfereComGravado && solicitacaoConcluida);
 
   const outrasDivergenciasAbertas = useMemo(() => {
     if (!draft || draft.decisao !== 'aceita') return 0;
@@ -469,6 +481,10 @@ export default function DoubleCheckInComparativoPcTab({
 
   const salvarJustificativa = async () => {
     if (!draft) return;
+    if (divergenciaBenigna && querInserirOtimiza == null) {
+      setJustErro('Informe se deseja inserir o número da solicitação no Otimiza.');
+      return;
+    }
     if (draft.decisao === 'aceita' && !aceiteLiberado) {
       setJustErro('Grave o número da solicitação no Otimiza antes de aceitar.');
       return;
@@ -497,6 +513,7 @@ export default function DoubleCheckInComparativoPcTab({
         decisao: draft.decisao,
         justificativaOpcaoId: Number(opcaoId),
         observacao: obs.trim() || null,
+        dispensarOtimiza: dispensouOtimiza,
       });
       if (r.erro || !r.decisao) {
         setJustErro(r.erro ?? 'Falha ao salvar.');
@@ -810,7 +827,11 @@ export default function DoubleCheckInComparativoPcTab({
                             <div className="flex shrink-0 gap-1">
                               <button
                                 type="button"
-                                title="Aceitar divergência (exige solicitação concluída no Otimiza)"
+                                title={
+                                  natureza === 'benigna'
+                                    ? 'Aceitar divergência benigna'
+                                    : 'Aceitar divergência (exige solicitação concluída no Otimiza)'
+                                }
                                 className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
                                 onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
                               >
@@ -896,7 +917,51 @@ export default function DoubleCheckInComparativoPcTab({
                 {draft.linha.codigoProduto ?? draft.linha.idProduto}
               </p>
               <div className="mt-4 space-y-3">
-                {draft.decisao === 'aceita' && (
+                {divergenciaBenigna && (
+                  <div>
+                    <p className={labelClass}>Deseja inserir o número da solicitação no Otimiza?</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        aria-pressed={querInserirOtimiza === true}
+                        className={
+                          querInserirOtimiza === true
+                            ? btnPrimary
+                            : btnSecondary
+                        }
+                        onClick={() => {
+                          setQuerInserirOtimiza(true);
+                          setJustErro(null);
+                        }}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={querInserirOtimiza === false}
+                        className={
+                          querInserirOtimiza === false
+                            ? btnPrimary
+                            : btnSecondary
+                        }
+                        onClick={() => {
+                          setQuerInserirOtimiza(false);
+                          setJustErro(null);
+                        }}
+                      >
+                        Não
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {querInserirOtimiza === false
+                        ? 'O aceite segue sem o número. Informe a justificativa e a observação para finalizar.'
+                        : querInserirOtimiza === true
+                          ? 'Informe o número e grave. A solicitação precisa estar concluída no Otimiza.'
+                          : 'Divergência benigna: o número é opcional. Escolha Sim ou Não para continuar.'}
+                    </p>
+                  </div>
+                )}
+                {draft.decisao === 'aceita' && (!divergenciaBenigna || querInserirOtimiza === true) && (
                   <div>
                     <label className={labelClass}>Nº da solicitação no Otimiza *</label>
                     <div className="flex gap-2">

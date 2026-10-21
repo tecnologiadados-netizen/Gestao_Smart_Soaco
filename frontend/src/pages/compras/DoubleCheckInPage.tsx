@@ -660,7 +660,7 @@ export default function DoubleCheckInPage() {
     if (regimeConferencia === 'completa' && pendentes > 0) {
       setModalAba('nf_pc');
       setCompBloqueioMsg(
-        `Há ${pendentes} divergência(s) NF × PC sem decisão. Para aceitar, a solicitação no Otimiza precisa estar concluída.`
+        `Há ${pendentes} divergência(s) NF × PC sem decisão. Na divergência real, a solicitação no Otimiza precisa estar concluída. Na benigna, o número é opcional.`
       );
       return;
     }

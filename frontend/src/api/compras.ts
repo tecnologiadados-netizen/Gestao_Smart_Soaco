@@ -1890,6 +1890,8 @@ export async function saveDoubleCheckInComparativoDecisao(params: {
   decisao: 'aceita' | 'recusa';
   justificativaOpcaoId: number;
   observacao?: string | null;
+  /** Divergência benigna aceita sem número da solicitação no Otimiza. */
+  dispensarOtimiza?: boolean;
 }): Promise<{
   ok: boolean;
   decisao?: DoubleCheckInComparativoDecisao;
