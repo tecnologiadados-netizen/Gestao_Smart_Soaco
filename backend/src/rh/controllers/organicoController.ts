@@ -29,6 +29,7 @@ import {
 import { replaceOrganicoSafe } from '../repositories/replaceRepository.js';
 import { notImplemented, s, sendError } from '../utils/rhHelpers.js';
 import { MotivoDesligamentoErro } from '../lib/motivoDesligamento.js';
+import { preencherMotivosPendenciasDesligamento } from '../repositories/motivoDesligamentoRepository.js';
 import { fetchSecullumFuncionarios } from '../services/secullumService.js';
 import { dispararAlertasComentariosOrganico } from '../../services/organicoComentarioAlertaEmailService.js';
 import { fetchNomusRepresentantes } from '../services/nomusRepresentantesService.js';
@@ -541,6 +542,17 @@ export async function hideOrganicoArchiveFolderHandler(req: Request, res: Respon
 export async function secullumFuncionariosHandler(_req: Request, res: Response) {
   try {
     const funcionarios = await fetchSecullumFuncionarios();
+    await preencherMotivosPendenciasDesligamento(
+      funcionarios
+        .filter((f) => f.desligado && f.motivoDemissao && f.demissao)
+        .map((f) => ({
+          matricula: f.numeroFolha,
+          dataDemissao: f.demissao,
+          motivoPai: f.motivoDemissao,
+        })),
+    ).catch((err) => {
+      console.error('[secullum] falha ao preencher motivo da pendência', err);
+    });
     res.json({ funcionarios });
   } catch (e) {
     sendError(res, (e as Error).message);

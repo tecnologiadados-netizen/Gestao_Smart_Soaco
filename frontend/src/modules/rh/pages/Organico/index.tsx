@@ -1102,6 +1102,8 @@ const Organico = () => {
         .then(async (funcionarios) => {
           await applySecullumSync(funcionarios, { actor: "API Secullum" });
           await queryClient.invalidateQueries({ queryKey: ["secullum-empresa-by-matricula"] });
+          await queryClient.invalidateQueries({ queryKey: ["organico-alteracoes-pendentes"] });
+          await queryClient.invalidateQueries({ queryKey: ["motivos-desligamento"] });
         })
         .catch(() => {});
     };

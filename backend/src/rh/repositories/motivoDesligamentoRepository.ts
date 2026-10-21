@@ -1,8 +1,10 @@
 import { prisma } from '../../config/prisma.js';
 import { fetchSecullumMotivosDemissao } from '../services/secullumService.js';
 import {
+  MOTIVO_SECULLUM_NAO_INFORMADO,
   MotivoDesligamentoErro,
   motivoPaiCompativel,
+  motivoSecullumAusente,
   normalizarMotivoPai,
 } from '../lib/motivoDesligamento.js';
 import { canViewRhConteudoSensivel } from '../lib/rh-permissions.js';
@@ -162,7 +164,7 @@ export async function upsertPendenciaDesligamento(item: UpsertDesligamentoInput)
     setor: s(item.setor),
     campoLabel: s(item.campoLabel) || 'Desligamento',
     valorAnterior: s(item.valorAnterior),
-    valorAtual: s(item.valorAtual) || 'Não informado no Secullum',
+    valorAtual: s(item.valorAtual) || MOTIVO_SECULLUM_NAO_INFORMADO,
     dataReferencia,
   };
 
@@ -181,6 +183,45 @@ export async function upsertPendenciaDesligamento(item: UpsertDesligamentoInput)
       ...data,
     },
   });
+}
+
+function chaveMatriculaData(matricula: string, iso: string): string {
+  const mat = matricula.trim().replace(/^0+/, '') || '0';
+  return `${mat}|${iso}`;
+}
+
+/**
+ * Pendência aberta que ficou sem motivo é preenchida quando a Secullum passa a informar.
+ * Não cria pendência nova e não troca um motivo que já foi lido.
+ */
+export async function preencherMotivosPendenciasDesligamento(
+  itens: Array<{ matricula: string; dataDemissao: string; motivoPai: string }>,
+): Promise<number> {
+  const porChave = new Map<string, string>();
+  for (const item of itens) {
+    const motivo = s(item.motivoPai);
+    const iso = formatIsoDate(parseIsoDate(item.dataDemissao));
+    if (!iso || motivoSecullumAusente(motivo)) continue;
+    porChave.set(chaveMatriculaData(s(item.matricula), iso), motivo);
+  }
+  if (porChave.size === 0) return 0;
+
+  const abertas = await prisma.rhOrganicoAlteracaoPendente.findMany({
+    where: { tipo: 'desligamento', resolvedAt: null },
+  });
+  let atualizados = 0;
+  for (const row of abertas) {
+    if (!motivoSecullumAusente(row.valorAtual)) continue;
+    const iso = formatIsoDate(row.dataReferencia);
+    const motivo = porChave.get(chaveMatriculaData(row.colaboradorMatricula, iso));
+    if (!motivo) continue;
+    await prisma.rhOrganicoAlteracaoPendente.update({
+      where: { id: row.id },
+      data: { valorAtual: motivo },
+    });
+    atualizados += 1;
+  }
+  return atualizados;
 }
 
 type GravarComplementoInput = {

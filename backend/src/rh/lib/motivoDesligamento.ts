@@ -1,3 +1,11 @@
+/** Texto gravado quando a sync não conseguiu ler o motivo na Secullum. */
+export const MOTIVO_SECULLUM_NAO_INFORMADO = 'Não informado no Secullum';
+
+export function motivoSecullumAusente(valor: string | null | undefined): boolean {
+  const texto = String(valor ?? '').trim();
+  return texto === '' || texto === MOTIVO_SECULLUM_NAO_INFORMADO;
+}
+
 /** Compara o motivo pai da Secullum ignorando acento, caixa e espaços repetidos. */
 export function normalizarMotivoPai(value: string): string {
   return String(value ?? '')

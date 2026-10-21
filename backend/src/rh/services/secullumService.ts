@@ -287,7 +287,7 @@ export async function fetchSecullumFuncionarios(): Promise<SecullumFuncionario[]
   const dataFim = `${new Date().getFullYear() + 4}-12-31`;
   const [funcionariosRaw, motivosRaw, afastamentosRaw] = await Promise.all([
     apiGet<RawFuncionario[]>('Funcionarios', token),
-    apiGet<RawDescricao[]>('MotivosDemissao', token).catch(() => [] as RawDescricao[]),
+    apiGet<RawDescricao[]>('MotivosDemissao', token),
     apiGet<RawAfastamento[]>(
       `FuncionariosAfastamentos?dataInicio=2000-01-01&dataFim=${dataFim}`,
       token,
