@@ -150,6 +150,12 @@ async function ensureDbReady(): Promise<void> {
   } catch (e) {
     console.warn('[startup] normalizarMesFaltaPersistido:', (e as Error)?.message ?? e);
   }
+  try {
+    const { corrigirTrajetoriaPendenciasSecullum } = await import('./rh/utils/corrigirTrajetoriaPendenciasSecullum.js');
+    await corrigirTrajetoriaPendenciasSecullum();
+  } catch (e) {
+    console.warn('[startup] corrigirTrajetoriaPendenciasSecullum:', (e as Error)?.message ?? e);
+  }
 }
 
 function main(): void {

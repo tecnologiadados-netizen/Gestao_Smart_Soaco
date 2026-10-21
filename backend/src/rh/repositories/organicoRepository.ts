@@ -11,6 +11,17 @@ import {
   upsertPendenciaDesligamento,
 } from './motivoDesligamentoRepository.js';
 import { mapOrganicoFotoRow, normalizeOrganicoFotoPayload } from '../utils/organicoFotoBase64.js';
+import {
+  MOTIVO_ENCERRADO_EXCLUSAO_TRAJETORIA,
+  ORIGEM_SECULLUM_AGUARDANDO,
+  ORIGEM_SECULLUM_JUSTIFICADA,
+  ORIGEM_SECULLUM_SEM_JUSTIFICATIVA,
+  chaveTransicaoPendencia,
+  dataEventoLocal,
+  eventoTrajetoriaSecullum,
+  isTipoPendenciaTrajetoria,
+  type TipoPendenciaSecullum,
+} from '../lib/organicoTrajetoriaSecullum.js';
 
 export async function getOrganicoList(isMaster: boolean, permissions: RhGroupPermissions | null) {
   const rows = await prisma.rhOrganico.findMany({
@@ -341,8 +352,114 @@ export async function importOrganicoTrajetoria(
   return { inserted: data.length };
 }
 
-export async function deleteOrganicoTrajetoria(id: string) {
-  await prisma.rhOrganicoTrajetoria.delete({ where: { id } });
+export async function deleteOrganicoTrajetoria(id: string, actor?: string) {
+  await prisma.$transaction([
+    prisma.rhOrganicoAlteracaoPendente.updateMany({
+      where: { organicoTrajetoriaId: id, resolvedAt: null },
+      data: {
+        resolvedAt: new Date(),
+        resolvedBy: s(actor) || null,
+        motivo: MOTIVO_ENCERRADO_EXCLUSAO_TRAJETORIA,
+      },
+    }),
+    prisma.rhOrganicoTrajetoria.delete({ where: { id } }),
+  ]);
+}
+
+/** Matrícula do orgânico pelo nome (pendências antigas foram gravadas sem matrícula). */
+export async function resolverMatriculaOrganicoPorNome(nome: string): Promise<string> {
+  const alvo = s(nome).toLocaleUpperCase('pt-BR');
+  if (!alvo) return '';
+  const rows = await prisma.rhOrganico.findMany({
+    where: { nome: { not: '' } },
+    select: { matricula: true, nome: true, status: true },
+  });
+  const mesmos = rows.filter((r) => s(r.nome).toLocaleUpperCase('pt-BR') === alvo && s(r.matricula));
+  const unica = (lista: typeof mesmos) => {
+    const set = new Set(lista.map((r) => s(r.matricula)));
+    return set.size === 1 ? [...set][0] : '';
+  };
+  /** Readmitidos têm a matrícula antiga desligada e a nova ativa. */
+  return unica(mesmos) || unica(mesmos.filter((r) => s(r.status) !== 'Desligado'));
+}
+
+async function criarEventoTrajetoriaPendencia(input: {
+  matricula: string;
+  nome: string;
+  tipo: TipoPendenciaSecullum;
+  valorAnterior: string;
+  valorAtual: string;
+  dataEvento: Date;
+  motivo: string | null;
+  importadoPor: string;
+}) {
+  const evento = eventoTrajetoriaSecullum(input.tipo, input.valorAnterior, input.valorAtual);
+  return prisma.rhOrganicoTrajetoria.create({
+    data: {
+      colaboradorMatricula: input.matricula,
+      colaboradorNome: input.nome,
+      dataEvento: input.dataEvento,
+      ...evento,
+      motivo: input.motivo,
+      origemArquivo: input.motivo ? ORIGEM_SECULLUM_JUSTIFICADA : ORIGEM_SECULLUM_AGUARDANDO,
+      importadoPor: input.importadoPor,
+    },
+  });
+}
+
+/** Grava o motivo no evento da trajetória da pendência (cria o evento se ainda não existir). */
+export async function registrarMotivoTrajetoriaPendencia(
+  pendencia: {
+    id: string;
+    colaboradorMatricula: string;
+    colaboradorNome: string;
+    tipo: string;
+    valorAnterior: string;
+    valorAtual: string;
+    dataReferencia: Date | null;
+    detectedAt: Date;
+    organicoTrajetoriaId: string | null;
+  },
+  motivo: string | null,
+  autor: string,
+): Promise<string | null> {
+  if (!isTipoPendenciaTrajetoria(pendencia.tipo)) return null;
+  const existente = pendencia.organicoTrajetoriaId
+    ? await prisma.rhOrganicoTrajetoria.findUnique({ where: { id: pendencia.organicoTrajetoriaId } })
+    : null;
+  if (existente) {
+    await prisma.rhOrganicoTrajetoria.update({
+      where: { id: existente.id },
+      data: {
+        motivo,
+        origemArquivo: motivo ? ORIGEM_SECULLUM_JUSTIFICADA : ORIGEM_SECULLUM_AGUARDANDO,
+        importadoPor: autor,
+      },
+    });
+    return existente.id;
+  }
+
+  const matricula =
+    s(pendencia.colaboradorMatricula) || (await resolverMatriculaOrganicoPorNome(pendencia.colaboradorNome));
+  if (!matricula) return null;
+  const evento = await criarEventoTrajetoriaPendencia({
+    matricula,
+    nome: s(pendencia.colaboradorNome),
+    tipo: pendencia.tipo,
+    valorAnterior: pendencia.valorAnterior,
+    valorAtual: pendencia.valorAtual,
+    dataEvento: pendencia.dataReferencia ?? dataEventoLocal(pendencia.detectedAt),
+    motivo,
+    importadoPor: autor,
+  });
+  await prisma.rhOrganicoAlteracaoPendente.update({
+    where: { id: pendencia.id },
+    data: {
+      organicoTrajetoriaId: evento.id,
+      ...(s(pendencia.colaboradorMatricula) ? {} : { colaboradorMatricula: matricula }),
+    },
+  });
+  return evento.id;
 }
 
 export async function getOrganicoAlteracoesPendentes(setor?: string) {
@@ -384,6 +501,7 @@ export async function upsertOrganicoAlteracoesPendentes(
     dataReferencia?: string | null;
     organicoTrajetoriaId?: string | null;
   }>,
+  actor = 'Secullum',
 ) {
   const results = [];
   for (const item of items) {
@@ -420,11 +538,75 @@ export async function upsertOrganicoAlteracoesPendentes(
           data,
         }),
       );
+    } else if (isTipoPendenciaTrajetoria(data.tipo)) {
+      const saved = await criarPendenciaSecullumComTrajetoria(data, data.tipo, s(actor) || 'Secullum');
+      if (saved) results.push(saved);
     } else {
       results.push(await prisma.rhOrganicoAlteracaoPendente.create({ data }));
     }
   }
   return results.length;
+}
+
+/**
+ * Cria a pendência CTPS/cargo já com o evento "aguardando motivo" na trajetória.
+ * A mesma transição (tipo + de/para) não é duplicada: se houver uma aberta, mantém;
+ * se já houver uma (aberta ou resolvida) na mesma data, ignora.
+ */
+async function criarPendenciaSecullumComTrajetoria(
+  data: {
+    colaboradorMatricula: string;
+    colaboradorNome: string;
+    setor: string;
+    tipo: string;
+    campoLabel: string;
+    valorAnterior: string;
+    valorAtual: string;
+    motivo: string | null;
+    dataReferencia: Date | null;
+    organicoTrajetoriaId: string | null;
+  },
+  tipo: TipoPendenciaSecullum,
+  actor: string,
+) {
+  const matricula = data.colaboradorMatricula || (await resolverMatriculaOrganicoPorNome(data.colaboradorNome));
+  const dataEvento = data.dataReferencia ?? dataEventoLocal(new Date());
+  const chave = chaveTransicaoPendencia(data);
+
+  const candidatas = await prisma.rhOrganicoAlteracaoPendente.findMany({
+    where: matricula
+      ? {
+          tipo,
+          OR: [
+            { colaboradorMatricula: matricula },
+            { colaboradorMatricula: '', colaboradorNome: data.colaboradorNome },
+          ],
+        }
+      : { tipo, colaboradorNome: data.colaboradorNome },
+  });
+  const mesmas = candidatas.filter((p) => chaveTransicaoPendencia(p) === chave);
+  const aberta = mesmas.find((p) => !p.resolvedAt);
+  if (aberta) return aberta;
+  const isoEvento = formatIsoDate(dataEvento);
+  if (mesmas.some((p) => formatIsoDate(p.dataReferencia ?? dataEventoLocal(p.detectedAt)) === isoEvento)) {
+    return null;
+  }
+
+  const evento = matricula
+    ? await criarEventoTrajetoriaPendencia({
+        matricula,
+        nome: data.colaboradorNome,
+        tipo,
+        valorAnterior: data.valorAnterior,
+        valorAtual: data.valorAtual,
+        dataEvento,
+        motivo: null,
+        importadoPor: actor,
+      })
+    : null;
+  return prisma.rhOrganicoAlteracaoPendente.create({
+    data: { ...data, colaboradorMatricula: matricula, organicoTrajetoriaId: evento?.id ?? null },
+  });
 }
 
 export async function resolveOrganicoAlteracaoPendente(
@@ -450,6 +632,7 @@ export async function resolveOrganicoAlteracaoPendente(
     return;
   }
 
+  await registrarMotivoTrajetoriaPendencia(row, motivo, s(resolvedBy) || 'RH');
   await prisma.rhOrganicoAlteracaoPendente.update({
     where: { id },
     data: { resolvedAt: new Date(), resolvedBy, motivo },
@@ -457,6 +640,14 @@ export async function resolveOrganicoAlteracaoPendente(
 }
 
 export async function deleteOrganicoAlteracaoPendente(id: string) {
+  const row = await prisma.rhOrganicoAlteracaoPendente.findUnique({ where: { id } });
+  if (!row) return;
+  if (row.organicoTrajetoriaId && !row.resolvedAt) {
+    await prisma.rhOrganicoTrajetoria.updateMany({
+      where: { id: row.organicoTrajetoriaId, origemArquivo: ORIGEM_SECULLUM_AGUARDANDO },
+      data: { origemArquivo: ORIGEM_SECULLUM_SEM_JUSTIFICATIVA },
+    });
+  }
   await prisma.rhOrganicoAlteracaoPendente.delete({ where: { id } });
 }
 

@@ -60,6 +60,12 @@ describe("salário vigente da trajetória", () => {
     expect(parseSalarioDescricao("R$ 1.593,78 por mês")).toBeCloseTo(1593.78);
     expect(salarioVigenteDaMatricula(index, "10", new Date(2024, 5, 1), 4000, hoje)).toBeCloseTo(1593.78);
   });
+
+  it("no evento da Secullum usa o valor novo (depois de 'para')", () => {
+    expect(
+      parseSalarioDescricao("Salário base (CTPS) alterado de R$ 2.910,16 para R$ 3.595,80."),
+    ).toBeCloseTo(3595.8);
+  });
 });
 
 describe("período do painel", () => {

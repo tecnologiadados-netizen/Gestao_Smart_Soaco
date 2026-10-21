@@ -123,9 +123,11 @@ export function normalizarDataIso(value: string): string {
   return "";
 }
 
-/** Tira "R$ 1.593,78 por mês" e devolve o número. */
+/** Tira "R$ 1.593,78 por mês" (ou o novo valor de "alterado de R$ X para R$ Y") e devolve o número. */
 export function parseSalarioDescricao(descricao: string): number {
   const raw = String(descricao ?? "");
+  const novo = raw.match(/\bpara\s+(R\$\s*\d[\d.,]*\d)/i);
+  if (novo) return parseCtpsToNumber(novo[1]);
   const match = raw.match(/R\$\s*[\d.,]+/i) ?? raw.match(/\d{1,3}(?:\.\d{3})+,\d{2}/) ?? raw.match(/\d+(?:,\d{1,2})?/);
   if (!match) return 0;
   return parseCtpsToNumber(match[0]);

@@ -301,9 +301,10 @@ export async function parseOrganicoTrajetoriaPdfHandler(_req: Request, res: Resp
 
 export async function deleteOrganicoTrajetoriaHandler(req: Request, res: Response) {
   try {
+    const { actor } = authCtx(req);
     const id = s((req.body as { id?: string }).id);
     if (!id) return sendError(res, 'id obrigatório.', 400);
-    await deleteOrganicoTrajetoria(id);
+    await deleteOrganicoTrajetoria(id, actor);
     res.json({ ok: true });
   } catch (e) {
     sendError(res, (e as Error).message);
@@ -321,10 +322,11 @@ export async function getOrganicoAlteracoesPendentesHandler(req: Request, res: R
 
 export async function upsertOrganicoAlteracoesPendentesHandler(req: Request, res: Response) {
   try {
+    const { actor } = authCtx(req);
     const items = Array.isArray((req.body as { items?: unknown[] }).items)
       ? ((req.body as { items: unknown[] }).items as never[])
       : [];
-    res.json({ upserted: await upsertOrganicoAlteracoesPendentes(items) });
+    res.json({ upserted: await upsertOrganicoAlteracoesPendentes(items, actor) });
   } catch (e) {
     sendError(res, (e as Error).message);
   }
