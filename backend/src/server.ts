@@ -32,6 +32,7 @@ import { sincronizarDescricaoEscopoWhatsAppComunicacaoPd } from './services/sycr
 import { ensureGrupoMaster } from './config/ensureGrupoMaster.js';
 import { ensureDoubleCheckInPermissao } from './config/ensureDoubleCheckInPermissao.js';
 import { ensureOrdemProducaoPermissao } from './config/ensureOrdemProducaoPermissao.js';
+import { ensureGondolasPermissao } from './config/ensureGondolasPermissao.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 import { migrateLegacyRhUploads, rhUploadRoot } from './rh/utils/rhUpload.js';
 import {
@@ -124,6 +125,11 @@ async function ensureDbReady(): Promise<void> {
     await ensureOrdemProducaoPermissao();
   } catch (e) {
     console.warn('[startup] ensureOrdemProducaoPermissao:', (e as Error)?.message ?? e);
+  }
+  try {
+    await ensureGondolasPermissao();
+  } catch (e) {
+    console.warn('[startup] ensureGondolasPermissao:', (e as Error)?.message ?? e);
   }
   try {
     const { ensureDoubleCheckInNfPcWhatsappTipo, ensureDoubleCheckInJustificativaOpcoes } =

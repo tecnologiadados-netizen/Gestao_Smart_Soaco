@@ -1,4 +1,4 @@
-import { PERMISSOES } from '../config/permissoes';
+import { PERMISSOES, PERMISSOES_GONDOLAS } from '../config/permissoes';
 import type { CodigoPermissao } from '../config/permissoes';
 import { PERMISSOES_ACESSO_FLUXOS } from './fluxosPermissoes';
 import { PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO } from './programacaoProducaoPermissoes';
@@ -59,6 +59,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
     PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR,
     PERMISSOES.PCP_TOTAL,
   ],
+  '/pedidos/gondolas-porta-paletes': [...PERMISSOES_GONDOLAS, PERMISSOES.PCP_TOTAL],
   '/pedidos/encerrados': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/programacao-setorial': [PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER, PERMISSOES.PCP_TOTAL],
   '/pedidos/programacao-producao': PERMISSOES_ACESSO_PROGRAMACAO_PRODUCAO,
@@ -195,6 +196,7 @@ export const ROTAS_ORDEM = [
   '/pedidos/dash-entregas',
   '/pedidos',
   '/pedidos/decomposicao',
+  '/pedidos/gondolas-porta-paletes',
   '/pedidos/encerrados',
   '/pedidos/programacao-setorial',
   '/pedidos/programacao-producao',

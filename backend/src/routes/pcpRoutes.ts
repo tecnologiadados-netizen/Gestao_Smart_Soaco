@@ -50,11 +50,15 @@ import {
   getPipelineAcompanhamento,
 } from '../controllers/acompanhamentoSolicitacaoController.js';
 import {
+  deleteGondolasOrdem,
   getGondolasItemDetalhe,
   getGondolasItens,
+  getGondolasOrdens,
   getGondolasPlanilhaModelo,
+  postGondolasOrdem,
   postGondolasPlanilha,
   putGondolasMedida,
+  putGondolasPreferenciasFicha,
 } from '../controllers/gondolasPortaPaleteController.js';
 
 const router = Router();
@@ -73,13 +77,24 @@ const podeAcompanhamentoSolicitacao = requirePermission(
   PERMISSOES.PEDIDOS_VER
 );
 
+/** Qualquer permissão de gôndolas libera a consulta; cada ação de escrita tem a sua. */
 const podeGondolas = requirePermission(
-  PERMISSOES.PCP_VER_TELA,
-  PERMISSOES.PCP_TOTAL,
-  PERMISSOES.PEDIDOS_VER,
-  PERMISSOES.PCP_ORDEM_PRODUCAO_VER,
-  PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR
+  PERMISSOES.PCP_GONDOLAS_VER,
+  PERMISSOES.PCP_GONDOLAS_GERAR,
+  PERMISSOES.PCP_GONDOLAS_EXCLUIR_ORDEM,
+  PERMISSOES.PCP_GONDOLAS_EDITAR_MEDIDAS,
+  PERMISSOES.PCP_GONDOLAS_IMPORTAR_PLANILHA,
+  PERMISSOES.PCP_GONDOLAS_ESCOLHER_FICHA,
+  PERMISSOES.PCP_TOTAL
 );
+const podeGerarOrdemGondolas = requirePermission(PERMISSOES.PCP_GONDOLAS_GERAR, PERMISSOES.PCP_TOTAL);
+const podeExcluirOrdemGondolas = requirePermission(PERMISSOES.PCP_GONDOLAS_EXCLUIR_ORDEM, PERMISSOES.PCP_TOTAL);
+const podeEditarMedidasGondolas = requirePermission(PERMISSOES.PCP_GONDOLAS_EDITAR_MEDIDAS, PERMISSOES.PCP_TOTAL);
+const podeImportarPlanilhaGondolas = requirePermission(
+  PERMISSOES.PCP_GONDOLAS_IMPORTAR_PLANILHA,
+  PERMISSOES.PCP_TOTAL
+);
+const podeEscolherFichaGondolas = requirePermission(PERMISSOES.PCP_GONDOLAS_ESCOLHER_FICHA, PERMISSOES.PCP_TOTAL);
 
 const uploadPlanilhaGondolas = multer({
   storage: multer.memoryStorage(),
@@ -193,11 +208,25 @@ router.get('/gondolas-porta-paletes/planilha-modelo', podeGondolas, async503(get
 router.post(
   '/gondolas-porta-paletes/planilha',
   validateCsrf,
-  podeGondolas,
+  podeImportarPlanilhaGondolas,
   uploadPlanilhaGondolas.single('arquivo'),
   async503(postGondolasPlanilha)
 );
-router.put('/gondolas-porta-paletes/medidas', validateCsrf, podeGondolas, async503(putGondolasMedida));
+router.put('/gondolas-porta-paletes/medidas', validateCsrf, podeEditarMedidasGondolas, async503(putGondolasMedida));
+router.put(
+  '/gondolas-porta-paletes/preferencias-ficha',
+  validateCsrf,
+  podeEscolherFichaGondolas,
+  async503(putGondolasPreferenciasFicha)
+);
+router.get('/gondolas-porta-paletes/ordens', podeGondolas, async503(getGondolasOrdens));
+router.post('/gondolas-porta-paletes/ordens', validateCsrf, podeGerarOrdemGondolas, async503(postGondolasOrdem));
+router.delete(
+  '/gondolas-porta-paletes/ordens/:id',
+  validateCsrf,
+  podeExcluirOrdemGondolas,
+  async503(deleteGondolasOrdem)
+);
 
 router.get('/decomposicao/produtos-nomus', podeDecomposicao, async503(getDecomposicaoProdutosNomus));
 router.get('/decomposicao/materias-primas-pp', podeDecomposicao, async503(getDecomposicaoMateriasPrimasPp));

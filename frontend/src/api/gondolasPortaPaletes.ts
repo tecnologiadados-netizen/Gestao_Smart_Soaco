@@ -20,7 +20,20 @@ export type ItemCarteiraGondola = {
   observacoes: string;
   temFicha: boolean;
   origem: 'nomus' | 'planilha' | 'nenhuma';
+  /** Tem lista de produção no Nomus e linhas na planilha ao mesmo tempo. */
+  ambasFichas?: boolean;
+  /** Ficha escolhida pelo usuário quando há as duas; null enquanto ninguém escolheu. */
+  escolhaFicha?: EscolhaFicha | null;
 };
+
+export type EscolhaFicha = 'nomus' | 'planilha';
+
+export async function salvarEscolhasFichaGondola(escolhas: { codigo: string; origem: EscolhaFicha }[]): Promise<void> {
+  await apiJson('/api/pcp/gondolas-porta-paletes/preferencias-ficha', {
+    method: 'PUT',
+    body: { escolhas } as unknown as BodyInit,
+  });
+}
 
 export type ComponenteFicha = {
   codigo: string;
@@ -33,13 +46,51 @@ export type ComponenteFicha = {
   medida02: string;
   modelo?: string;
   observacao?: string;
+  /** Número da ordem em que esta peça do item já saiu. */
+  ordemGerada?: string;
 };
 
 export type DetalheItemGondola = {
   item: ItemCarteiraGondola;
   origem: OrigemFicha;
   componentes: ComponenteFicha[];
+  ambasFichas?: boolean;
 };
+
+export type TipoOrdemGondola = 'PI' | 'PP' | 'PLANILHA';
+
+export type OrdemGondola = {
+  id: number;
+  numero: string;
+  setor: SetorGondola;
+  tipo: TipoOrdemGondola;
+  criadoPorLogin: string | null;
+  createdAt: string;
+  detalhes: DetalheItemGondola[];
+};
+
+export async function listarOrdensGondola(): Promise<OrdemGondola[]> {
+  const data = await apiJson<{ ordens: OrdemGondola[] }>('/api/pcp/gondolas-porta-paletes/ordens', {
+    cache: 'no-store',
+  });
+  return data.ordens;
+}
+
+export async function gerarOrdemGondola(
+  setor: SetorGondola,
+  tipo: TipoOrdemGondola,
+  detalhes: DetalheItemGondola[]
+): Promise<OrdemGondola> {
+  const data = await apiJson<{ ordem: OrdemGondola }>('/api/pcp/gondolas-porta-paletes/ordens', {
+    method: 'POST',
+    body: { setor, tipo, detalhes } as unknown as BodyInit,
+  });
+  return data.ordem;
+}
+
+export async function excluirOrdemGondola(id: number): Promise<void> {
+  await apiJson(`/api/pcp/gondolas-porta-paletes/ordens/${id}`, { method: 'DELETE' });
+}
 
 export type ResumoPlanilhaGondola = {
   gondolas: number;
@@ -55,14 +106,20 @@ export async function listarItensGondolas(): Promise<{
   return apiJson('/api/pcp/gondolas-porta-paletes/itens');
 }
 
+export type DadosPecaGondola = {
+  medida01: string;
+  medida02: string;
+  modelo: string;
+  materiaPrima: string;
+};
+
 export async function salvarMedidaPecaGondola(
   codigo: string,
-  medida01: string,
-  medida02: string
-): Promise<{ codigo: string; medida01: string; medida02: string }> {
+  dados: DadosPecaGondola
+): Promise<DadosPecaGondola & { codigo: string }> {
   return apiJson('/api/pcp/gondolas-porta-paletes/medidas', {
     method: 'PUT',
-    body: { codigo, medida01, medida02 } as unknown as BodyInit,
+    body: { codigo, ...dados } as unknown as BodyInit,
   });
 }
 

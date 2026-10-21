@@ -118,6 +118,12 @@ export const PERMISSOES = {
   PCP_CONSULTA_ESTOQUE_VER: 'pcp.consulta_estoque.ver',
   PCP_ORDEM_PRODUCAO_VER: 'pcp.ordem_producao.ver',
   PCP_ORDEM_PRODUCAO_GERAR: 'pcp.ordem_producao.gerar',
+  PCP_GONDOLAS_VER: 'pcp.gondolas.ver',
+  PCP_GONDOLAS_GERAR: 'pcp.gondolas.gerar',
+  PCP_GONDOLAS_EXCLUIR_ORDEM: 'pcp.gondolas.excluir_ordem',
+  PCP_GONDOLAS_EDITAR_MEDIDAS: 'pcp.gondolas.editar_medidas',
+  PCP_GONDOLAS_IMPORTAR_PLANILHA: 'pcp.gondolas.importar_planilha',
+  PCP_GONDOLAS_ESCOLHER_FICHA: 'pcp.gondolas.escolher_ficha',
   PCP_PROGRAMACAO_SETORIAL_VER: 'pcp.programacao_setorial.ver',
   PCP_SEQUENCIAMENTO_CARRADAS_VER: 'pcp.sequenciamento_carradas.ver',
   PCP_SEQUENCIAMENTO_CARRADAS_CRIAR: 'pcp.sequenciamento_carradas.criar',
@@ -184,3 +190,13 @@ export const PERMISSOES = {
 } as const;
 
 export type CodigoPermissao = (typeof PERMISSOES)[keyof typeof PERMISSOES];
+
+/** Qualquer uma libera a tela de gôndolas e porta-paletes (consulta); PCP_TOTAL também. */
+export const PERMISSOES_GONDOLAS: CodigoPermissao[] = [
+  PERMISSOES.PCP_GONDOLAS_VER,
+  PERMISSOES.PCP_GONDOLAS_GERAR,
+  PERMISSOES.PCP_GONDOLAS_EXCLUIR_ORDEM,
+  PERMISSOES.PCP_GONDOLAS_EDITAR_MEDIDAS,
+  PERMISSOES.PCP_GONDOLAS_IMPORTAR_PLANILHA,
+  PERMISSOES.PCP_GONDOLAS_ESCOLHER_FICHA,
+];

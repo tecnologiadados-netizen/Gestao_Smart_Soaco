@@ -1,4 +1,4 @@
-import { PERMISSOES, type CodigoPermissao } from './permissoes';
+import { PERMISSOES, PERMISSOES_GONDOLAS, type CodigoPermissao } from './permissoes';
 import { PERMISSOES_ACESSO_FINANCEIRO_MENU } from '../utils/financeiroPermissoes';
 import { PERMISSOES_ACESSO_QUALIDADE } from '../utils/qualidadePermissoes';
 import { PERMISSOES_ACESSO_FLUXOS } from '../utils/fluxosPermissoes';
@@ -50,6 +50,7 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
       PERMISSOES.PCP_CONSULTA_ESTOQUE_VER,
       PERMISSOES.PCP_ORDEM_PRODUCAO_VER,
       PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR,
+      ...PERMISSOES_GONDOLAS,
       PERMISSOES.PCP_PROGRAMACAO_SETORIAL_VER,
       PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
       PERMISSOES.PCP_PAINEL_TV_VER,

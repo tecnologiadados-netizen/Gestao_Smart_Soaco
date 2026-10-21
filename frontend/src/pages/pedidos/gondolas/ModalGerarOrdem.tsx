@@ -1,7 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Pencil, X } from 'lucide-react';
-import type { DetalheItemGondola, ItemCarteiraGondola, SetorGondola } from '../../../api/gondolasPortaPaletes';
+import type {
+  ComponenteFicha,
+  DadosPecaGondola,
+  DetalheItemGondola,
+  EscolhaFicha,
+  ItemCarteiraGondola,
+  SetorGondola,
+  TipoOrdemGondola,
+} from '../../../api/gondolasPortaPaletes';
 import { salvarMedidaPecaGondola } from '../../../api/gondolasPortaPaletes';
 import { criarMatcherTextoLivre, PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../../utils/textoLivreBusca';
 
@@ -31,12 +39,13 @@ type PecaLinha = {
   medida01: string;
   medida02: string;
   modelo: string;
+  tipo: ComponenteFicha['tipo'];
   quantidadeTotal: number;
   origem: DetalheItemGondola['origem'];
 };
 
 function pecasDoDetalhe(detalhe: DetalheItemGondola): PecaLinha[] {
-  return detalhe.componentes.map((componente, indice) => ({
+  return detalhe.componentes.flatMap((componente, indice) => componente.ordemGerada ? [] : [{
     chave: `${detalhe.item.idItem}|${indice}`,
     idItem: detalhe.item.idItem,
     pedido: detalhe.item.pedido,
@@ -49,9 +58,10 @@ function pecasDoDetalhe(detalhe: DetalheItemGondola): PecaLinha[] {
     medida01: componente.medida01,
     medida02: componente.medida02,
     modelo: componente.modelo ?? '',
+    tipo: componente.tipo,
     quantidadeTotal: componente.quantidadeTotal,
     origem: detalhe.origem,
-  }));
+  }]);
 }
 
 export default function ModalGerarOrdem({
@@ -62,6 +72,9 @@ export default function ModalGerarOrdem({
   onClose,
   carregarFicha,
   onMedidasSalvas,
+  podeEditarMedidas,
+  podeEscolherFicha,
+  onEscolherFichas,
   onGerar,
 }: {
   aberto: boolean;
@@ -70,8 +83,14 @@ export default function ModalGerarOrdem({
   erro: string | null;
   onClose: () => void;
   carregarFicha: (item: ItemCarteiraGondola) => Promise<DetalheItemGondola>;
-  onMedidasSalvas: (codigo: string, medida01: string, medida02: string) => void;
-  onGerar: (detalhes: DetalheItemGondola[]) => void;
+  onMedidasSalvas: (codigo: string, dados: DadosPecaGondola) => void;
+  podeEditarMedidas: boolean;
+  /** Sem esta permissão a etapa de escolha não aparece e vale o Nomus. */
+  podeEscolherFicha: boolean;
+  /** Grava qual ficha fica nos códigos que têm Nomus e planilha. */
+  onEscolherFichas: (escolhas: { codigo: string; origem: EscolhaFicha }[]) => Promise<void>;
+  /** Grava e imprime a ordem. Devolve o número gravado, ou null se não gravou. */
+  onGerar: (setor: SetorGondola, tipo: TipoOrdemGondola, detalhes: DetalheItemGondola[]) => Promise<string | null>;
 }) {
   const [setor, setSetor] = useState<SetorGondola | null>(null);
   const [busca, setBusca] = useState('');
@@ -80,11 +99,19 @@ export default function ModalGerarOrdem({
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const [editando, setEditando] = useState<string | null>(null);
-  const [rascunho, setRascunho] = useState({ medida01: '', medida02: '' });
+  const [rascunho, setRascunho] = useState<DadosPecaGondola>({
+    medida01: '',
+    medida02: '',
+    modelo: '',
+    materiaPrima: '',
+  });
   const [salvandoMedida, setSalvandoMedida] = useState(false);
   const [erroMedida, setErroMedida] = useState<string | null>(null);
   const [escolhendoTipo, setEscolhendoTipo] = useState(false);
   const [observacoes, setObservacoes] = useState<Record<string, string>>({});
+  const [escolhas, setEscolhas] = useState<Record<string, EscolhaFicha>>({});
+  const [salvandoEscolhas, setSalvandoEscolhas] = useState(false);
+  const [erroEscolhas, setErroEscolhas] = useState<string | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
@@ -104,7 +131,48 @@ export default function ModalGerarOrdem({
     [itens, setor]
   );
 
+  const semEscolha = useMemo(() => {
+    const porCodigo = new Map<string, { codigo: string; descricao: string; pedidos: string[] }>();
+    for (const item of doSetor) {
+      if (!item.ambasFichas || item.escolhaFicha) continue;
+      const chave = item.codigo.trim().toUpperCase();
+      const atual = porCodigo.get(chave) ?? { codigo: item.codigo, descricao: item.descricao, pedidos: [] };
+      if (!atual.pedidos.includes(item.pedido)) atual.pedidos.push(item.pedido);
+      porCodigo.set(chave, atual);
+    }
+    return [...porCodigo.values()].sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR'));
+  }, [doSetor]);
+  const precisaEscolher = podeEscolherFicha && semEscolha.length > 0;
+
   useEffect(() => {
+    setEscolhas({});
+    setErroEscolhas(null);
+  }, [setor]);
+
+  async function confirmarEscolhas() {
+    const lista = semEscolha.flatMap((linha) => {
+      const origem = escolhas[linha.codigo];
+      return origem ? [{ codigo: linha.codigo, origem }] : [];
+    });
+    if (lista.length < semEscolha.length) return;
+    setSalvandoEscolhas(true);
+    setErroEscolhas(null);
+    try {
+      await onEscolherFichas(lista);
+    } catch (e) {
+      setErroEscolhas(e instanceof Error ? e.message : 'Erro ao guardar a escolha.');
+    } finally {
+      setSalvandoEscolhas(false);
+    }
+  }
+
+  useEffect(() => {
+    if (precisaEscolher) {
+      setDetalhes([]);
+      setMarcados(new Set());
+      setCarregandoPecas(false);
+      return;
+    }
     if (!setor || doSetor.length === 0) {
       setDetalhes([]);
       setMarcados(new Set());
@@ -131,7 +199,7 @@ export default function ModalGerarOrdem({
     return () => {
       cancelado = true;
     };
-  }, [setor, doSetor, carregarFicha]);
+  }, [setor, doSetor, carregarFicha, precisaEscolher]);
 
   const pecas = useMemo(() => detalhes.flatMap(pecasDoDetalhe), [detalhes]);
 
@@ -218,7 +286,13 @@ export default function ModalGerarOrdem({
     setSalvandoMedida(true);
     setErroMedida(null);
     try {
-      const salva = await salvarMedidaPecaGondola(peca.codigo, rascunho.medida01, rascunho.medida02);
+      const salva = await salvarMedidaPecaGondola(peca.codigo, rascunho);
+      const dados: DadosPecaGondola = {
+        medida01: salva.medida01,
+        medida02: salva.medida02,
+        modelo: salva.modelo,
+        materiaPrima: salva.materiaPrima,
+      };
       const alvo = chaveMedida(peca.codigo);
       setDetalhes((atual) =>
         atual.map((detalhe) =>
@@ -227,14 +301,12 @@ export default function ModalGerarOrdem({
             : {
                 ...detalhe,
                 componentes: detalhe.componentes.map((componente) =>
-                  chaveMedida(componente.codigo) === alvo
-                    ? { ...componente, medida01: salva.medida01, medida02: salva.medida02 }
-                    : componente
+                  chaveMedida(componente.codigo) === alvo ? { ...componente, ...dados } : componente
                 ),
               }
         )
       );
-      onMedidasSalvas(peca.codigo, salva.medida01, salva.medida02);
+      onMedidasSalvas(peca.codigo, dados);
       setEditando(null);
     } catch (e) {
       setErroMedida(e instanceof Error ? e.message : 'Erro ao guardar as medidas.');
@@ -243,8 +315,10 @@ export default function ModalGerarOrdem({
     }
   }
 
-  function confirmar(tipos: TipoImpressao) {
+  async function confirmar(tipos: TipoImpressao) {
+    if (!setor) return;
     setEscolhendoTipo(false);
+    const enviadas = new Set<string>();
     const escolhidos = detalhes
       .map((detalhe) => ({
         ...detalhe,
@@ -258,13 +332,27 @@ export default function ModalGerarOrdem({
           }))
           .filter(
             ({ componente, chave }) =>
+              !componente.ordemGerada &&
               chavesParaImprimir.has(chave) &&
               (tipos === 'ambos' || componente.tipo === '' || componente.tipo === tipos)
           )
-          .map(({ componente }) => componente),
+          .map(({ componente, chave }) => {
+            enviadas.add(chave);
+            return componente;
+          }),
       }))
       .filter((detalhe) => detalhe.componentes.length > 0);
-    onGerar(escolhidos);
+    const numero = await onGerar(setor, tipos === 'ambos' ? 'PLANILHA' : tipos, escolhidos);
+    if (!numero) return;
+    setDetalhes((atual) =>
+      atual.map((detalhe) => ({
+        ...detalhe,
+        componentes: detalhe.componentes.map((componente, indice) =>
+          enviadas.has(`${detalhe.item.idItem}|${indice}`) ? { ...componente, ordemGerada: numero } : componente
+        ),
+      }))
+    );
+    setMarcados((atual) => new Set([...atual].filter((chave) => !enviadas.has(chave))));
   }
 
   return createPortal(
@@ -321,6 +409,90 @@ export default function ModalGerarOrdem({
               </button>
             ))}
           </div>
+        ) : precisaEscolher ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-soaco-gray/25 px-5 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {semEscolha.length === 1 ? 'Este item tem' : 'Estes itens têm'} ficha no Nomus e na planilha
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-300">
+                  Escolha qual lista deve permanecer. O Gestão guarda a escolha por código e não pergunta de novo.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {(
+                  [
+                    ['nomus', 'Todos Nomus'],
+                    ['planilha', 'Todos Planilha'],
+                  ] as const
+                ).map(([origem, rotulo]) => (
+                  <button
+                    key={origem}
+                    type="button"
+                    onClick={() =>
+                      setEscolhas(Object.fromEntries(semEscolha.map((linha) => [linha.codigo, origem])))
+                    }
+                    className="rounded-lg border border-soaco-gray/40 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-soaco-navy/60"
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-soaco-navy text-xs text-white">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Código</th>
+                    <th className="px-3 py-2 font-semibold">Descrição</th>
+                    <th className="px-3 py-2 font-semibold">Pedidos</th>
+                    <th className="px-3 py-2 text-right font-semibold">Lista que permanece</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {semEscolha.map((linha) => (
+                    <tr key={linha.codigo} className="border-b border-soaco-gray/20">
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-800 dark:text-white">
+                        {linha.codigo}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{linha.descricao}</td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{linha.pedidos.join(', ')}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end gap-1.5" role="radiogroup" aria-label={`Ficha de ${linha.codigo}`}>
+                          {(
+                            [
+                              ['nomus', 'Nomus', 'bg-primary-600 text-white border-primary-500'],
+                              ['planilha', 'Planilha', 'bg-[#FFAD00] text-black border-[#FFAD00]'],
+                            ] as const
+                          ).map(([origem, rotulo, ativoCls]) => {
+                            const ativo = escolhas[linha.codigo] === origem;
+                            return (
+                              <button
+                                key={origem}
+                                type="button"
+                                role="radio"
+                                aria-checked={ativo}
+                                onClick={() => setEscolhas((atual) => ({ ...atual, [linha.codigo]: origem }))}
+                                className={`rounded-md border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                                  ativo
+                                    ? ativoCls
+                                    : 'border-soaco-gray/40 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-soaco-navy/60'
+                                }`}
+                              >
+                                {rotulo}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {erroEscolhas && <p className="px-5 py-2 text-sm text-red-600 dark:text-red-300">{erroEscolhas}</p>}
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3 border-b border-soaco-gray/25 px-5 py-3">
@@ -343,7 +515,9 @@ export default function ModalGerarOrdem({
               ) : erroCarga ? (
                 <p className="px-5 py-8 text-center text-sm text-red-600 dark:text-red-300">{erroCarga}</p>
               ) : pecas.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-500">Nenhuma peça de ficha neste setor.</p>
+                <p className="px-5 py-8 text-center text-sm text-slate-500">
+                  Nenhuma peça disponível neste setor. As que já saíram em ordem estão no Histórico.
+                </p>
               ) : (
                 <table className="w-full min-w-[1100px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-soaco-navy text-xs text-white">
@@ -427,8 +601,30 @@ export default function ModalGerarOrdem({
                                       <span className="ml-2 text-xs text-slate-400">{peca.codigo}</span>
                                     ) : null}
                                   </td>
-                                  <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{peca.modelo || '—'}</td>
-                                  <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{peca.materiaPrima || '—'}</td>
+                                  <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
+                                    {editando === peca.chave ? (
+                                      <input
+                                        value={rascunho.modelo}
+                                        onChange={(e) => setRascunho((atual) => ({ ...atual, modelo: e.target.value }))}
+                                        aria-label={`Modelo de ${peca.descricao}`}
+                                        className="h-8 w-28 rounded border border-soaco-gray/40 bg-white px-2 text-slate-900 dark:bg-black dark:text-white"
+                                      />
+                                    ) : (
+                                      peca.modelo || '—'
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
+                                    {editando === peca.chave ? (
+                                      <input
+                                        value={rascunho.materiaPrima}
+                                        onChange={(e) => setRascunho((atual) => ({ ...atual, materiaPrima: e.target.value }))}
+                                        aria-label={`Matéria-prima de ${peca.descricao}`}
+                                        className="h-8 w-28 rounded border border-soaco-gray/40 bg-white px-2 text-slate-900 dark:bg-black dark:text-white"
+                                      />
+                                    ) : (
+                                      peca.materiaPrima || '—'
+                                    )}
+                                  </td>
                                   <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
                                     {editando === peca.chave ? (
                                       <input
@@ -455,7 +651,7 @@ export default function ModalGerarOrdem({
                                           disabled={salvandoMedida}
                                           onClick={() => void salvarMedidas(peca)}
                                           className="rounded p-1 text-emerald-400 hover:bg-white/10"
-                                          aria-label="Guardar medidas"
+                                          aria-label="Guardar dados da peça"
                                         >
                                           <Check className="h-3.5 w-3.5" />
                                         </button>
@@ -471,17 +667,22 @@ export default function ModalGerarOrdem({
                                     ) : (
                                       <span className="inline-flex items-center justify-end gap-1">
                                         {peca.medida02 || '—'}
-                                        {peca.origem === 'nomus' && (
+                                        {podeEditarMedidas && peca.origem === 'nomus' && peca.tipo === 'PP' && (
                                           <button
                                             type="button"
                                             onClick={() => {
                                               setEditando(peca.chave);
-                                              setRascunho({ medida01: peca.medida01, medida02: peca.medida02 });
+                                              setRascunho({
+                                                medida01: peca.medida01,
+                                                medida02: peca.medida02,
+                                                modelo: peca.modelo,
+                                                materiaPrima: peca.materiaPrima,
+                                              });
                                               setErroMedida(null);
                                             }}
                                             className="rounded p-1 text-slate-300 hover:bg-white/10 hover:text-white"
-                                            title="Editar medidas. O Gestão guarda para as próximas ordens."
-                                            aria-label={`Editar medidas de ${peca.descricao}`}
+                                            title="Editar modelo, matéria-prima e medidas. O Gestão guarda para as próximas ordens."
+                                            aria-label={`Editar dados de ${peca.descricao}`}
                                           >
                                             <Pencil className="h-3.5 w-3.5" />
                                           </button>
@@ -535,7 +736,7 @@ export default function ModalGerarOrdem({
                   key={tipo}
                   type="button"
                   disabled={gerando || quantidade === 0}
-                  onClick={() => confirmar(tipo)}
+                  onClick={() => void confirmar(tipo)}
                   className="rounded-lg border border-soaco-gray/40 bg-white px-3 py-2.5 text-left transition hover:border-primary-500 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-soaco-graphite dark:hover:bg-soaco-navy/60"
                 >
                   <span className="block text-sm font-semibold text-slate-900 dark:text-white">{rotulo}</span>
@@ -565,12 +766,22 @@ export default function ModalGerarOrdem({
               Trocar setor
             </button>
           )}
-          {setor != null && !escolhendoTipo && (
+          {setor != null && precisaEscolher && (
+            <button
+              type="button"
+              disabled={salvandoEscolhas || semEscolha.some((linha) => !escolhas[linha.codigo])}
+              onClick={() => void confirmarEscolhas()}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              {salvandoEscolhas ? 'Guardando…' : 'Confirmar e continuar'}
+            </button>
+          )}
+          {setor != null && !escolhendoTipo && !precisaEscolher && (
             <button
               type="button"
               disabled={gerando || carregandoPecas || chavesParaImprimir.size === 0}
               onClick={() => {
-                if (marcadosPorTipo.pi + marcadosPorTipo.pp === 0) confirmar('ambos');
+                if (marcadosPorTipo.pi + marcadosPorTipo.pp === 0) void confirmar('ambos');
                 else setEscolhendoTipo(true);
               }}
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"

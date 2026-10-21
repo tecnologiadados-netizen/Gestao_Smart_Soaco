@@ -3,6 +3,7 @@ import {
   chaveFicha,
   classificarSetor,
   componentesDaPlanilha,
+  fichasDoCodigo,
   incluirPecasDasListasFilhas,
   itemTemFicha,
   origemDaFicha,
@@ -42,6 +43,14 @@ describe('ficha de gôndolas e porta-paletes', () => {
     expect(origemDaFicha('PA 11023.2', ['PA 11023'], planilha)).toBe('nomus');
     expect(itemTemFicha('PA 11023.2', ['PA 11023'], [])).toBe(true);
     expect(origemDaFicha('PI 0021', ['PA 11023'], planilha)).toBe('nenhuma');
+  });
+
+  it('com as duas fichas usa o Nomus, a menos que a escolha guardada seja a planilha', () => {
+    const planilha = [{ codigo: 'PA 11023' }];
+    expect(fichasDoCodigo('PA 11023.2', ['PA 11023.2'], planilha)).toEqual({ nomus: true, planilha: true });
+    expect(origemDaFicha('PA 11023.2', ['PA 11023.2'], planilha)).toBe('nomus');
+    expect(origemDaFicha('PA 11023.2', ['PA 11023.2'], planilha, 'planilha')).toBe('planilha');
+    expect(origemDaFicha('PA 11023.2', ['PA 11023.2'], [], 'planilha')).toBe('nomus');
   });
 
   it('a planilha do pai explode pela quantidade pendente real', () => {

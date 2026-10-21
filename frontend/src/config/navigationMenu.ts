@@ -1,4 +1,4 @@
-import { PERMISSOES, type CodigoPermissao } from './permissoes';
+import { PERMISSOES, PERMISSOES_GONDOLAS, type CodigoPermissao } from './permissoes';
 import { podeAcessarRotaFinanceiro } from '../utils/financeiroPermissoes';
 import {
   podeAbrirTelaDigitacaoConferencia,
@@ -505,11 +505,7 @@ export function buildPcpMenuForUser(hasPermission: HasPermission): NavMenuEntry[
         continue;
       }
       if (entry.to === '/pedidos/gondolas-porta-paletes') {
-        if (
-          podeGerenciador ||
-          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_VER) ||
-          hasPermission(PERMISSOES.PCP_ORDEM_PRODUCAO_GERAR)
-        ) {
+        if (hasPermission(PERMISSOES.PCP_TOTAL) || PERMISSOES_GONDOLAS.some((codigo) => hasPermission(codigo))) {
           filtered.push(entry);
         }
         continue;

@@ -22,7 +22,30 @@ export type ComponenteDetalhe = {
   medida01: string;
   medida02: string;
   modelo?: string;
+  observacao?: string;
+  /** Número da ordem em que a peça deste item já saiu. */
+  ordemGerada?: string;
 };
+
+/**
+ * Identidade da peça dentro de um item de pedido, para saber se já saiu em ordem.
+ * PI/PP do Nomus pelo código exato; peça da planilha (sem tipo) pela descrição, MP e medidas.
+ */
+export function chavePeca(componente: Pick<
+  ComponenteDetalhe,
+  'codigo' | 'tipo' | 'descricao' | 'materiaPrima' | 'medida01' | 'medida02'
+>): string {
+  const codigo = componente.codigo.trim().toUpperCase().replace(/\s+/g, ' ');
+  if (componente.tipo && codigo) return `${componente.tipo}|${codigo}`;
+  return [
+    'PLANILHA',
+    codigo,
+    componente.descricao.trim().toUpperCase().replace(/\s+/g, ' '),
+    componente.materiaPrima.trim(),
+    componente.medida01.trim(),
+    componente.medida02.trim(),
+  ].join('|');
+}
 
 /** Casa `PI 2860.2` com `PI 2860`, como na planilha de inspiração. */
 export function chaveFicha(codigo: string): string {
@@ -70,21 +93,42 @@ export function multiplicarPelaCarteira(quantidade: number, qtdeReal: number): n
 
 export type OrigemFicha = 'nomus' | 'planilha' | 'nenhuma';
 
-/** Nomus tem prioridade. A planilha só vale quando não há lista de produção. */
-export function origemDaFicha(
+/** Em quais fontes o código tem ficha: lista de produção do Nomus e/ou planilha do setor. */
+export function fichasDoCodigo(
   codigo: string,
   paisComListaNomus: string[],
   linhasPlanilha: { codigo: string }[]
-): OrigemFicha {
+): { nomus: boolean; planilha: boolean } {
   const alvo = codigo.toUpperCase().trim();
   const base = chaveFicha(codigo);
-  if (!alvo) return 'nenhuma';
-  const noNomus = paisComListaNomus.some((pai) => {
+  if (!alvo) return { nomus: false, planilha: false };
+  const nomus = paisComListaNomus.some((pai) => {
     const nome = pai.toUpperCase().trim();
     return nome === alvo || chaveFicha(nome) === base;
   });
-  if (noNomus) return 'nomus';
-  if (linhasPlanilha.some((linha) => chaveFicha(linha.codigo) === base)) return 'planilha';
+  const planilha = linhasPlanilha.some((linha) => chaveFicha(linha.codigo) === base);
+  return { nomus, planilha };
+}
+
+/** Código do produto para guardar a escolha entre Nomus e planilha quando há as duas fichas. */
+export function chavePreferenciaFicha(codigo: string): string {
+  return codigo.trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Nomus tem prioridade. A planilha vale quando não há lista de produção,
+ * ou quando o código tem as duas e o usuário escolheu ficar com a planilha.
+ */
+export function origemDaFicha(
+  codigo: string,
+  paisComListaNomus: string[],
+  linhasPlanilha: { codigo: string }[],
+  preferencia?: 'nomus' | 'planilha' | null
+): OrigemFicha {
+  const fichas = fichasDoCodigo(codigo, paisComListaNomus, linhasPlanilha);
+  if (fichas.nomus && fichas.planilha) return preferencia === 'planilha' ? 'planilha' : 'nomus';
+  if (fichas.nomus) return 'nomus';
+  if (fichas.planilha) return 'planilha';
   return 'nenhuma';
 }
 

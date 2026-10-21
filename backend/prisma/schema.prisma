@@ -3328,7 +3328,56 @@ model GondolaMedidaPeca {
   codigo       String   @unique
   medida01     String   @default("")
   medida02     String   @default("")
+  modelo       String   @default("")
+  materiaPrima String   @default("") @map("materia_prima")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   @@map("gondola_medida_peca")
+}
+
+/// Ordem de gôndolas/porta-paletes emitida. `snapshot` guarda as peças impressas para reimpressão.
+model GondolaOrdem {
+  id             Int                @id @default(autoincrement())
+  numero         String             @unique
+  setor          String
+  tipo           String
+  criadoPorLogin String?            @map("criado_por_login")
+  snapshot       String
+  createdAt      String             @map("created_at")
+  pecas          GondolaOrdemPeca[]
+
+  @@map("gondola_ordem")
+}
+
+/// Peça de um item de pedido que já saiu em ordem. Ao excluir a ordem, a peça volta a ficar disponível.
+model GondolaOrdemPeca {
+  id        Int          @id @default(autoincrement())
+  ordemId   Int          @map("ordem_id")
+  idItem    Int          @map("id_item")
+  pedido    String       @default("")
+  chavePeca String       @map("chave_peca")
+  ordem     GondolaOrdem @relation(fields: [ordemId], references: [id], onDelete: Cascade)
+
+  @@unique([idItem, chavePeca])
+  @@index([ordemId])
+  @@map("gondola_ordem_peca")
+}
+
+/// Item de pedido com todas as peças da ficha já em ordem: sai da grade até alguma ordem dele ser excluída.
+model GondolaItemConcluido {
+  idItem      Int    @id @map("id_item")
+  ordemId     Int    @map("ordem_id")
+  concluidoEm String @map("concluido_em")
+
+  @@map("gondola_item_concluido")
+}
+
+/// Código com ficha no Nomus e na planilha: qual das duas o usuário escolheu manter.
+model GondolaPreferenciaFicha {
+  codigo             String  @id
+  origem             String
+  atualizadoPorLogin String? @map("atualizado_por_login")
+  atualizadoEm       String  @map("atualizado_em")
+
+  @@map("gondola_preferencia_ficha")
 }

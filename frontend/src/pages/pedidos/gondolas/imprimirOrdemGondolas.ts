@@ -83,6 +83,17 @@ function somarPecasIguais(linhas: LinhaOrdem[]): LinhaOrdem[] {
   return [...mapa.values()];
 }
 
+export type LinhaDetalheOrdem = Omit<LinhaOrdem, 'cliente'>;
+
+/** Linhas do detalhamento por pedido, somadas como nas páginas de pedido do PDF. */
+export function linhasDetalhamentoPorPedido(detalhes: DetalheItemGondola[]): LinhaDetalheOrdem[] {
+  const linhas = detalhes.flatMap(linhasDoDetalhe);
+  const pedidos = [...new Set(linhas.map((linha) => linha.pedido))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return pedidos.flatMap((pedido) =>
+    somarPecasIguais(linhas.filter((linha) => linha.pedido === pedido)).map(({ cliente: _cliente, ...linha }) => linha)
+  );
+}
+
 function consolidar(linhas: LinhaOrdem[]): LinhaOrdem[] {
   return somarPecasIguais(linhas.map((linha) => ({ ...linha, pedido: 'Consolidado', cliente: '', observacao: '' }))).sort(
     (a, b) =>
@@ -90,8 +101,11 @@ function consolidar(linhas: LinhaOrdem[]): LinhaOrdem[] {
   );
 }
 
-function cabecalho(pedidos: string[], cliente: string, data: string, hora: string, logo: string | null): string {
+type MetaOrdem = { data: string; hora: string; numero: string; tipo: string };
+
+function cabecalho(pedidos: string[], cliente: string, meta: MetaOrdem, logo: string | null): string {
   const temCliente = cliente.trim() !== '';
+  const { data, hora } = meta;
   return `
     <section class="print-header">
       <div class="print-header-main">
@@ -103,6 +117,8 @@ function cabecalho(pedidos: string[], cliente: string, data: string, hora: strin
           </div>
         </div>
         <div class="doc-meta">
+          ${meta.numero ? `<p class="doc-numero">${esc(meta.numero)}</p>` : ''}
+          ${meta.tipo ? `<p><strong>Tipo:</strong> ${esc(meta.tipo)}</p>` : ''}
           <p><strong>Data:</strong> ${esc(data)}</p>
           <p><strong>Hora:</strong> ${esc(hora)}</p>
         </div>
@@ -129,8 +145,7 @@ function folha(
   linhas: LinhaOrdem[],
   pedidosCabecalho: string[],
   cliente: string,
-  data: string,
-  hora: string,
+  meta: MetaOrdem,
   logo: string | null,
   quebra: boolean
 ): string {
@@ -155,7 +170,7 @@ function folha(
       <thead>
         <tr class="meta">
           <td colspan="7">
-            ${cabecalho(pedidosCabecalho, cliente, data, hora, logo)}
+            ${cabecalho(pedidosCabecalho, cliente, meta, logo)}
             <h2 class="section-title">${esc(titulo)}</h2>
           </td>
         </tr>
@@ -186,15 +201,24 @@ async function logoParaImpressao(): Promise<string | null> {
   return imageUrlToDataUrl(src);
 }
 
-export async function imprimirOrdemGondolas(detalhes: DetalheItemGondola[]): Promise<void> {
+const ROTULO_TIPO: Record<string, string> = { PI: 'Apenas PI', PP: 'Apenas PP', PLANILHA: 'Peças da planilha' };
+
+export async function imprimirOrdemGondolas(
+  detalhes: DetalheItemGondola[],
+  opcoes: { numero?: string; emitidaEm?: string; tipo?: string } = {}
+): Promise<void> {
   const linhas = detalhes.flatMap(linhasDoDetalhe);
-  const agora = new Date();
-  const data = agora.toLocaleDateString('pt-BR');
-  const hora = agora.toLocaleTimeString('pt-BR');
+  const emissao = opcoes.emitidaEm ? new Date(opcoes.emitidaEm) : new Date();
+  const meta: MetaOrdem = {
+    data: emissao.toLocaleDateString('pt-BR'),
+    hora: emissao.toLocaleTimeString('pt-BR'),
+    numero: opcoes.numero ?? '',
+    tipo: opcoes.tipo ? (ROTULO_TIPO[opcoes.tipo] ?? opcoes.tipo) : '',
+  };
   const pedidos = [...new Set(linhas.map((linha) => linha.pedido))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const logo = await logoParaImpressao();
 
-  const resumo = folha('Resumo consolidado', consolidar(linhas), pedidos, '', data, hora, logo, false);
+  const resumo = folha('Resumo consolidado', consolidar(linhas), pedidos, '', meta, logo, false);
   const porPedido = pedidos
     .map((pedido) => {
       const doPedido = linhas.filter((linha) => linha.pedido === pedido);
@@ -204,8 +228,7 @@ export async function imprimirOrdemGondolas(detalhes: DetalheItemGondola[]): Pro
         somarPecasIguais(doPedido),
         [pedido],
         cliente,
-        data,
-        hora,
+        meta,
         logo,
         true
       );
@@ -257,6 +280,7 @@ export async function imprimirOrdemGondolas(detalhes: DetalheItemGondola[]): Pro
     .doc-subtitle { margin: 2px 0 0; color: #334155; font-size: 11px; font-weight: 600; }
     .doc-meta { text-align: right; font-size: 10px; color: #334155; line-height: 1.4; }
     .doc-meta p { margin: 0; }
+    .doc-meta .doc-numero { font-size: 13px; font-weight: 700; color: #0f172a; }
     .doc-info-grid {
       margin-top: 10px;
       display: grid;
