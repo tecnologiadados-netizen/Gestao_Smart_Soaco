@@ -14,6 +14,10 @@ export type LinhaAcompanhamento = {
   necessidadeSolicitacao: string | null;
   emissaoPedido: string | null;
   emissaoPreEntrada: string | null;
+  /** Um número por linha. Vazios quando a etapa não tem o documento. */
+  solicitacoes?: string;
+  pedidos?: string;
+  documentos?: string;
 };
 
 export type LinhaDetalheSolicitado = {

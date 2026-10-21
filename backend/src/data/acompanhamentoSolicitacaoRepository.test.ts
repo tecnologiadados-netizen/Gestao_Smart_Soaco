@@ -6,6 +6,7 @@ import {
   SQL_IPC_ATENDIDO,
   SQL_SC_LIBERADA_SEM_PEDIDO,
   montarLinhasPipeline,
+  unirTokensBusca,
 } from './acompanhamentoSolicitacaoRepository.js';
 
 describe('montarLinhasPipeline', () => {
@@ -55,6 +56,37 @@ describe('montarLinhasPipeline', () => {
     expect(linhas).toHaveLength(1);
     expect(linhas[0]).toMatchObject({ codigo: 'C', qtdePreEntrada: 12.5 });
   });
+
+  it('reúne solicitação, pedido e documento das três etapas para a busca', () => {
+    const linhas = montarLinhasPipeline(
+      produtos,
+      new Map([[1, { qtde: 10, emissao: '2026-08-01', necessidade: '2026-08-15', solicitacoes: '900' }]]),
+      new Map([[1, { qtde: 4, emissao: '2026-08-02', pedidos: 'PC 10', solicitacoes: '900\n901' }]]),
+      new Map([
+        [
+          1,
+          {
+            qtde: 2,
+            emissao: '2026-08-20',
+            documentos: '55221',
+            pedidos: 'PC 10\nPC 11',
+            solicitacoes: '901',
+          },
+        ],
+      ])
+    );
+    expect(linhas[0]).toMatchObject({
+      solicitacoes: '900\n901',
+      pedidos: 'PC 10\nPC 11',
+      documentos: '55221',
+    });
+  });
+});
+
+describe('unirTokensBusca', () => {
+  it('ignora vazio e não repete o mesmo número', () => {
+    expect(unirTokensBusca('12\n12', ' 12 ', null, 'PC 1,PC 1')).toBe('12\nPC 1');
+  });
 });
 
 describe('recorte SQL do pipeline', () => {
@@ -69,5 +101,7 @@ describe('recorte SQL do pipeline', () => {
   it('trata status 1 do item de pedido como atendido, não como fora do pipeline', () => {
     expect(SQL_IPC_ATENDIDO).toContain('NOT IN (5, 6)');
     expect(SQL_IPC_ATENDIDO).not.toContain('NOT IN (1,');
+    expect(SQL_IPC_ATENDIDO).not.toContain('EXISTS');
+    expect(SQL_IPC_COMPRADO).toContain('EXISTS');
   });
 });

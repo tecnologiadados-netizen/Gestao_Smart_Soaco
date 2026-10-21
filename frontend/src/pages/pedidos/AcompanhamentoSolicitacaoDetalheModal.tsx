@@ -112,7 +112,7 @@ export default function AcompanhamentoSolicitacaoDetalheModal({ alvo, cacheRef, 
                     <th className="px-2 py-2 font-medium">Documento</th>
                     <th className="px-2 py-2 font-medium">NF</th>
                     <th className="px-2 py-2 font-medium">Fornecedor</th>
-                    <th className="px-2 py-2 font-medium">Emissão</th>
+                    <th className="px-2 py-2 font-medium">Emissão da NF</th>
                     <th className="px-2 py-2 font-medium">Situação</th>
                     <th className="px-2 py-2 text-right font-medium">Qtde</th>
                   </tr>

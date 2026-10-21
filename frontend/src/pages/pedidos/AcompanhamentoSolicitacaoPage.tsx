@@ -65,7 +65,7 @@ const FILTROS_DATA: { id: ColunaDataId; label: string }[] = [
   { id: 'emissaoSc', label: 'Emissão da solicitação' },
   { id: 'necessidadeSc', label: 'Necessidade da solicitação' },
   { id: 'emissaoPc', label: 'Emissão do pedido' },
-  { id: 'emissaoPre', label: 'Emissão da pré-entrada' },
+  { id: 'emissaoPre', label: 'Emissão da NF' },
 ];
 
 function fmtData(ymd: string | null | undefined): string {
@@ -101,6 +101,18 @@ function compararCodigo(a: LinhaAcompanhamento, b: LinhaAcompanhamento): number 
   return a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true, sensitivity: 'base' });
 }
 
+function casaNumero(match: (valor: string) => boolean, campo: string | null | undefined): boolean {
+  if (!campo?.trim()) return false;
+  if (match(campo.replace(/\n/g, ' '))) return true;
+  return campo.split(/[\n,]+/).some((bruto) => {
+    const token = bruto.trim();
+    return token.length > 0 && match(token);
+  });
+}
+
+const CLASSE_FILTRO =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+
 function Seta() {
   return (
     <div className="flex items-center justify-center text-slate-300 dark:text-slate-600" aria-hidden>
@@ -121,7 +133,10 @@ export default function AcompanhamentoSolicitacaoPage() {
   const [linhas, setLinhas] = useState<LinhaAcompanhamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState('');
+  const [filtroProduto, setFiltroProduto] = useState('');
+  const [filtroSolicitacao, setFiltroSolicitacao] = useState('');
+  const [filtroPedido, setFiltroPedido] = useState('');
+  const [filtroDocumento, setFiltroDocumento] = useState('');
   const [filtrosData, setFiltrosData] = useState<Partial<Record<ColunaDataId, FiltroData>>>({});
   const [ordemData, setOrdemData] = useState<{ id: ColunaDataId; dir: OrdemDir } | null>(null);
   const [modalDataId, setModalDataId] = useState<ColunaDataId | null>(null);
@@ -160,9 +175,19 @@ export default function AcompanhamentoSolicitacaoPage() {
   );
 
   const visiveis = useMemo(() => {
-    const match = criarMatcherTextoLivre(filtro);
+    const matchProduto = criarMatcherTextoLivre(filtroProduto);
+    const matchSolicitacao = criarMatcherTextoLivre(filtroSolicitacao);
+    const matchPedido = criarMatcherTextoLivre(filtroPedido);
+    const matchDocumento = criarMatcherTextoLivre(filtroDocumento);
+    const buscaProduto = filtroProduto.trim().length > 0;
+    const buscaSolicitacao = filtroSolicitacao.trim().length > 0;
+    const buscaPedido = filtroPedido.trim().length > 0;
+    const buscaDocumento = filtroDocumento.trim().length > 0;
     const lista = linhas.filter((l) => {
-      if (!match(`${l.codigo} ${l.descricao}`)) return false;
+      if (buscaProduto && !matchProduto(l.codigo) && !matchProduto(l.descricao)) return false;
+      if (buscaSolicitacao && !casaNumero(matchSolicitacao, l.solicitacoes)) return false;
+      if (buscaPedido && !casaNumero(matchPedido, l.pedidos)) return false;
+      if (buscaDocumento && !casaNumero(matchDocumento, l.documentos)) return false;
       for (const col of FILTROS_DATA) {
         if (!passaPeriodo(dataDaLinha(l, col.id), filtrosData[col.id])) return false;
       }
@@ -181,7 +206,7 @@ export default function AcompanhamentoSolicitacaoPage() {
       return compararCodigo(a, b);
     });
     return lista;
-  }, [linhas, filtro, filtrosData, etapaFiltro, ordemData]);
+  }, [linhas, filtroProduto, filtroSolicitacao, filtroPedido, filtroDocumento, filtrosData, etapaFiltro, ordemData]);
 
   const limparFiltrosData = useCallback(() => {
     setFiltrosData({});
@@ -208,7 +233,7 @@ export default function AcompanhamentoSolicitacaoPage() {
   if (!podeVer) return <Navigate to="/sem-acesso" replace />;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 md:p-4">
+    <div className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-5">
       <CarregandoInformacoesOverlay
         show={carregando}
         mensagem="Lendo solicitações, pedidos e pré-entradas…"
@@ -219,7 +244,7 @@ export default function AcompanhamentoSolicitacaoPage() {
         <div className="flex flex-wrap items-start gap-2">
           <div>
             <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              Acompanhamento de solicitação
+              Materiais a chegar
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               O que ainda está a caminho: da solicitação liberada até a pré-entrada.
@@ -227,7 +252,7 @@ export default function AcompanhamentoSolicitacaoPage() {
           </div>
           <ComoLerBtn
             onClick={() => setAjudaAberta(true)}
-            title="Como ler o acompanhamento de solicitação"
+            title="Como ler Materiais a chegar"
           />
         </div>
         <button
@@ -239,25 +264,28 @@ export default function AcompanhamentoSolicitacaoPage() {
         </button>
       </div>
 
-      <div className="flex shrink-0 items-stretch gap-1.5">
+      <div className="flex shrink-0 items-stretch gap-2">
         {resumo.map((etapa, i) => (
           <Fragment key={etapa.id}>
             {i > 0 ? <Seta /> : null}
             <button
               type="button"
               onClick={() => setEtapaFiltro((atual) => (atual === etapa.id ? 'todas' : etapa.id))}
-              className={`min-w-0 flex-1 rounded-xl border px-3 py-3 text-left shadow-sm transition ${
+              className={`min-w-0 flex-1 rounded-xl border px-4 py-3 text-left shadow-sm transition ${
                 etapaFiltro === etapa.id ? `${etapa.ativo} ring-2 ring-offset-1 ring-slate-400` : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800'
               }`}
               aria-pressed={etapaFiltro === etapa.id}
+              title={etapa.apoio}
             >
-              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${etapa.anel}`} />
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${etapa.anel}`} />
                 <span className="text-sm font-semibold">{etapa.titulo}</span>
+                <span className="truncate text-xs text-slate-500 dark:text-slate-400">{etapa.apoio}</span>
               </div>
-              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{etapa.apoio}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums leading-none">{etapa.produtos}</p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                <span className="mr-1.5 text-2xl font-semibold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+                  {etapa.produtos}
+                </span>
                 {etapa.produtos === 1 ? 'produto' : 'produtos'} · {fmtQtde(etapa.qtde)}
               </p>
             </button>
@@ -265,14 +293,52 @@ export default function AcompanhamentoSolicitacaoPage() {
         ))}
       </div>
 
+      <div className="flex shrink-0 flex-wrap items-end gap-3">
+        <label className="min-w-[14rem] flex-[1.4]">
+          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            Código ou descrição
+          </span>
+          <input
+            value={filtroProduto}
+            onChange={(e) => setFiltroProduto(e.target.value)}
+            placeholder="Qualquer um dos dois. Use % (ex.: CHAPA%)"
+            className={CLASSE_FILTRO}
+            aria-label="Filtrar por código ou descrição"
+          />
+        </label>
+        <label className="min-w-[10rem] flex-1">
+          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Solicitação</span>
+          <input
+            value={filtroSolicitacao}
+            onChange={(e) => setFiltroSolicitacao(e.target.value)}
+            placeholder="Nº da solicitação. Use %"
+            className={CLASSE_FILTRO}
+            aria-label="Filtrar pelo número da solicitação"
+          />
+        </label>
+        <label className="min-w-[10rem] flex-1">
+          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Pedido de compra</span>
+          <input
+            value={filtroPedido}
+            onChange={(e) => setFiltroPedido(e.target.value)}
+            placeholder="Nº do pedido. Use %"
+            className={CLASSE_FILTRO}
+            aria-label="Filtrar pelo número do pedido de compra"
+          />
+        </label>
+        <label className="min-w-[10rem] flex-1">
+          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Documento</span>
+          <input
+            value={filtroDocumento}
+            onChange={(e) => setFiltroDocumento(e.target.value)}
+            placeholder="Nº do documento. Use %"
+            className={CLASSE_FILTRO}
+            aria-label="Filtrar pelo número do documento de entrada"
+          />
+        </label>
+      </div>
+
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <input
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          placeholder="Código ou descrição. Use % para refinar (ex.: CHAPA%)"
-          className="min-w-[16rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          aria-label="Filtrar produto"
-        />
         {FILTROS_DATA.map((col) => {
           const periodo = filtrosData[col.id];
           const ativo = Boolean(periodo?.de || periodo?.ate || ordemData?.id === col.id);
@@ -314,7 +380,7 @@ export default function AcompanhamentoSolicitacaoPage() {
         </p>
       ) : null}
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto pb-2">
+      <div className="shrink-0 space-y-3 pb-4">
         {!carregando && visiveis.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-600">
             Nenhum produto nesta etapa do caminho.
@@ -323,16 +389,20 @@ export default function AcompanhamentoSolicitacaoPage() {
           visiveis.map((linha) => (
             <article
               key={linha.idProduto}
-              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+              className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 lg:flex-row lg:items-center lg:gap-5"
             >
-              <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="font-semibold text-slate-900 dark:text-slate-50">{linha.codigo}</span>
-                <span className="text-sm text-slate-600 dark:text-slate-300">{linha.descricao}</span>
-                {linha.unidadeMedida ? (
-                  <span className="text-xs text-slate-400">{linha.unidadeMedida}</span>
-                ) : null}
+              <header className="min-w-0 lg:w-80 lg:shrink-0" title={linha.descricao}>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-base font-semibold text-slate-900 dark:text-slate-50">{linha.codigo}</span>
+                  {linha.unidadeMedida ? (
+                    <span className="text-xs text-slate-400">{linha.unidadeMedida}</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm leading-snug text-slate-600 dark:text-slate-300">
+                  {linha.descricao}
+                </p>
               </header>
-              <div className="flex items-stretch gap-1.5">
+              <div className="flex min-w-0 flex-1 items-stretch gap-2">
                 {ETAPAS.map((etapa, i) => {
                   const qtde = qtdeDaEtapa(linha, etapa.id);
                   const preenchida = qtde > 0;
@@ -351,34 +421,34 @@ export default function AcompanhamentoSolicitacaoPage() {
                             qtdeGrade: qtde,
                           })
                         }
-                        className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-left ${
+                        className={`min-w-0 flex-1 rounded-lg border px-4 py-3 text-left ${
                           preenchida
                             ? `${etapa.ativo} hover:brightness-[0.98]`
                             : 'cursor-default border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900/40'
                         }`}
                         title={preenchida ? `Ver detalhe de ${etapa.titulo}` : `${etapa.titulo}: sem quantidade`}
                       >
-                        <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-70">
                           {etapa.titulo}
                         </span>
-                        <span className="mt-0.5 block text-lg font-semibold tabular-nums leading-tight">
+                        <span className="mt-1 block text-xl font-semibold tabular-nums leading-tight">
                           {preenchida ? fmtQtde(qtde) : '—'}
                         </span>
                         {etapa.id === 'solicitado' && preenchida ? (
-                          <span className="mt-0.5 block text-[10px] font-normal leading-tight opacity-80">
+                          <span className="mt-1 block text-[11px] font-normal leading-snug opacity-80">
                             Emissão {fmtData(linha.emissaoSolicitacao)}
                             <br />
                             Necessidade {fmtData(linha.necessidadeSolicitacao)}
                           </span>
                         ) : null}
                         {etapa.id === 'comprado' && preenchida ? (
-                          <span className="mt-0.5 block text-[10px] font-normal leading-tight opacity-80">
+                          <span className="mt-1 block text-[11px] font-normal leading-snug opacity-80">
                             Emissão {fmtData(linha.emissaoPedido)}
                           </span>
                         ) : null}
                         {etapa.id === 'pre_entrada' && preenchida ? (
-                          <span className="mt-0.5 block text-[10px] font-normal leading-tight opacity-80">
-                            Emissão {fmtData(linha.emissaoPreEntrada)}
+                          <span className="mt-1 block text-[11px] font-normal leading-snug opacity-80">
+                            Emissão da NF {fmtData(linha.emissaoPreEntrada)}
                           </span>
                         ) : null}
                       </button>

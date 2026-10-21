@@ -10,7 +10,10 @@ import {
   formatNomusErroConexao,
   getNomusPool,
   isNomusEnabled,
+  isNomusPoolDeadError,
+  isNomusTransientConnectionError,
   nomusQueryWithRetry,
+  resetNomusPool,
 } from '../config/nomusDb.js';
 import { PCP_ID_EMPRESA_SO_ACO } from './sql/sqlComprasEstoqueFragments.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
@@ -62,12 +65,12 @@ AND ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2) > 0
 AND ${SQL_EXISTS_SC_DA_EMPRESA}
 `.trim();
 
-/** Pedido atendido totalmente (saldo zerado) e ainda não cancelado/cortado. */
+/** Pedido atendido totalmente (saldo zerado) e ainda não cancelado/cortado.
+ * Não exige solicitação: no mesmo pedido, há item que chega só pela pré-entrada. */
 export const SQL_IPC_ATENDIDO = `
 ipc.qtde > 0
 AND ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2) <= 0
 AND ipc.status NOT IN (${IPC_STATUS_EXCLUIDO_ENCERRADO_SQL})
-AND ${SQL_EXISTS_SC_DA_EMPRESA}
 `.trim();
 
 export const SQL_DOC_PRE_ENTRADA = `
@@ -81,7 +84,8 @@ SELECT
   sc.idProduto AS idProduto,
   SUM(ROUND(sc.quantidade, 2)) AS qtde,
   DATE_FORMAT(MIN(CAST(sc.dataEmissao AS DATE)), '%Y-%m-%d') AS emissao,
-  DATE_FORMAT(MIN(CAST(sc.dataNecessidade AS DATE)), '%Y-%m-%d') AS necessidade
+  DATE_FORMAT(MIN(CAST(sc.dataNecessidade AS DATE)), '%Y-%m-%d') AS necessidade,
+  GROUP_CONCAT(DISTINCT sc.id ORDER BY sc.id SEPARATOR '\n') AS solicitacoes
 FROM solicitacaocompra sc
 WHERE ${SQL_SC_LIBERADA_SEM_PEDIDO}
   AND ROUND(sc.quantidade, 2) > 0
@@ -92,10 +96,32 @@ const SQL_GRADE_COMPRADO = `
 SELECT
   ipc.idProduto AS idProduto,
   SUM(ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2)) AS qtde,
-  DATE_FORMAT(MIN(CAST(pc.dataEmissao AS DATE)), '%Y-%m-%d') AS emissao
+  DATE_FORMAT(MIN(CAST(pc.dataEmissao AS DATE)), '%Y-%m-%d') AS emissao,
+  GROUP_CONCAT(DISTINCT NULLIF(TRIM(pc.nome), '') ORDER BY NULLIF(TRIM(pc.nome), '') SEPARATOR '\n') AS pedidos
 FROM itempedidocompra ipc
 INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
 WHERE ${SQL_IPC_COMPRADO}
+GROUP BY ipc.idProduto
+`.trim();
+
+/** Solicitação da empresa ligada ao item do pedido, para exibir o vínculo sem multiplicar a quantidade. */
+const SQL_JOIN_SC_VINCULO = `
+LEFT JOIN solicitacaocompraitempedidocompra scipc_v ON scipc_v.idItemPedidoCompra = ipc.id
+LEFT JOIN solicitacaocompra sc_v
+  ON sc_v.id = scipc_v.idSolicitacaoCompra
+ AND sc_v.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}
+ AND sc_v.lixeira IS NULL
+`.trim();
+
+/** Números de solicitação do pedido em aberto. Join à parte para não multiplicar o saldo. */
+const SQL_BUSCA_SC_COMPRADO = `
+SELECT
+  ipc.idProduto AS idProduto,
+  GROUP_CONCAT(DISTINCT sc_v.id ORDER BY sc_v.id SEPARATOR '\n') AS solicitacoes
+FROM itempedidocompra ipc
+${SQL_JOIN_SC_VINCULO}
+WHERE ${SQL_IPC_COMPRADO}
+  AND sc_v.id IS NOT NULL
 GROUP BY ipc.idProduto
 `.trim();
 
@@ -122,6 +148,29 @@ FROM (
 GROUP BY pre.idProduto
 `.trim();
 
+/** Documento, pedido e solicitação da pré-entrada, só para a busca. A quantidade continua na grade. */
+const SQL_BUSCA_PRE_ENTRADA = `
+SELECT
+  ide.idProduto AS idProduto,
+  GROUP_CONCAT(
+    DISTINCT NULLIF(TRIM(CAST(de.numeroDocumentoFiscal AS CHAR)), '')
+    ORDER BY NULLIF(TRIM(CAST(de.numeroDocumentoFiscal AS CHAR)), '')
+    SEPARATOR '\n'
+  ) AS documentos,
+  GROUP_CONCAT(DISTINCT NULLIF(TRIM(pc.nome), '') ORDER BY NULLIF(TRIM(pc.nome), '') SEPARATOR '\n') AS pedidos,
+  GROUP_CONCAT(DISTINCT sc_v.id ORDER BY sc_v.id SEPARATOR '\n') AS solicitacoes
+FROM itemdocumentoestoque ide
+INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+INNER JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+${SQL_JOIN_SC_VINCULO}
+WHERE ${SQL_DOC_PRE_ENTRADA}
+  AND ${SQL_IPC_ATENDIDO}
+  AND ROUND(ide.qtde, 2) > 0
+GROUP BY ide.idProduto
+`.trim();
+
 const SQL_DETALHE_SOLICITADO = `
 SELECT
   sc.id AS idSolicitacao,
@@ -135,15 +184,6 @@ WHERE sc.idProduto = ?
   AND ${SQL_SC_LIBERADA_SEM_PEDIDO}
   AND ROUND(sc.quantidade, 2) > 0
 ORDER BY sc.dataNecessidade, sc.id
-`.trim();
-
-/** Solicitação da empresa ligada ao item do pedido, para exibir o vínculo sem multiplicar a quantidade. */
-const SQL_JOIN_SC_VINCULO = `
-LEFT JOIN solicitacaocompraitempedidocompra scipc_v ON scipc_v.idItemPedidoCompra = ipc.id
-LEFT JOIN solicitacaocompra sc_v
-  ON sc_v.id = scipc_v.idSolicitacaoCompra
- AND sc_v.idEmpresa = ${PCP_ID_EMPRESA_SO_ACO}
- AND sc_v.lixeira IS NULL
 `.trim();
 
 const SQL_DETALHE_COMPRADO = `
@@ -210,11 +250,26 @@ export type LinhaAcompanhamento = {
   necessidadeSolicitacao: string | null;
   emissaoPedido: string | null;
   emissaoPreEntrada: string | null;
+  /** Números ainda no pipeline, um por linha. Servem só à busca da grade. */
+  solicitacoes: string;
+  pedidos: string;
+  documentos: string;
 };
 
-export type AggSolicitado = { qtde: number; emissao: string | null; necessidade: string | null };
-export type AggComprado = { qtde: number; emissao: string | null };
-export type AggPreEntrada = { qtde: number; emissao: string | null };
+export type AggSolicitado = {
+  qtde: number;
+  emissao: string | null;
+  necessidade: string | null;
+  solicitacoes?: string;
+};
+export type AggComprado = { qtde: number; emissao: string | null; pedidos?: string; solicitacoes?: string };
+export type AggPreEntrada = {
+  qtde: number;
+  emissao: string | null;
+  documentos?: string;
+  pedidos?: string;
+  solicitacoes?: string;
+};
 
 export type LinhaDetalheSolicitado = {
   idSolicitacao: number;
@@ -272,6 +327,25 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Junta números de busca sem repetir, separados por quebra de linha. */
+export function unirTokensBusca(...partes: Array<string | null | undefined>): string {
+  const vistos = new Set<string>();
+  const tokens: string[] = [];
+  for (const parte of partes) {
+    if (!parte) continue;
+    for (const bruto of parte.split(/[\n,]+/)) {
+      const token = bruto.trim();
+      if (!token) continue;
+      const chave = token.toLocaleLowerCase('pt-BR');
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      tokens.push(token);
+    }
+  }
+  tokens.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  return tokens.join('\n');
+}
+
 export function montarLinhasPipeline(
   produtos: ProdutoBase[],
   solicitado: Map<number, AggSolicitado>,
@@ -299,6 +373,9 @@ export function montarLinhasPipeline(
       necessidadeSolicitacao: qtdeSolicitado > 0 ? (sol?.necessidade ?? null) : null,
       emissaoPedido: qtdeComprado > 0 ? (comp?.emissao ?? null) : null,
       emissaoPreEntrada: qtdePreEntrada > 0 ? (pre?.emissao ?? null) : null,
+      solicitacoes: unirTokensBusca(sol?.solicitacoes, comp?.solicitacoes, pre?.solicitacoes),
+      pedidos: unirTokensBusca(comp?.pedidos, pre?.pedidos),
+      documentos: unirTokensBusca(pre?.documentos),
     });
   }
   linhas.sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR'));
@@ -320,8 +397,29 @@ function ymdOrNull(v: unknown): string | null {
 async function queryAgg(sql: string): Promise<Record<string, unknown>[]> {
   const pool = getNomusPool();
   if (!pool) throw new Error('NOMUS_DB_URL não configurado');
-  const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql);
-  return Array.isArray(rows) ? rows : [];
+  let lastErr: unknown;
+  for (let i = 0; i < 2; i++) {
+    const active = getNomusPool();
+    if (!active) throw lastErr ?? new Error('NOMUS_DB_URL não configurado');
+    const conn = await active.getConnection();
+    try {
+      try {
+        await conn.query('SET SESSION group_concat_max_len = 1048576');
+      } catch {
+        /* Sem permissão de sessão, a busca usa o limite padrão do servidor. */
+      }
+      const [rows] = await conn.query(sql);
+      return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
+    } catch (err) {
+      lastErr = err;
+      if (!isNomusTransientConnectionError(err) || i === 1) throw err;
+      if (isNomusPoolDeadError(err)) await resetNomusPool();
+      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+    } finally {
+      conn.release();
+    }
+  }
+  throw lastErr;
 }
 
 async function mapaSolicitado(): Promise<Map<number, AggSolicitado>> {
@@ -330,28 +428,70 @@ async function mapaSolicitado(): Promise<Map<number, AggSolicitado>> {
     const id = toInt(r.idProduto);
     const qtde = round2(toNum(r.qtde));
     if (id > 0 && qtde > 0) {
-      map.set(id, { qtde, emissao: ymdOrNull(r.emissao), necessidade: ymdOrNull(r.necessidade) });
+      map.set(id, {
+        qtde,
+        emissao: ymdOrNull(r.emissao),
+        necessidade: ymdOrNull(r.necessidade),
+        solicitacoes: strOrNull(r.solicitacoes) ?? '',
+      });
     }
   }
   return map;
 }
 
 async function mapaComprado(): Promise<Map<number, AggComprado>> {
+  const [rows, scRows] = await Promise.all([queryAgg(SQL_GRADE_COMPRADO), queryAgg(SQL_BUSCA_SC_COMPRADO)]);
+  const solicitacoes = new Map<number, string>();
+  for (const r of scRows) {
+    const id = toInt(r.idProduto);
+    const texto = strOrNull(r.solicitacoes);
+    if (id > 0 && texto) solicitacoes.set(id, texto);
+  }
   const map = new Map<number, AggComprado>();
-  for (const r of await queryAgg(SQL_GRADE_COMPRADO)) {
+  for (const r of rows) {
     const id = toInt(r.idProduto);
     const qtde = round2(toNum(r.qtde));
-    if (id > 0 && qtde > 0) map.set(id, { qtde, emissao: ymdOrNull(r.emissao) });
+    if (id > 0 && qtde > 0) {
+      map.set(id, {
+        qtde,
+        emissao: ymdOrNull(r.emissao),
+        pedidos: strOrNull(r.pedidos) ?? '',
+        solicitacoes: solicitacoes.get(id) ?? '',
+      });
+    }
   }
   return map;
 }
 
 async function mapaPreEntrada(): Promise<Map<number, AggPreEntrada>> {
+  const [rows, buscaRows] = await Promise.all([
+    queryAgg(SQL_GRADE_PRE_ENTRADA),
+    queryAgg(SQL_BUSCA_PRE_ENTRADA),
+  ]);
+  const busca = new Map<number, { documentos: string; pedidos: string; solicitacoes: string }>();
+  for (const r of buscaRows) {
+    const id = toInt(r.idProduto);
+    if (id <= 0) continue;
+    busca.set(id, {
+      documentos: strOrNull(r.documentos) ?? '',
+      pedidos: strOrNull(r.pedidos) ?? '',
+      solicitacoes: strOrNull(r.solicitacoes) ?? '',
+    });
+  }
   const map = new Map<number, AggPreEntrada>();
-  for (const r of await queryAgg(SQL_GRADE_PRE_ENTRADA)) {
+  for (const r of rows) {
     const id = toInt(r.idProduto);
     const qtde = round2(toNum(r.qtde));
-    if (id > 0 && qtde > 0) map.set(id, { qtde, emissao: ymdOrNull(r.emissao) });
+    if (id > 0 && qtde > 0) {
+      const extra = busca.get(id);
+      map.set(id, {
+        qtde,
+        emissao: ymdOrNull(r.emissao),
+        documentos: extra?.documentos ?? '',
+        pedidos: extra?.pedidos ?? '',
+        solicitacoes: extra?.solicitacoes ?? '',
+      });
+    }
   }
   return map;
 }

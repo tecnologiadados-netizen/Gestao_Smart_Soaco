@@ -33,7 +33,7 @@ export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/decomposicao', label: 'Ordem de produção' },
   { kind: 'link', to: '/pedidos/gondolas-porta-paletes', label: 'Gôndolas e porta-paletes' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
-  { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Acompanhamento de solicitação' },
+  { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Materiais a chegar' },
   {
     kind: 'submenu',
     label: 'Estoque',
@@ -252,7 +252,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
-  '/pedidos/acompanhamento-solicitacao': 'Acompanhamento de solicitação',
+  '/pedidos/acompanhamento-solicitacao': 'Materiais a chegar',
   '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
   '/kpis/gestao-entradas/painel': 'Gestão entradas',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',

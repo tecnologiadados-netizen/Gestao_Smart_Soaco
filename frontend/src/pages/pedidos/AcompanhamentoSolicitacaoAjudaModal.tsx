@@ -27,7 +27,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Pré-entrada',
         texto:
-          'Pedido atendido totalmente, mas o documento de entrada vinculado ainda é pré-entrada (tipo 173). O status na tela é um só: Pré-entrada. O material pode estar a caminho ou já na conferência.',
+          'Pedido atendido totalmente, mas o documento de entrada vinculado ainda é pré-entrada (tipo 173). O status na tela é um só: Pré-entrada. O material pode estar a caminho ou já na conferência. Entra mesmo quando o item do pedido não tem solicitação vinculada.',
       },
     ],
   },
@@ -37,15 +37,15 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'O mesmo produto pode ter quantidade em mais de uma etapa ao mesmo tempo. A linha continua única: cada quantidade fica na etapa correspondente.',
     comoLe:
-      'Uma etapa vazia aparece tracejada. Clique na etapa preenchida para abrir o detalhe, com a cadeia do vínculo: solicitação, pedido e documento de pré-entrada, conforme a etapa. A soma das linhas do modal é a quantidade da etapa na linha. A data exibida é a mais antiga ainda naquela etapa.',
+      'Uma etapa vazia aparece tracejada. Clique na etapa preenchida para abrir o detalhe, com a cadeia do vínculo: solicitação, pedido e documento de pré-entrada, conforme a etapa. A soma das linhas do modal é a quantidade da etapa na linha. A data do cartão é a mais antiga ainda naquela etapa. Na pré-entrada, essa data é a emissão da NF.',
   },
   {
     id: 'filtro',
-    titulo: 'Produto e datas',
+    titulo: 'Filtros e datas',
     oQueE:
-      'A lista abre com todos os produtos que estão em alguma etapa. Na mesma linha do produto ficam os filtros de data: emissão da solicitação, necessidade da solicitação, emissão do pedido e emissão da pré-entrada.',
+      'A lista abre com todos os produtos que estão em alguma etapa. Há um campo para código ou descrição, outro para o número da solicitação, outro para o pedido de compra e outro para o documento de entrada. Abaixo ficam os filtros de data: emissão da solicitação, necessidade da solicitação, emissão do pedido e emissão da NF.',
     comoLe:
-      'O campo de produto estreita a lista. Sem %, o filtro contém o texto. Com %, vale o curinga: CHAPA% começa com CHAPA, %MM termina com MM. Cada data abre um modal, com o período e a ordem. Crescente lista da data mais antiga para a mais recente. Decrescente faz o inverso. Produto sem data naquela etapa fica de fora do período.',
+      'Os campos preenchidos se combinam: o produto precisa passar em todos. Código ou descrição aceita qualquer um dos dois. Sem %, o filtro contém o texto. Com %, vale o curinga: CHAPA% começa com CHAPA, %MM termina com MM. A solicitação vale nas três etapas; o pedido, em Comprado e Pré-entrada; o documento, só na Pré-entrada. Cada data abre um modal, com o período e a ordem. Crescente lista da data mais antiga para a mais recente. Decrescente faz o inverso. Produto sem data naquela etapa fica de fora do período.',
   },
 ];
 
@@ -57,7 +57,7 @@ export default function AcompanhamentoSolicitacaoAjudaModal({
     <AjudaTelaModal
       aberto={aberto}
       onClose={onClose}
-      titulo="Como ler o acompanhamento"
+      titulo="Como ler Materiais a chegar"
       subtitulo="Solicitação, pedido e pré-entrada no mesmo fluxo"
       introducao="O PCP usa esta tela para ver o que ainda vai chegar, inclusive quando a pré-entrada já encerrou o pedido de compra."
       secoes={SECOES}
