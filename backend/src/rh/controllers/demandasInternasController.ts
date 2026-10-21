@@ -12,7 +12,9 @@ import {
   excluirCard,
   excluirLista,
   excluirQuadro,
+  listarColaboradoresResponsaveis,
   listarDemandas,
+  listarLogsCard,
   moverCard,
   moverLista,
   renomearLista,
@@ -41,6 +43,22 @@ function responder(res: Response, err: unknown): void {
 export async function getDemandasHandler(_req: Request, res: Response): Promise<void> {
   try {
     res.json(await listarDemandas());
+  } catch (err) {
+    responder(res, err);
+  }
+}
+
+export async function listarColaboradoresHandler(_req: Request, res: Response): Promise<void> {
+  try {
+    res.json(await listarColaboradoresResponsaveis());
+  } catch (err) {
+    responder(res, err);
+  }
+}
+
+export async function listarLogsCardHandler(req: Request, res: Response): Promise<void> {
+  try {
+    res.json(await listarLogsCard(String(req.params.id ?? '')));
   } catch (err) {
     responder(res, err);
   }
@@ -146,6 +164,8 @@ export async function atualizarCardHandler(req: Request, res: Response): Promise
           cor: req.body?.cor,
           prazo: req.body?.prazo,
           emailsNotificacao: req.body?.emailsNotificacao,
+          prioridade: req.body?.prioridade,
+          responsaveis: req.body?.responsaveis,
         },
         ator(req),
       ),

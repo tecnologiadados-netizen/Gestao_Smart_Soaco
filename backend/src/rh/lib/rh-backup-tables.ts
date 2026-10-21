@@ -34,6 +34,7 @@ export const RH_BACKUP_MODELS = [
   'rhDemandaLista',
   'rhDemandaCard',
   'rhDemandaAnexo',
+  'rhDemandaCardLog',
   'rhVaga',
   'rhVagaHistorico',
   'rhFaltasAtestados',

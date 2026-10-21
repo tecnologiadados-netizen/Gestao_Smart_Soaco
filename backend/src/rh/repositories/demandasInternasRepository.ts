@@ -3,15 +3,20 @@ import { prisma } from '../../config/prisma.js';
 import {
   DemandaErro,
   descreverMudancasCard,
+  descreverMudancasSoHistorico,
   inserirAntes,
   lerChecklists,
   lerEmails,
+  lerResponsaveis,
+  matriculasResponsaveis,
   nomeObrigatorio,
   normalizarChecklists,
   normalizarCor,
   normalizarEmails,
   normalizarPrazo,
+  normalizarPrioridade,
   type Checklist,
+  type Responsavel,
 } from '../lib/demandasInternas.js';
 import { deleteRhFileIfExists, rhStoragePath, saveRhFile } from '../utils/rhUpload.js';
 import {
@@ -19,6 +24,55 @@ import {
   registrarMudancasCardDemanda,
   type SnapshotCardDemanda,
 } from '../../services/demandaCardAlertaEmailService.js';
+
+/** Grava no histórico do card e avisa por e-mail; `soHistorico` não gera e-mail. */
+async function registrarAlteracoes(
+  cardId: string,
+  descricoes: string[],
+  por: string,
+  soHistorico: string[] = [],
+): Promise<void> {
+  const todas = [...descricoes, ...soHistorico];
+  if (!todas.length) return;
+  try {
+    await prisma.rhDemandaCardLog.createMany({
+      data: todas.map((descricao) => ({ cardId, descricao, autor: por })),
+    });
+  } catch (err) {
+    console.error('[demandas-internas] histórico do card:', err instanceof Error ? err.message : err);
+  }
+  await avisarMudancas(cardId, descricoes, por);
+}
+
+export type DemandaCardLog = {
+  id: string;
+  descricao: string;
+  autor: string;
+  autorNome: string;
+  createdAt: string;
+};
+
+export async function listarLogsCard(cardId: string): Promise<DemandaCardLog[]> {
+  await exigirCard(cardId);
+  const logs = await prisma.rhDemandaCardLog.findMany({
+    where: { cardId },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+  const logins = [...new Set(logs.map((log) => log.autor))];
+  const usuarios = await prisma.usuario.findMany({
+    where: { login: { in: logins } },
+    select: { login: true, nome: true },
+  });
+  const nomes = new Map(usuarios.map((u) => [u.login, u.nome?.trim() || u.login]));
+  return logs.map((log) => ({
+    id: log.id,
+    descricao: log.descricao,
+    autor: log.autor,
+    autorNome: nomes.get(log.autor) ?? log.autor,
+    createdAt: log.createdAt.toISOString(),
+  }));
+}
 
 async function avisarMudancas(cardId: string, descricoes: string[], por: string): Promise<void> {
   if (!descricoes.length) return;
@@ -50,6 +104,8 @@ async function avisarExclusao(
         listaNome: card.lista.nome,
         prazo: card.prazo || null,
         concluido: card.concluido,
+        prioridade: card.prioridade || null,
+        responsaveis: lerResponsaveis(card.responsaveis).map((r) => r.nome),
         emails: lerEmails(card.emailsNotificacao),
         excluido: true,
       };
@@ -82,6 +138,8 @@ export type DemandaCard = {
   ordem: number;
   checklists: Checklist[];
   emailsNotificacao: string[];
+  prioridade: string | null;
+  responsaveis: Responsavel[];
   anexos: DemandaAnexo[];
 };
 
@@ -113,6 +171,8 @@ type CardRow = {
   ordem: number;
   checklists: string;
   emailsNotificacao: string;
+  prioridade: string | null;
+  responsaveis: string;
   anexos: DemandaAnexo[];
 };
 
@@ -129,6 +189,8 @@ function mapearCard(card: CardRow, quadroId: string): DemandaCard {
     ordem: card.ordem,
     checklists: lerChecklists(card.checklists),
     emailsNotificacao: lerEmails(card.emailsNotificacao),
+    prioridade: card.prioridade || null,
+    responsaveis: lerResponsaveis(card.responsaveis),
     anexos: card.anexos.map((anexo) => ({
       id: anexo.id,
       nome: anexo.nome,
@@ -290,7 +352,7 @@ export async function criarCard(listaId: string, tituloBruto: unknown, createdBy
     where: { listaId },
     _max: { ordem: true },
   });
-  await prisma.rhDemandaCard.create({
+  const criado = await prisma.rhDemandaCard.create({
     data: {
       listaId,
       quadroId: lista.quadroId,
@@ -300,7 +362,48 @@ export async function criarCard(listaId: string, tituloBruto: unknown, createdBy
       createdBy,
     },
   });
+  await registrarAlteracoes(criado.id, [], createdBy, [`Card criado na lista “${lista.nome}”.`]);
   return listarDemandas();
+}
+
+export type ColaboradorResponsavel = { matricula: string; nome: string; setor: string; cargo: string };
+
+/** Colaboradores do orgânico que podem ser responsáveis (não desligados). */
+export async function listarColaboradoresResponsaveis(): Promise<ColaboradorResponsavel[]> {
+  const rows = await prisma.rhOrganico.findMany({
+    where: { status: { not: 'Desligado' }, matricula: { not: '' }, nome: { not: '' } },
+    select: { matricula: true, nome: true, setor: true, cargo: true },
+    orderBy: { nome: 'asc' },
+  });
+  const vistos = new Set<string>();
+  return rows
+    .map((row) => ({
+      matricula: row.matricula.trim(),
+      nome: row.nome.trim(),
+      setor: row.setor.trim(),
+      cargo: row.cargo.trim(),
+    }))
+    .filter((row) => row.matricula && row.nome && !vistos.has(row.matricula) && vistos.add(row.matricula));
+}
+
+/** Nome sempre do orgânico; quem já estava no card e foi desligado continua com o nome gravado. */
+async function resolverResponsaveis(matriculas: string[], atuais: Responsavel[]): Promise<Responsavel[]> {
+  if (!matriculas.length) return [];
+  const colaboradores = await prisma.rhOrganico.findMany({
+    where: { matricula: { in: matriculas } },
+    select: { matricula: true, nome: true, status: true },
+  });
+  return matriculas.map((matricula) => {
+    const doOrganico =
+      colaboradores.find((c) => c.matricula === matricula && c.status !== 'Desligado') ??
+      colaboradores.find((c) => c.matricula === matricula);
+    const jaNoCard = atuais.find((r) => r.matricula === matricula);
+    if (doOrganico && (doOrganico.status !== 'Desligado' || jaNoCard)) {
+      return { matricula, nome: doOrganico.nome.trim() };
+    }
+    if (jaNoCard) return jaNoCard;
+    throw new DemandaErro(`Colaborador ${matricula} não encontrado no orgânico.`);
+  });
 }
 
 export async function atualizarCard(
@@ -313,6 +416,8 @@ export async function atualizarCard(
     cor?: unknown;
     prazo?: unknown;
     emailsNotificacao?: unknown;
+    prioridade?: unknown;
+    responsaveis?: unknown;
   },
   por = 'sistema',
 ): Promise<DemandasArvore> {
@@ -325,7 +430,15 @@ export async function atualizarCard(
     cor?: string;
     prazo?: string | null;
     emailsNotificacao?: string;
+    prioridade?: string | null;
+    responsaveis?: string;
   } = {};
+  if (patch.prioridade !== undefined) data.prioridade = normalizarPrioridade(patch.prioridade);
+  if (patch.responsaveis !== undefined) {
+    data.responsaveis = JSON.stringify(
+      await resolverResponsaveis(matriculasResponsaveis(patch.responsaveis), lerResponsaveis(antes.responsaveis)),
+    );
+  }
   if (patch.titulo !== undefined) data.titulo = nomeObrigatorio(patch.titulo, 'o título do card', 200);
   if (patch.observacao !== undefined) data.observacao = String(patch.observacao ?? '').slice(0, 8000);
   if (patch.concluido !== undefined) data.concluido = patch.concluido === true;
@@ -341,8 +454,18 @@ export async function atualizarCard(
       concluido: card.concluido,
       prazo: card.prazo || null,
       checklists: lerChecklists(card.checklists),
+      prioridade: card.prioridade || null,
+      responsaveis: lerResponsaveis(card.responsaveis),
     });
-    await avisarMudancas(id, descreverMudancasCard(estado(antes), estado(depois)), por);
+    await registrarAlteracoes(
+      id,
+      descreverMudancasCard(estado(antes), estado(depois)),
+      por,
+      descreverMudancasSoHistorico(
+        { cor: antes.cor, emails: lerEmails(antes.emailsNotificacao) },
+        { cor: depois.cor, emails: lerEmails(depois.emailsNotificacao) },
+      ),
+    );
   }
   return listarDemandas();
 }
@@ -359,7 +482,7 @@ export async function moverCard(id: string, listaId: string, antesDeId: string |
       ? `Movido de “${origem?.nome ?? '—'}” para “${lista.nome}”.`
       : `Movido do quadro “${origem?.quadro.nome ?? '—'}” (lista “${origem?.nome ?? '—'}”) para o quadro “${destinoQuadro?.nome ?? '—'}” (lista “${lista.nome}”).`;
     const resultado = await moverCardEntreListas(card, lista, antesDeId);
-    await avisarMudancas(id, [descricao], por);
+    await registrarAlteracoes(id, [descricao], por);
     return resultado;
   }
   return moverCardEntreListas(card, lista, antesDeId);
@@ -444,7 +567,7 @@ export async function anexarPrint(
     deleteRhFileIfExists(storagePath);
     throw err;
   }
-  await avisarMudancas(cardId, [`Print anexado: ${nome}`], por);
+  await registrarAlteracoes(cardId, [`Print anexado: ${nome}`], por);
   return listarDemandas();
 }
 
@@ -453,6 +576,6 @@ export async function excluirAnexo(id: string, por = 'sistema'): Promise<Demanda
   if (!anexo) throw new DemandaErro('Print não encontrado.', 404);
   deleteRhFileIfExists(anexo.storagePath);
   await prisma.rhDemandaAnexo.delete({ where: { id } });
-  await avisarMudancas(anexo.cardId, [`Print removido: ${anexo.nome}`], por);
+  await registrarAlteracoes(anexo.cardId, [`Print removido: ${anexo.nome}`], por);
   return listarDemandas();
 }

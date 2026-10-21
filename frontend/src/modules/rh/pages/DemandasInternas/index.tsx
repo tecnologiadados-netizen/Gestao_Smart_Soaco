@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, Check, ImageIcon, ListChecks, Mail, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, Flag, ImageIcon, ListChecks, Mail, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { resolveUploadUrl } from '@/api/client';
 import AppLayout from '@rh/components/AppLayout';
@@ -23,6 +23,7 @@ import {
   moverCard,
   moverLista,
   prazoAtrasado,
+  prioridadeDoCard,
   progressoChecklist,
   renomearLista,
   renomearQuadro,
@@ -34,6 +35,8 @@ import {
 } from '@rh/lib/demandas-internas';
 import CardModal from '@rh/pages/DemandasInternas/CardModal';
 import ExcluirQuadroDialog from '@rh/pages/DemandasInternas/ExcluirQuadroDialog';
+import { CHAVE_LOGS_CARD } from '@rh/pages/DemandasInternas/HistoricoCard';
+import { AvatarResponsavel } from '@rh/pages/DemandasInternas/PrioridadeResponsaveis';
 import SeletorCorCard from '@rh/pages/DemandasInternas/SeletorCorCard';
 
 const CHAVE = ['rh-demandas-internas'] as const;
@@ -175,6 +178,7 @@ export default function DemandasInternas() {
       return pedido
         .then((arvore) => {
           queryClient.setQueryData(CHAVE, arvore);
+          void queryClient.invalidateQueries({ queryKey: [CHAVE_LOGS_CARD] });
           return arvore;
         })
         .catch((err: unknown) => {
@@ -635,6 +639,8 @@ function CardFace({
   const tom = corDoPostIt(card.cor);
   const claro = tom.texto.toLowerCase() !== '#ffffff';
   const atrasado = prazoAtrasado(card.prazo, card.concluido);
+  const prioridade = prioridadeDoCard(card.prioridade);
+  const responsaveis = card.responsaveis ?? [];
   return (
     <article
       draggable={podeEditar}
@@ -704,8 +710,17 @@ function CardFace({
           {card.titulo}
         </button>
       </div>
-      {progresso || card.anexos.length || card.prazo || card.emailsNotificacao?.length ? (
+      {progresso || card.anexos.length || card.prazo || card.emailsNotificacao?.length || prioridade || responsaveis.length ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-xs">
+          {prioridade ? (
+            <span
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold"
+              style={{ backgroundColor: prioridade.fundo, color: prioridade.texto }}
+              title={`Prioridade ${prioridade.rotulo}`}
+            >
+              <Flag className="h-3.5 w-3.5" /> {prioridade.rotulo}
+            </span>
+          ) : null}
           {card.prazo ? (
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${atrasado ? 'bg-[#b42318] text-white' : 'bg-black/15'}`}>
               <Calendar className="h-3.5 w-3.5" /> {rotuloPrazo(card.prazo)}
@@ -731,6 +746,23 @@ function CardFace({
               title={`Avisa por e-mail: ${card.emailsNotificacao.join(', ')}`}
             >
               <Mail className="h-3.5 w-3.5" /> {card.emailsNotificacao.length}
+            </span>
+          ) : null}
+          {responsaveis.length ? (
+            <span className="ml-auto flex items-center -space-x-1.5" title={responsaveis.map((item) => item.nome).join(', ')}>
+              {responsaveis.slice(0, 3).map((item) => (
+                <AvatarResponsavel
+                  key={item.matricula}
+                  matricula={item.matricula}
+                  nome={item.nome}
+                  className="h-6 w-6 text-[10px] ring-2 ring-white"
+                />
+              ))}
+              {responsaveis.length > 3 ? (
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#5c7084] text-[10px] font-semibold text-white ring-2 ring-white">
+                  +{responsaveis.length - 3}
+                </span>
+              ) : null}
             </span>
           ) : null}
         </div>

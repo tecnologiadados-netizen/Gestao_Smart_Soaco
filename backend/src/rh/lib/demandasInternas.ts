@@ -143,12 +143,59 @@ export function lerEmails(bruto: string): string[] {
   }
 }
 
+export const PRIORIDADES = ['baixa', 'media', 'alta'] as const;
+export type Prioridade = (typeof PRIORIDADES)[number];
+const ROTULO_PRIORIDADE: Record<Prioridade, string> = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
+
+export function rotuloPrioridade(prioridade: string | null): string {
+  return prioridade && prioridade in ROTULO_PRIORIDADE ? ROTULO_PRIORIDADE[prioridade as Prioridade] : 'sem prioridade';
+}
+
+export function normalizarPrioridade(valor: unknown): Prioridade | null {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+  const prioridade = String(valor).trim().toLowerCase();
+  if (!(PRIORIDADES as readonly string[]).includes(prioridade)) throw new DemandaErro('Escolha a prioridade: baixa, média ou alta.');
+  return prioridade as Prioridade;
+}
+
+export type Responsavel = { matricula: string; nome: string };
+
+const MAX_RESPONSAVEIS = 20;
+
+/** Matrículas pedidas pelo cliente; o nome vem sempre do orgânico (ver repositório). */
+export function matriculasResponsaveis(valor: unknown): string[] {
+  if (!Array.isArray(valor)) throw new DemandaErro('Informe os responsáveis como uma lista.');
+  const matriculas: string[] = [];
+  for (const bruto of valor) {
+    const matricula = String(
+      bruto && typeof bruto === 'object' ? (bruto as Record<string, unknown>).matricula ?? '' : bruto ?? '',
+    ).trim();
+    if (matricula && !matriculas.includes(matricula)) matriculas.push(matricula);
+  }
+  if (matriculas.length > MAX_RESPONSAVEIS) throw new DemandaErro(`Informe no máximo ${MAX_RESPONSAVEIS} responsáveis.`);
+  return matriculas;
+}
+
+export function lerResponsaveis(bruto: string): Responsavel[] {
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((item) => ({ matricula: String(item?.matricula ?? '').trim(), nome: String(item?.nome ?? '').trim() }))
+      .filter((item) => item.matricula && item.nome);
+  } catch {
+    return [];
+  }
+}
+
 export type EstadoCardNotificavel = {
   titulo: string;
   observacao: string;
   concluido: boolean;
   prazo: string | null;
   checklists: Checklist[];
+  prioridade?: string | null;
+  responsaveis?: Responsavel[];
 };
 
 export function formatarPrazo(prazo: string | null): string {
@@ -162,11 +209,53 @@ function resumir(texto: string, max = 300): string {
   return limpo.length > max ? `${limpo.slice(0, max - 1)}…` : limpo;
 }
 
+const ROTULO_COR: Record<string, string> = {
+  pessego: 'Pêssego',
+  lilas: 'Lilás',
+};
+
+function rotuloCor(cor: string): string {
+  return ROTULO_COR[cor] ?? cor.charAt(0).toUpperCase() + cor.slice(1);
+}
+
+/** Mudanças que entram só no histórico do card, sem aviso por e-mail. */
+export function descreverMudancasSoHistorico(
+  antes: { cor: string; emails: string[] },
+  depois: { cor: string; emails: string[] },
+): string[] {
+  const mudancas: string[] = [];
+  if ((antes.cor || 'branco') !== (depois.cor || 'branco')) {
+    mudancas.push(`Cor do post-it alterada para ${rotuloCor(depois.cor || 'branco')}.`);
+  }
+  for (const email of depois.emails) {
+    if (!antes.emails.includes(email)) mudancas.push(`E-mail incluído na notificação: ${email}`);
+  }
+  for (const email of antes.emails) {
+    if (!depois.emails.includes(email)) mudancas.push(`E-mail retirado da notificação: ${email}`);
+  }
+  return mudancas;
+}
+
 /** Descreve, em frases curtas, o que mudou no card (cor e e-mails não geram aviso). */
 export function descreverMudancasCard(antes: EstadoCardNotificavel, depois: EstadoCardNotificavel): string[] {
   const mudancas: string[] = [];
   if (antes.concluido !== depois.concluido) mudancas.push(depois.concluido ? 'Card concluído.' : 'Card reaberto.');
   if (antes.titulo !== depois.titulo) mudancas.push(`Título alterado de “${antes.titulo}” para “${depois.titulo}”.`);
+  if ((antes.prioridade ?? null) !== (depois.prioridade ?? null)) {
+    mudancas.push(
+      depois.prioridade
+        ? `Prioridade alterada para ${rotuloPrioridade(depois.prioridade)}.`
+        : `Prioridade removida (era ${rotuloPrioridade(antes.prioridade ?? null)}).`,
+    );
+  }
+  const respAntes = antes.responsaveis ?? [];
+  const respDepois = depois.responsaveis ?? [];
+  for (const r of respDepois) {
+    if (!respAntes.some((a) => a.matricula === r.matricula)) mudancas.push(`Responsável incluído: ${r.nome}`);
+  }
+  for (const r of respAntes) {
+    if (!respDepois.some((d) => d.matricula === r.matricula)) mudancas.push(`Responsável retirado: ${r.nome}`);
+  }
   if (antes.prazo !== depois.prazo) {
     if (!antes.prazo) mudancas.push(`Prazo definido para ${formatarPrazo(depois.prazo)}.`);
     else if (!depois.prazo) mudancas.push(`Prazo removido (era ${formatarPrazo(antes.prazo)}).`);

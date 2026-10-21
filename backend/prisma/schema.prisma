@@ -3154,15 +3154,33 @@ model RhDemandaCard {
   checklists String         @default("[]")
   /// JSON: e-mails avisados quando o card muda.
   emailsNotificacao String  @default("[]") @map("emails_notificacao")
+  /// baixa | media | alta (vazio = sem prioridade).
+  prioridade String?
+  /// JSON: [{ matricula, nome }] — colaboradores do orgânico.
+  responsaveis String       @default("[]")
   createdBy  String?        @map("created_by")
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
   lista      RhDemandaLista @relation(fields: [listaId], references: [id], onDelete: Cascade)
   anexos     RhDemandaAnexo[]
+  logs       RhDemandaCardLog[]
 
   @@index([listaId, ordem])
   @@index([quadroId])
   @@map("rh_demanda_card")
+}
+
+/// Histórico de alterações do card (exibido no modal).
+model RhDemandaCardLog {
+  id        String        @id @default(uuid())
+  cardId    String        @map("card_id")
+  descricao String
+  autor     String
+  createdAt DateTime      @default(now()) @map("created_at")
+  card      RhDemandaCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+  @@map("rh_demanda_card_log")
 }
 
 /// Print anexado ao card. O arquivo fica fora do Git, em uploads/rh.

@@ -9,7 +9,7 @@ import { prisma } from '../config/prisma.js';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
 import { envioNotificacoesHabilitado } from '../config/envioNotificacoes.js';
 import { buscarTipoEmailPorCode } from '../data/emailNotificacaoRepository.js';
-import { formatarPrazo, lerEmails } from '../rh/lib/demandasInternas.js';
+import { formatarPrazo, lerEmails, lerResponsaveis, rotuloPrioridade } from '../rh/lib/demandasInternas.js';
 import { buildSystemEmailHtml } from './emailHtmlTemplate.js';
 import { comExecucaoRegistrada, type OrigemNotificacao } from './notificacaoExecucaoService.js';
 import { sendSystemEmail } from './systemEmail.js';
@@ -26,6 +26,8 @@ export type SnapshotCardDemanda = {
   listaNome: string;
   prazo: string | null;
   concluido: boolean;
+  prioridade: string | null;
+  responsaveis: string[];
   emails: string[];
   excluido: boolean;
 };
@@ -53,6 +55,8 @@ export async function carregarSnapshotCardDemanda(cardId: string): Promise<Snaps
     listaNome: card.lista.nome,
     prazo: card.prazo || null,
     concluido: card.concluido,
+    prioridade: card.prioridade || null,
+    responsaveis: lerResponsaveis(card.responsaveis).map((r) => r.nome),
     emails: lerEmails(card.emailsNotificacao),
     excluido: false,
   };
@@ -143,6 +147,8 @@ export async function montarEmailMudancasCard(
           { label: snapshot.excluido ? 'Última lista' : 'Lista atual', value: snapshot.listaNome },
           { label: 'Situação', value: snapshot.excluido ? 'Excluído' : snapshot.concluido ? 'Concluído' : 'Em aberto' },
           { label: 'Prazo', value: formatarPrazo(snapshot.prazo) },
+          { label: 'Prioridade', value: rotuloPrioridade(snapshot.prioridade) },
+          { label: 'Responsáveis', value: snapshot.responsaveis.join(', ') || 'nenhum' },
         ],
       },
       { heading: mudancas.length === 1 ? 'Alteração' : 'Alterações', rows: linhas },
@@ -205,6 +211,8 @@ const AMOSTRA: SnapshotCardDemanda = {
   listaNome: 'Concluído',
   prazo: '2026-10-20',
   concluido: true,
+  prioridade: 'alta',
+  responsaveis: ['Colaborador de exemplo'],
   emails: [],
   excluido: false,
 };

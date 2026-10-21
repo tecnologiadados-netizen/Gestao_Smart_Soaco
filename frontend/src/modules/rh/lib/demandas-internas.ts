@@ -23,8 +23,33 @@ export type DemandaCard = {
   checklists: DemandaChecklist[];
   /** E-mails avisados quando o card muda de lista/quadro, é concluído, etc. */
   emailsNotificacao: string[];
+  prioridade: Prioridade | null;
+  responsaveis: Responsavel[];
   anexos: DemandaAnexo[];
 };
+
+export type Prioridade = 'baixa' | 'media' | 'alta';
+export type Responsavel = { matricula: string; nome: string };
+export type ColaboradorResponsavel = Responsavel & { setor: string; cargo: string };
+
+export const PRIORIDADES_CARD: { id: Prioridade; rotulo: string; fundo: string; texto: string }[] = [
+  { id: 'baixa', rotulo: 'Baixa', fundo: '#1f845a', texto: '#ffffff' },
+  { id: 'media', rotulo: 'Média', fundo: '#FFAD00', texto: '#041E42' },
+  { id: 'alta', rotulo: 'Alta', fundo: '#b42318', texto: '#ffffff' },
+];
+
+export function prioridadeDoCard(id: string | null | undefined) {
+  return PRIORIDADES_CARD.find((item) => item.id === id) ?? null;
+}
+
+/** "ANA PAULA SOUZA" → "AS" (primeiro e último nome). */
+export function iniciaisDoNome(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return '?';
+  const primeira = partes[0][0] ?? '';
+  const ultima = partes.length > 1 ? partes[partes.length - 1][0] ?? '' : '';
+  return (primeira + ultima).toUpperCase();
+}
 
 export type DemandaLista = {
   id: string;
@@ -51,6 +76,8 @@ export type CardPatch = {
   cor?: string;
   prazo?: string | null;
   emailsNotificacao?: string[];
+  prioridade?: Prioridade | null;
+  responsaveis?: Responsavel[];
 };
 
 const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
@@ -168,6 +195,22 @@ export function anexarPrint(cardId: string, arquivo: File): Promise<DemandasArvo
   const form = new FormData();
   form.append('file', arquivo);
   return rhFetchJson(`${BASE}/cards/${cardId}/anexos`, { method: 'POST', body: form });
+}
+
+export type DemandaCardLog = {
+  id: string;
+  descricao: string;
+  autor: string;
+  autorNome: string;
+  createdAt: string;
+};
+
+export function getColaboradoresResponsaveis(): Promise<ColaboradorResponsavel[]> {
+  return rhFetchJson<ColaboradorResponsavel[]>(`${BASE}/colaboradores`);
+}
+
+export function getLogsCard(cardId: string): Promise<DemandaCardLog[]> {
+  return rhFetchJson<DemandaCardLog[]>(`${BASE}/cards/${cardId}/logs`);
 }
 
 export function excluirAnexo(id: string): Promise<DemandasArvore> {

@@ -7,11 +7,13 @@ import {
 } from './rh-permissions.js';
 import {
   descreverMudancasCard,
+  descreverMudancasSoHistorico,
   inserirAntes,
   normalizarChecklists,
   normalizarCor,
   normalizarEmails,
   normalizarPrazo,
+  normalizarPrioridade,
   type EstadoCardNotificavel,
 } from './demandasInternas.js';
 
@@ -53,6 +55,32 @@ describe('mudanças que geram aviso por e-mail', () => {
       'Card concluído.',
       'Prazo alterado de 16/10/2026 para 20/10/2026.',
       'Item concluído em “Etapas”: Enviar laudo',
+    ]);
+  });
+
+  it('descreve prioridade e responsáveis', () => {
+    const antes = { ...base, prioridade: null, responsaveis: [{ matricula: '530', nome: 'RIAN MATEUS' }] };
+    const depois = { ...base, prioridade: 'alta', responsaveis: [{ matricula: '1694', nome: 'EDINALDO PINHEIRO' }] };
+    expect(descreverMudancasCard(antes, depois)).toEqual([
+      'Prioridade alterada para Alta.',
+      'Responsável incluído: EDINALDO PINHEIRO',
+      'Responsável retirado: RIAN MATEUS',
+    ]);
+    expect(normalizarPrioridade('Media')).toBe('media');
+    expect(normalizarPrioridade('')).toBeNull();
+    expect(() => normalizarPrioridade('urgente')).toThrow(/prioridade/);
+  });
+
+  it('cor e e-mails entram só no histórico', () => {
+    expect(
+      descreverMudancasSoHistorico(
+        { cor: 'branco', emails: ['ana@soaco.com.br'] },
+        { cor: 'pessego', emails: ['bia@soaco.com.br'] },
+      ),
+    ).toEqual([
+      'Cor do post-it alterada para Pêssego.',
+      'E-mail incluído na notificação: bia@soaco.com.br',
+      'E-mail retirado da notificação: ana@soaco.com.br',
     ]);
   });
 

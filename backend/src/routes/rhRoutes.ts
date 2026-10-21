@@ -100,6 +100,8 @@ import {
   criarListaHandler,
   criarQuadroHandler,
   excluirAnexoHandler,
+  listarColaboradoresHandler,
+  listarLogsCardHandler,
   excluirCardHandler,
   excluirListaHandler,
   excluirQuadroHandler,
@@ -264,6 +266,8 @@ router.post('/demandas-internas/listas/:id/mover', requireRhDemandaAba('listas',
 router.delete('/demandas-internas/listas/:id', requireRhDemandaAba('listas', 'delete'), wrap(excluirListaHandler));
 router.post('/demandas-internas/cards', requireRhDemandaAba('cards', 'create'), wrap(criarCardHandler));
 router.patch('/demandas-internas/cards/:id', requireRhDemandaAba('cards', 'edit'), wrap(atualizarCardHandler));
+router.get('/demandas-internas/cards/:id/logs', requireRhAccess('/demandas-internas', 'view'), wrap(listarLogsCardHandler));
+router.get('/demandas-internas/colaboradores', requireRhAccess('/demandas-internas', 'view'), wrap(listarColaboradoresHandler));
 router.post('/demandas-internas/cards/:id/mover', requireRhDemandaAba('cards', 'edit'), wrap(moverCardHandler));
 router.delete('/demandas-internas/cards/:id', requireRhDemandaAba('cards', 'delete'), wrap(excluirCardHandler));
 router.post('/demandas-internas/cards/:id/anexos', requireRhDemandaAba('cards', 'edit'), receberPrint);

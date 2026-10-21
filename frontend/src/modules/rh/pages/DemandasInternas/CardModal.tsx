@@ -2,8 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { AlignLeft, Calendar, Check, ImagePlus, ListChecks, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { resolveUploadUrl } from '@/api/client';
-import { prazoAtrasado, rotuloPrazo, type DemandaCard, type DemandaChecklist, type DemandaQuadro } from '@rh/lib/demandas-internas';
+import {
+  prazoAtrasado,
+  rotuloPrazo,
+  type DemandaCard,
+  type DemandaChecklist,
+  type DemandaQuadro,
+  type Prioridade,
+  type Responsavel,
+} from '@rh/lib/demandas-internas';
+import HistoricoCard from '@rh/pages/DemandasInternas/HistoricoCard';
 import NotificarEmails from '@rh/pages/DemandasInternas/NotificarEmails';
+import { SeletorPrioridade, SeletorResponsaveis } from '@rh/pages/DemandasInternas/PrioridadeResponsaveis';
 import SeletorCorCard from '@rh/pages/DemandasInternas/SeletorCorCard';
 
 type CardModalProps = {
@@ -21,6 +31,8 @@ type CardModalProps = {
     cor?: string;
     prazo?: string | null;
     emailsNotificacao?: string[];
+    prioridade?: Prioridade | null;
+    responsaveis?: Responsavel[];
   }) => Promise<void>;
   onExcluir: () => Promise<void>;
   onAnexar: (arquivo: File) => Promise<void>;
@@ -194,6 +206,16 @@ export default function CardModal({
                   </p>
                 )}
               </div>
+              <SeletorPrioridade
+                valor={card.prioridade ?? null}
+                podeEditar={podeEditar}
+                onSalvar={(prioridade) => void onSalvar({ prioridade })}
+              />
+              <SeletorResponsaveis
+                valor={card.responsaveis ?? []}
+                podeEditar={podeEditar}
+                onSalvar={(responsaveis) => void onSalvar({ responsaveis })}
+              />
               <NotificarEmails
                 emails={card.emailsNotificacao ?? []}
                 podeEditar={podeEditar}
@@ -435,6 +457,7 @@ export default function CardModal({
           ) : (
             <p className="text-sm text-muted-foreground">Somente leitura.</p>
           )}
+          <HistoricoCard cardId={card.id} />
         </aside>
       </div>
 
