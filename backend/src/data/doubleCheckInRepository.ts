@@ -5,6 +5,7 @@
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { aliquotasIpiIguais, conferenciaIpiPorDataEntrada, type ConferenciaIpi } from './doubleCheckInIpi.js';
+import { aplicarSomaQtdeMesmoItem, type ParteQtdePedido } from './doubleCheckInQtdeSoma.js';
 import { entradaPorPeso, normalizarUnitarioExato, unitariosExatosIguais } from './doubleCheckInPeso.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
@@ -720,6 +721,12 @@ export type DoubleCheckInComparativoLinha = {
   /** Ex.: "21" ou "30/60/90". */
   prazosLabelNF: string | null;
   prazosLabelPC: string | null;
+  /**
+   * Soma das quantidades do pedido quando a mesma linha da NF está ligada a
+   * mais de um item do mesmo produto. Null quando a linha é conferida sozinha.
+   */
+  qtdePcSoma?: number | null;
+  partesQtdePc?: ParteQtdePedido[] | null;
   divergValorUnitario: boolean;
   divergQtde: boolean;
   divergIpi: boolean;
@@ -1226,6 +1233,9 @@ async function carregarLinhasComparativoPorDocumentos(
         arr.push(linha);
         linhasPorDocumento.set(idDoc, arr);
       }
+    }
+    for (const [idDoc, linhas] of linhasPorDocumento) {
+      linhasPorDocumento.set(idDoc, aplicarSomaQtdeMesmoItem(linhas));
     }
     return { linhasPorDocumento };
   } catch (err) {

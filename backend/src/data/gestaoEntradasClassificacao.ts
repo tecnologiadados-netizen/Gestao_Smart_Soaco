@@ -331,6 +331,8 @@ export type LinhaComparativoDia = {
   umNF?: string | null;
   qtdePC?: number;
   umPC?: string | null;
+  qtdePcSoma?: number | null;
+  partesQtdePc?: { idItemPedidoCompra: number; qtde: number }[] | null;
   valorUnitarioBrutoNF?: number;
   valorUnitarioBrutoPC?: number;
   descontoNF?: number;
@@ -445,11 +447,17 @@ export function textoComparativoCampo(
   if (campo === 'qtde') {
     const umNf = (linha.umNF ?? '').trim();
     const umPc = (linha.umPC ?? '').trim();
+    const partes = linha.partesQtdePc ?? [];
+    const qtdePc = partes.length > 1 && linha.qtdePcSoma != null ? linha.qtdePcSoma : num(linha.qtdePC);
+    const detalhePc =
+      partes.length > 1
+        ? `soma de ${partes.length} linhas: ${partes.map((parte) => nfQtde.format(parte.qtde)).join(' + ')}`
+        : null;
     return {
       nf: `${nfQtde.format(num(linha.qtdeNF))}${umNf ? ` ${umNf}` : ''}`,
-      pc: `${nfQtde.format(num(linha.qtdePC))}${umPc ? ` ${umPc}` : ''}`,
+      pc: `${nfQtde.format(qtdePc)}${umPc ? ` ${umPc}` : ''}`,
       detalheNf: null,
-      detalhePc: null,
+      detalhePc,
     };
   }
   if (campo === 'ipi') {

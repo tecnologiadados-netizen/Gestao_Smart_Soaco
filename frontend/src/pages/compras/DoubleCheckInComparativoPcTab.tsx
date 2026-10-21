@@ -186,11 +186,27 @@ function valoresExibicao(
       );
       return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
     }
-    case 'qtde':
+    case 'qtde': {
+      const partes = linha.partesQtdePc ?? [];
+      if (partes.length > 1 && linha.qtdePcSoma != null) {
+        const um = (linha.umPC ?? linha.umNF ?? '').trim();
+        const composicao = partes
+          .map((parte) => {
+            const qtde = nfNum.format(parte.qtde);
+            return parte.idItemPedidoCompra === linha.idItemPedidoCompra ? `${qtde} nesta` : qtde;
+          })
+          .join(' + ');
+        return {
+          nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+          pc: `${nfNum.format(linha.qtdePcSoma)} ${um}`.trim(),
+          pcDetalhe: `soma de ${partes.length} linhas do pedido: ${composicao}`,
+        };
+      }
       return {
         nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
         pc: `${nfNum.format(linha.qtdePC)} ${linha.umPC ?? ''}`.trim(),
       };
+    }
     case 'ipi':
       if (linha.conferenciaIpi === 'percentual') {
         return {

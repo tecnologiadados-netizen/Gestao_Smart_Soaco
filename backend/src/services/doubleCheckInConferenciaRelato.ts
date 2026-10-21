@@ -228,14 +228,20 @@ function montarCampo(
     };
   }
   if (campo === 'qtde') {
-    const dif = diffQtde(linha.qtdeNF, linha.qtdePC);
+    const partes = linha.partesQtdePc ?? [];
+    const qtdePc = partes.length > 1 && linha.qtdePcSoma != null ? linha.qtdePcSoma : linha.qtdePC;
+    const dif = diffQtde(linha.qtdeNF, qtdePc);
     const um = linha.umNF || linha.umPC ? ` ${linha.umNF ?? linha.umPC}` : '';
     return {
       ...base,
       nf: `${fmtNum(linha.qtdeNF)}${linha.umNF ? ` ${linha.umNF}` : um}`,
-      pc: `${fmtNum(linha.qtdePC)}${linha.umPC ? ` ${linha.umPC}` : um}`,
+      pc: `${fmtNum(qtdePc)}${linha.umPC ? ` ${linha.umPC}` : um}`,
       diferenca: dif.texto,
       sinal: dif.sinal,
+      detalhe:
+        partes.length > 1
+          ? `Soma de ${partes.length} linhas do pedido: ${partes.map((parte) => fmtNum(parte.qtde)).join(' + ')}.`
+          : null,
     };
   }
   if (campo === 'ipi' && linha.conferenciaIpi === 'percentual') {

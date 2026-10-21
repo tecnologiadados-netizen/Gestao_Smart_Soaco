@@ -1636,6 +1636,9 @@ export type DoubleCheckInComparativoLinha = {
   umNF: string | null;
   qtdePC: number;
   umPC: string | null;
+  /** Soma das linhas do pedido quando a NF trouxe o item numa linha só. */
+  qtdePcSoma?: number | null;
+  partesQtdePc?: { idItemPedidoCompra: number; qtde: number }[] | null;
   valorUnitarioBrutoNF: number;
   valorUnitarioBrutoPC: number;
   descontoNF: number;
