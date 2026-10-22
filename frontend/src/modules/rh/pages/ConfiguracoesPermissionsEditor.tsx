@@ -302,7 +302,6 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
   const normalizedSectors = [...new Set(availableSectors.map((item) => item.trim()).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, "pt-BR"),
   );
-  const isAllSectorsAllowed = permissions.organico.allowedSectors.length === 0;
 
   return (
     <div className="space-y-4">
@@ -411,13 +410,14 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
             <div>
               <Label className="text-sm font-medium text-foreground">Setores permitidos</Label>
               <p className="text-xs text-muted-foreground mt-1">
-                Se nenhum setor for marcado, o grupo poderá acessar todos os setores.
+                A entrada no módulo depende da permissão Ver RH. Sem setor marcado, quem já entra no RH vê todos os
+                setores, inclusive os criados depois. Marcar setores limita a lista.
               </p>
             </div>
             <BulkActions
               onSelectAll={() =>
                 update((draft) => {
-                  draft.organico.allowedSectors = [];
+                  draft.organico.allowedSectors = [...normalizedSectors];
                 })
               }
               onClearAll={() =>
@@ -432,7 +432,7 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
               <p className="text-xs text-muted-foreground">Nenhum setor encontrado no orgânico para seleção.</p>
             ) : (
               normalizedSectors.map((sector) => {
-                const checked = isAllSectorsAllowed || permissions.organico.allowedSectors.includes(sector);
+                const checked = permissions.organico.allowedSectors.includes(sector);
                 const checkboxId = `sector-${sector.toLocaleLowerCase("pt-BR").replace(/[^a-z0-9]+/g, "-")}`;
                 return (
                   <div key={sector} className="flex items-center gap-2 text-sm">
@@ -442,15 +442,10 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
                       onCheckedChange={(isChecked) =>
                         update((draft) => {
                           if (isChecked) {
-                            if (draft.organico.allowedSectors.length === 0) return;
                             draft.organico.allowedSectors = [...draft.organico.allowedSectors, sector]
                               .filter(Boolean)
                               .filter((item, index, list) => list.indexOf(item) === index)
                               .sort((a, b) => a.localeCompare(b, "pt-BR"));
-                            return;
-                          }
-                          if (draft.organico.allowedSectors.length === 0) {
-                            draft.organico.allowedSectors = normalizedSectors.filter((item) => item !== sector);
                             return;
                           }
                           draft.organico.allowedSectors = draft.organico.allowedSectors.filter((item) => item !== sector);
