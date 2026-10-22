@@ -555,7 +555,7 @@ export function ConfiguracoesPermissionsEditor({ value, onChange, availableSecto
             items={commentTagOptions.filter((item) => item.tone === tone.id).map((item) => ({
               id: item.id,
               label: item.label,
-              checked: permissions.organico.comentarios.tags[item.id] ?? true,
+              checked: permissions.organico.comentarios.tags[item.id] ?? false,
               onCheckedChange: (checked) =>
                 update((draft) => {
                   draft.organico.comentarios.tags[item.id] = checked;

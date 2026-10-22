@@ -1227,6 +1227,7 @@ export default function UsuariosPage() {
               <GrupoRhPermissoesPanel
                 value={grupoRhPermissoes}
                 onChange={setGrupoRhPermissoes}
+                hasRhAccess={grupoPermissoes.includes(PERMISSOES.RH_VER)}
                 disabled={editandoGrupoMaster}
               />
             )}

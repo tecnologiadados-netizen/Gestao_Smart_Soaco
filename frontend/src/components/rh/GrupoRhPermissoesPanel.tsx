@@ -15,10 +15,24 @@ import '@rh/rh-module.css';
 type Props = {
   value: RhGroupPermissions;
   onChange: (next: RhGroupPermissions) => void;
+  hasRhAccess: boolean;
   disabled?: boolean;
 };
 
-export default function GrupoRhPermissoesPanel({ value, onChange, disabled = false }: Props) {
+function createNoAccessRhGroupPermissions(): RhGroupPermissions {
+  const permissions = buildDefaultGroupPermissions();
+  for (const id of Object.keys(permissions.organico.comentarios.tags)) {
+    permissions.organico.comentarios.tags[id] = false;
+  }
+  for (const id of Object.keys(permissions.organico.comentarios.visibilities)) {
+    permissions.organico.comentarios.visibilities[
+      id as keyof typeof permissions.organico.comentarios.visibilities
+    ] = false;
+  }
+  return permissions;
+}
+
+export default function GrupoRhPermissoesPanel({ value, onChange, hasRhAccess, disabled = false }: Props) {
   const [setores, setSetores] = useState<string[]>([]);
   const [commentTagOptions, setCommentTagOptions] = useState<OrganicoCommentTagOption[]>(
     DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS,
@@ -60,6 +74,11 @@ export default function GrupoRhPermissoesPanel({ value, onChange, disabled = fal
           Controle de acesso interno ao Gestão de Pessoas (telas, abas do orgânico, faltas, dashboard, etc.). O grupo
           também precisa da permissão <strong className="font-medium">Ver RH</strong> na lista acima para entrar no módulo.
         </p>
+        {!hasRhAccess ? (
+          <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+            Sem acesso ao RH: todas as permissões internas abaixo estão desativadas.
+          </p>
+        ) : null}
       </div>
       {loading ? (
         <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Carregando editor…</p>
@@ -68,9 +87,9 @@ export default function GrupoRhPermissoesPanel({ value, onChange, disabled = fal
           {error}
         </p>
       ) : (
-        <div className={disabled ? 'pointer-events-none opacity-60' : undefined}>
+        <div className={disabled || !hasRhAccess ? 'pointer-events-none opacity-60' : undefined}>
           <ConfiguracoesPermissionsEditor
-            value={cloneGroupPermissions(value)}
+            value={hasRhAccess ? cloneGroupPermissions(value) : createNoAccessRhGroupPermissions()}
             onChange={(next) => onChange(cloneGroupPermissions(next))}
             availableSectors={setores}
             commentTagOptions={commentTagOptions}
