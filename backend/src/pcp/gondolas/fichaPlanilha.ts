@@ -5,7 +5,11 @@ import XLSX from 'xlsx';
 import { componentesDaPlanilha, type LinhaPlanilha, type SetorGondola } from './regras.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SEED_FILE = join(__dirname, 'fichaPlanilhaSeed.json');
+/** Em dist o build copia o JSON; se faltar, lê direto de src (mesmo checkout). */
+const SEED_FILE = [
+  join(__dirname, 'fichaPlanilhaSeed.json'),
+  join(__dirname, '..', '..', '..', 'src', 'pcp', 'gondolas', 'fichaPlanilhaSeed.json'),
+].find((caminho) => existsSync(caminho)) ?? join(__dirname, 'fichaPlanilhaSeed.json');
 const OVERRIDE_FILE = join(__dirname, '..', '..', '..', 'var', 'gondolas-porta-palete', 'ficha.json');
 
 type ArquivoPlanilha = {
@@ -42,9 +46,15 @@ function lerJson(caminho: string): ArquivoPlanilha | null {
 }
 
 export function carregarPlanilha(): ArquivoPlanilha & { origem: ResumoPlanilha['origem'] } {
+  const seed = lerJson(SEED_FILE) ?? vazio();
   const override = lerJson(OVERRIDE_FILE);
-  if (override) return { ...override, origem: 'importada' };
-  return { ...(lerJson(SEED_FILE) ?? vazio()), origem: 'inicial' };
+  if (!override) return { ...seed, origem: 'inicial' };
+  return {
+    gondolas: override.gondolas.length > 0 ? override.gondolas : seed.gondolas,
+    portaPaletes: override.portaPaletes.length > 0 ? override.portaPaletes : seed.portaPaletes,
+    atualizadoEm: override.atualizadoEm,
+    origem: 'importada',
+  };
 }
 
 export function resumoPlanilha(): ResumoPlanilha {

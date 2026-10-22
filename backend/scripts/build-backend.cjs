@@ -54,4 +54,11 @@ function copyDirRecursive(srcDir, destDir) {
 
 copyDirRecursive(path.join(root, 'scripts', 'sgq'), path.join(root, 'dist', 'scripts', 'sgq'));
 
+// Planilha base de gôndolas/porta-paletes: o tsc não copia JSON lido por fs.
+fs.mkdirSync(path.join(root, 'dist', 'pcp', 'gondolas'), { recursive: true });
+fs.copyFileSync(
+  path.join(root, 'src', 'pcp', 'gondolas', 'fichaPlanilhaSeed.json'),
+  path.join(root, 'dist', 'pcp', 'gondolas', 'fichaPlanilhaSeed.json')
+);
+
 execSync('node scripts/copy-pre-compra-assets.cjs', { stdio: 'inherit', cwd: root });
