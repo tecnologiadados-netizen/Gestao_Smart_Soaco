@@ -1228,6 +1228,9 @@ export default function UsuariosPage() {
                 value={grupoRhPermissoes}
                 onChange={setGrupoRhPermissoes}
                 hasRhAccess={grupoPermissoes.includes(PERMISSOES.RH_VER)}
+                onRhAccessChange={(enabled) =>
+                  setGrupoPermissoes((prev) => setPermissaoGrupo(PERMISSOES.RH_VER, enabled, prev))
+                }
                 disabled={editandoGrupoMaster}
               />
             )}

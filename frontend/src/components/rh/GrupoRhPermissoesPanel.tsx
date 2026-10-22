@@ -16,6 +16,7 @@ type Props = {
   value: RhGroupPermissions;
   onChange: (next: RhGroupPermissions) => void;
   hasRhAccess: boolean;
+  onRhAccessChange: (enabled: boolean) => void;
   disabled?: boolean;
 };
 
@@ -32,7 +33,13 @@ function createNoAccessRhGroupPermissions(): RhGroupPermissions {
   return permissions;
 }
 
-export default function GrupoRhPermissoesPanel({ value, onChange, hasRhAccess, disabled = false }: Props) {
+export default function GrupoRhPermissoesPanel({
+  value,
+  onChange,
+  hasRhAccess,
+  onRhAccessChange,
+  disabled = false,
+}: Props) {
   const [setores, setSetores] = useState<string[]>([]);
   const [commentTagOptions, setCommentTagOptions] = useState<OrganicoCommentTagOption[]>(
     DEFAULT_ORGANICO_COMMENT_TAG_OPTIONS,
@@ -71,9 +78,22 @@ export default function GrupoRhPermissoesPanel({ value, onChange, hasRhAccess, d
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Permissões do módulo RH</h3>
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          Controle de acesso interno ao Gestão de Pessoas (telas, abas do orgânico, faltas, dashboard, etc.). O grupo
-          também precisa da permissão <strong className="font-medium">Ver RH</strong> na lista acima para entrar no módulo.
+          Controle de acesso interno ao Gestão de Pessoas (telas, abas do orgânico, faltas, dashboard, etc.). Ative
+          <strong className="font-medium"> Ver RH</strong> abaixo para liberar a entrada no módulo.
         </p>
+        <label
+          className={`mt-3 flex items-center gap-2 rounded-lg border border-slate-300 bg-white/50 px-3 py-2 text-sm font-medium text-slate-800 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-100 ${
+            disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={hasRhAccess}
+            onChange={(event) => onRhAccessChange(event.target.checked)}
+            disabled={disabled}
+          />
+          Ver RH (Gestão de Pessoas)
+        </label>
         {!hasRhAccess ? (
           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
             Sem acesso ao RH: todas as permissões internas abaixo estão desativadas.
