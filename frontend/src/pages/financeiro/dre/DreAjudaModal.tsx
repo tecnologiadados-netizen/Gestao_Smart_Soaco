@@ -38,13 +38,6 @@ const SECOES: SecaoAjuda[] = [
       'São os valores que “comem” a receita bruta antes de chegar na receita líquida: devoluções, cancelamentos, descontos incondicionais e impostos sobre as vendas (incluindo Simples, quando aplicável).',
     comoLe:
       'Quanto maior a dedução em relação ao faturamento, menor a receita que realmente fica disponível. Acompanhe devoluções e descontos por período para ver se o problema é comercial, operacional ou fiscal.',
-    detalhes: [
-      {
-        titulo: 'Devoluções',
-        texto:
-          'Entram somente devoluções cujas vendas de origem compõem a receita da DRE. Devoluções originadas do movimento “VENDA DE PRODUÇÃO DO ESTABELECIMENTO CONTRIBUINTE/2” não são deduzidas, pois essa venda também não é reconhecida no faturamento da DRE.',
-      },
-    ],
   },
   {
     id: 'cpv',

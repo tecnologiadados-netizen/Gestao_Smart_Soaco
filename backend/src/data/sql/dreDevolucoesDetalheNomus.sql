@@ -24,13 +24,5 @@ WHERE (ISNULL(nfe.status) = 1 OR nfe.status = 4)
   AND DATE(de.dataEmissao) >= ?
   AND DATE(de.dataEmissao) BETWEEN ? AND ?
   AND de.idEmpresaEntrada IN (?)
-  -- Mesma exclusão do agregado: devoluções de vendas do movimento 150
-  -- não reduzem uma receita que não entrou na DRE.
-  AND NOT EXISTS (
-    SELECT 1
-    FROM documentoestoque origem
-    WHERE origem.id = de.idDocumentoOrigemDevolucao
-      AND origem.idTipoMovimentacao = 150
-  )
 ORDER BY de.dataEmissao DESC, ide.id DESC
 LIMIT ?
