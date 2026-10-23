@@ -46,6 +46,10 @@ export interface DiarioContaPagarLinha {
   /** Apontamento local: título em cartório. */
   emCartorio: boolean;
   itens: DiarioContaPagarItem[];
+  /** Resultado do lote após a aprovação do processo. */
+  statusAprovacao?: 'Aprovado' | 'Reprogramado';
+  /** Banco digitado pelo aprovador; vazio nos títulos reprogramados. */
+  bancoAprovacao?: string;
 }
 
 export interface DiarioContasPagarResponse {
@@ -390,6 +394,20 @@ export async function listarProcessosDiario(): Promise<DiarioProcesso[]> {
   if (!res.ok) throw new Error(await lerErro(res, `Erro ao listar processos (${res.status})`));
   const body = (await res.json()) as { processos?: DiarioProcesso[] };
   return Array.isArray(body.processos) ? body.processos : [];
+}
+
+export interface DiarioResultadoAprovacaoItem {
+  origem: 'Nomus' | 'Shop9';
+  codigo: number;
+  banco: string;
+  status: 'Aprovado' | 'Reprogramado';
+}
+
+export async function obterResultadoAprovacaoDiario(id: number): Promise<DiarioResultadoAprovacaoItem[]> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}/resultado`);
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao carregar o resultado da aprovação (${res.status})`));
+  const body = (await res.json()) as { itens?: DiarioResultadoAprovacaoItem[] };
+  return Array.isArray(body.itens) ? body.itens : [];
 }
 
 export async function iniciarProcessoDiario(params: {

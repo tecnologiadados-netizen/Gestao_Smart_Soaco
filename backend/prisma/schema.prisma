@@ -3270,7 +3270,7 @@ model DiarioContasPagarProcesso {
   @@map("diario_contas_pagar_processo")
 }
 
-/// Títulos efetivamente selecionados pelo aprovador, com o banco informado na aprovação.
+/// Resultado dos títulos do processo: banco preenchido = aprovado; banco vazio = reprogramado.
 model DiarioContasPagarAprovacao {
   id          Int      @id @default(autoincrement())
   processoId  Int      @map("processo_id")

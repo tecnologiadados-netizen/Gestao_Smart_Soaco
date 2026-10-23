@@ -10,6 +10,7 @@ import {
   enviarProcessoDiarioAprovacao,
   iniciarProcessoDiario,
   listarProcessosDiario,
+  listarResultadoAprovacaoProcesso,
   obterProcessoDiario,
   type DiarioAprovacaoItem,
 } from '../data/diarioProcessoRepository.js';
@@ -27,6 +28,30 @@ export async function getProcessosDiario(_req: Request, res: Response): Promise<
     res.json({ processos });
   } catch (err) {
     console.error('[getProcessosDiario]', msg(err));
+    res.status(500).json({ error: msg(err) });
+  }
+}
+
+export async function getResultadoAprovacaoProcessoDiario(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'Processo inválido.' });
+    return;
+  }
+  try {
+    const processo = await obterProcessoDiario(id);
+    if (!processo) {
+      res.status(404).json({ error: 'Processo não encontrado.' });
+      return;
+    }
+    if (processo.status !== 'aprovado') {
+      res.status(409).json({ error: 'O resultado fica disponível somente após a aprovação.' });
+      return;
+    }
+    const itens = await listarResultadoAprovacaoProcesso(id);
+    res.json({ itens });
+  } catch (err) {
+    console.error('[getResultadoAprovacaoProcessoDiario]', msg(err));
     res.status(500).json({ error: msg(err) });
   }
 }
@@ -138,7 +163,6 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
         .filter((linha) => linha.status === 'Em aberto' && Number(linha.saldo) > 0)
         .map((linha) => [`${linha.origem}:${linha.codigo}`, linha] as const),
     );
-    const itens: DiarioAprovacaoItem[] = [];
     for (const solicitado of solicitados.values()) {
       const linha = porChave.get(`${solicitado.origem}:${solicitado.codigo}`);
       if (!linha) {
@@ -147,19 +171,19 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
         });
         return;
       }
-      itens.push({
+    }
+    const itens: DiarioAprovacaoItem[] = [...porChave.values()].map((linha) => ({
         origem: linha.origem,
         codigo: linha.codigo,
-        banco: solicitado.banco,
+        banco: solicitados.get(`${linha.origem}:${linha.codigo}`)?.banco ?? '',
         fornecedor: linha.fornecedor,
         empresa: linha.filial?.trim() || linha.empresa,
         descricao: linha.descricao,
         vencimento: linha.dataVencimento,
         saldo: Number(linha.saldo) || 0,
-      });
-    }
+    }));
     const processo = await aprovarProcessoDiario(id, login, itens);
-    res.json({ processo, aprovados: itens.length });
+    res.json({ processo, aprovados: solicitados.size });
   } catch (err) {
     console.error('[postAprovarProcessoDiario]', msg(err));
     res.status(400).json({ error: msg(err) });

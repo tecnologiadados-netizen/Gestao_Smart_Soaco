@@ -9,6 +9,7 @@ import {
   aplicarCartorioDiario,
   aplicarCorAnotacoesDiario,
   importarAnotacoesDiario,
+  obterResultadoAprovacaoDiario,
   reprogramarDiarioContasPagar,
   type ContaBancariaOpcao,
   type FormaPagamentoOpcao,
@@ -311,6 +312,8 @@ export type DiarioFinanceiroModo = {
   dataFixa: string;
   editavel: boolean;
   aprovacao?: boolean;
+  processoId?: number;
+  resultadoAprovacao?: boolean;
   onAprovacaoChange?: (itens: DiarioAprovacaoSelecao[]) => void;
 };
 
@@ -344,6 +347,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [origens, setOrigens] = useState('');
   const [situacoes, setSituacoes] = useState('');
   const [cartorioFiltro, setCartorioFiltro] = useState('');
+  const [statusAprovacaoFiltro, setStatusAprovacaoFiltro] = useState('');
   const [observacao, setObservacao] = useState('');
   const [corObservacao, setCorObservacao] = useState('');
   const [filtroCorHex, setFiltroCorHex] = useState<string | null>(null);
@@ -473,8 +477,26 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setErro(null);
     setAviso(null);
     try {
-      const res = await fetchDiarioContasPagar({ dataInicio: inicio, dataFim: fim });
-      setLinhas(res.linhas);
+      const [res, resultado] = await Promise.all([
+        fetchDiarioContasPagar({ dataInicio: inicio, dataFim: fim }),
+        modo?.resultadoAprovacao && modo.processoId
+          ? obterResultadoAprovacaoDiario(modo.processoId)
+          : Promise.resolve(null),
+      ]);
+      const aprovados = resultado == null
+        ? null
+        : new Map(resultado.map((item) => [`${item.origem}:${item.codigo}`, item]));
+      setLinhas(
+        res.linhas.map((linha) => {
+          if (!aprovados) return linha;
+          const resultadoLinha = aprovados.get(`${linha.origem}:${linha.codigo}`);
+          return {
+            ...linha,
+            statusAprovacao: resultadoLinha?.status ?? 'Reprogramado',
+            bancoAprovacao: resultadoLinha?.banco ?? '',
+          };
+        }),
+      );
       setSelecionadas(new Set());
       setBancosAprovacao({});
       setCargaTick((n) => n + 1);
@@ -488,7 +510,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     } finally {
       setLoading(false);
     }
-  }, [carregarPrioridades]);
+  }, [carregarPrioridades, modo?.processoId, modo?.resultadoAprovacao]);
 
   useEffect(() => {
     void carregar(inicial.inicio, inicial.fim);
@@ -557,6 +579,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (fEmpresa.size > 0 && !fEmpresa.has(empresaExibida(l) ?? '')) return false;
       if (fPlano.size > 0 && !fPlano.has(l.planoContas ?? '')) return false;
       if (fCartorio.size > 0 && !fCartorio.has(l.emCartorio ? 'Sim' : 'Não')) return false;
+      if (statusAprovacaoFiltro && l.statusAprovacao !== statusAprovacaoFiltro) return false;
       if (observacao.trim()) {
         const texto = `${l.observacao ?? ''} ${l.descricao ?? ''} ${l.anotacao ?? ''}`;
         if (!casaObs(texto)) return false;
@@ -565,7 +588,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (corObservacao === 'com' && !l.anotacaoCor) return false;
       return true;
     });
-  }, [linhas, fornecedores, empresas, planos, origens, situacoes, cartorioFiltro, observacao, corObservacao]);
+  }, [linhas, fornecedores, empresas, planos, origens, situacoes, cartorioFiltro, statusAprovacaoFiltro, observacao, corObservacao]);
 
   const coresCabecalho = useMemo(() => {
     const usadas = new Set<string>();
@@ -607,6 +630,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       saldo: 130,
       nfe: 110,
       banco: 170,
+      statusAprovacao: 140,
       prioridade: 170,
       itens: 72,
     };
@@ -615,25 +639,36 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       largura: larguras[coluna.id] ?? 140,
       larguraMinima: coluna.id === 'itens' ? 60 : 72,
     }));
-    if (!modo?.aprovacao) return base;
+    if (!modo?.aprovacao && !modo?.resultadoAprovacao) return base;
     const posicao = base.findIndex((coluna) => coluna.id === 'prioridade');
-    base.splice(posicao < 0 ? base.length : posicao, 0, {
+    const extras: GradeColunaConfiguravel[] = [];
+    if (modo.resultadoAprovacao) {
+      extras.push({
+        id: 'statusAprovacao',
+        label: 'Status da aprovação',
+        largura: larguras.statusAprovacao,
+        larguraMinima: 110,
+      });
+    }
+    extras.push({
       id: 'banco',
       label: 'Banco',
       largura: larguras.banco,
       larguraMinima: 110,
-      fixa: true,
     });
+    base.splice(posicao < 0 ? base.length : posicao, 0, ...extras);
     return base;
-  }, [modo?.aprovacao]);
+  }, [modo?.aprovacao, modo?.resultadoAprovacao]);
   const colunasGrade = useGradeColunasExcel('financeiro.diario.contas-pagar.colunas.v1', colunasDaGrade);
 
   const getCellText = useCallback(
     (row: DiarioContaPagarLinha, colId: string) =>
       colId === 'prioridade'
         ? rotuloPrioridade(row) || VAZIO_CELULA
+        : colId === 'statusAprovacao'
+          ? row.statusAprovacao || VAZIO_CELULA
         : colId === 'banco'
-          ? bancosAprovacao[chaveLinha(row)] || VAZIO_CELULA
+          ? row.bancoAprovacao || bancosAprovacao[chaveLinha(row)] || VAZIO_CELULA
           : textoCelula(row, colId),
     [bancosAprovacao, rotuloPrioridade],
   );
@@ -641,8 +676,10 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     (row: DiarioContaPagarLinha, colId: string) =>
       colId === 'prioridade'
         ? prioridadeDaLinha(row).efetiva ?? -1
+        : colId === 'statusAprovacao'
+          ? row.statusAprovacao || ''
         : colId === 'banco'
-          ? bancosAprovacao[chaveLinha(row)] || ''
+          ? row.bancoAprovacao || bancosAprovacao[chaveLinha(row)] || ''
           : valorOrdenacao(row, colId),
     [bancosAprovacao, prioridadeDaLinha],
   );
@@ -688,6 +725,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     setOrigens('');
     setSituacoes('');
     setCartorioFiltro('');
+    setStatusAprovacaoFiltro('');
     setObservacao('');
     setCorObservacao('');
     setFiltroCorHex(null);
@@ -706,8 +744,10 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const linhasExibidas = grade.rowsExibidas;
 
   const elegiveisVisiveis = useMemo(
-    () => linhasExibidas.filter(modo?.aprovacao ? podeAprovarConta : podeReprogramar),
-    [linhasExibidas, modo?.aprovacao],
+    () => (!editavel && !modo?.aprovacao
+      ? []
+      : linhasExibidas.filter(modo?.aprovacao ? podeAprovarConta : podeReprogramar)),
+    [editavel, linhasExibidas, modo?.aprovacao],
   );
   const qtdSelecionadaVisivel = useMemo(
     () => elegiveisVisiveis.filter((l) => selecionadas.has(chaveLinha(l))).length,
@@ -770,6 +810,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   );
 
   const abrirPrioridade = () => {
+    if (!editavel) return;
     const escolhidas = dedupePrioridade(linhasMarcadas());
     if (escolhidas.length === 0) {
       setErro('Marque ao menos um título identificado para classificar a prioridade.');
@@ -1236,7 +1277,26 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         return <td key={colId} style={style} className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>;
       case 'nfe':
         return <td key={colId} style={style} className="truncate px-2 py-1.5 whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>;
+      case 'statusAprovacao':
+        return (
+          <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap">
+            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              l.statusAprovacao === 'Aprovado'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                : 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200'
+            }`}>
+              {l.statusAprovacao ?? '—'}
+            </span>
+          </td>
+        );
       case 'banco': {
+        if (modo?.resultadoAprovacao) {
+          return (
+            <td key={colId} style={style} className="px-2 py-1.5 font-medium normal-case">
+              {l.bancoAprovacao || '—'}
+            </td>
+          );
+        }
         const chave = chaveLinha(l);
         return (
           <td key={colId} style={style} className="px-1 py-1 normal-case">
@@ -1308,7 +1368,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             >
               Contas a pagar
             </button>
-            <button
+            {modo ? null : <button
               type="button"
               onClick={() => {
                 setVencidosVisitado(true);
@@ -1321,7 +1381,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               }`}
             >
               Vencidos/Reprogramados
-            </button>
+            </button>}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
             <input
@@ -1413,7 +1473,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={(aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
+                    disabled={!editavel || (aba === 'vencidos' ? vencidosUi.selecionadas === 0 : selecionadas.size === 0) || salvando}
                     onClick={() => {
                       setAcoesAberto(false);
                       abrirPrioridade();
@@ -1462,6 +1522,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   <button
                     type="button"
                     role="menuitem"
+                    disabled={!editavel}
                     onClick={() => {
                       setAcoesAberto(false);
                       abrirSubclassificacao();
@@ -1473,7 +1534,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={aba !== 'vencidos' || vencidosUi.selecionadas === 0}
+                    disabled={!editavel || aba !== 'vencidos' || vencidosUi.selecionadas === 0}
                     onClick={() => {
                       setAcoesAberto(false);
                       abrirRelacionarSubclassificacao();
@@ -1531,7 +1592,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     key={a.id}
                     type="button"
                     onClick={() => aplicarAtalho(a.id)}
-                    disabled={loading}
+                    disabled={loading || Boolean(modo)}
                     className={`inline-flex h-8 items-center px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
                       i > 0 ? 'border-l border-slate-300 dark:border-slate-600' : ''
                     } ${
@@ -1555,7 +1616,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataInicio(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading}
+                disabled={loading || Boolean(modo)}
               />
             </div>
             <div className="w-[9.25rem]">
@@ -1568,7 +1629,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataFim(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading}
+                disabled={loading || Boolean(modo)}
               />
             </div>
             <FiltroMulti
@@ -1621,6 +1682,21 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               minWidth="120px"
               disabled={loading}
             />
+            {modo?.resultadoAprovacao ? (
+              <div className="w-40">
+                <label className={FILTRO_LABEL_CLASS}>Status da aprovação</label>
+                <select
+                  value={statusAprovacaoFiltro}
+                  onChange={(e) => setStatusAprovacaoFiltro(e.target.value)}
+                  className={FILTRO_INPUT_CLASS}
+                  disabled={loading}
+                >
+                  <option value="">Todos</option>
+                  <option value="Aprovado">Aprovados</option>
+                  <option value="Reprogramado">Reprogramados</option>
+                </select>
+              </div>
+            ) : null}
             <FiltroMulti
               label="Cartório"
               placeholder="Todos"
@@ -1657,7 +1733,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             <button
               type="button"
               onClick={aplicarIntervalo}
-              disabled={loading || !dataInicio || !dataFim}
+              disabled={loading || Boolean(modo) || !dataInicio || !dataFim}
               className={`${FILTRO_BTN} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`}
             >
               {loading ? 'Buscando…' : 'Buscar'}
@@ -1711,10 +1787,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {selecionadas.size.toLocaleString('pt-BR')} selecionado(s).{' '}
+          {modo?.resultadoAprovacao
+            ? 'Consulta somente leitura. Use o filtro de status para separar aprovados e reprogramados.'
+            : `${selecionadas.size.toLocaleString('pt-BR')} selecionado(s). `}
           {modo?.aprovacao
             ? 'Apenas as contas marcadas serão aprovadas; informe o Banco em cada uma.'
-            : 'Título baixado não pode ser reprogramado nem ter a conta alterada.'}
+            : modo?.resultadoAprovacao
+              ? ''
+              : 'Título baixado não pode ser reprogramado nem ter a conta alterada.'}
           {linhasFiltradas.length !== linhasExibidas.length
             ? ` ${linhasExibidas.length.toLocaleString('pt-BR')} de ${linhasFiltradas.length.toLocaleString('pt-BR')} na grade.`
             : ''}
@@ -1773,9 +1853,11 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             )}
             {linhasExibidas.map((l, i) => {
               const chave = chaveLinha(l);
-              const bloqueio = modo?.aprovacao
-                ? (podeAprovarConta(l) ? null : 'Somente contas em aberto com saldo podem ser aprovadas.')
-                : motivoBloqueio(l);
+              const bloqueio = !editavel && !modo?.aprovacao
+                ? 'Processo aprovado disponível somente para consulta.'
+                : modo?.aprovacao
+                  ? (podeAprovarConta(l) ? null : 'Somente contas em aberto com saldo podem ser aprovadas.')
+                  : motivoBloqueio(l);
               const marcado = selecionadas.has(chave);
               const prio = prioridadeDaLinha(l);
               const salvandoPrio = prio.chave != null && salvandoPrioridade === prio.chave;

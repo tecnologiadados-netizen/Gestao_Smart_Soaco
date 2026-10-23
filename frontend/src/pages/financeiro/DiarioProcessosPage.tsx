@@ -362,6 +362,8 @@ export default function DiarioProcessosPage() {
                 dataFixa: aberto.dataVencimento,
                 editavel: aberto.editavel,
                 aprovacao: podeAprovar && aberto.status === 'em_aprovacao',
+                processoId: aberto.id,
+                resultadoAprovacao: aberto.status === 'aprovado',
                 onAprovacaoChange: receberSelecaoAprovacao,
               }}
             />

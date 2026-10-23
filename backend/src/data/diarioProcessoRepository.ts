@@ -173,6 +173,33 @@ export type DiarioAprovacaoItem = {
   saldo: number;
 };
 
+export type DiarioAprovacaoResultadoItem = {
+  origem: 'Nomus' | 'Shop9';
+  codigo: number;
+  banco: string;
+  status: 'Aprovado' | 'Reprogramado';
+};
+
+export async function listarResultadoAprovacaoProcesso(
+  processoId: number,
+): Promise<DiarioAprovacaoResultadoItem[]> {
+  const itens = await prisma.diarioContasPagarAprovacao.findMany({
+    where: { processoId },
+    select: { origem: true, codigo: true, banco: true },
+    orderBy: { id: 'asc' },
+  });
+  return itens.flatMap((item) =>
+    item.origem === 'Nomus' || item.origem === 'Shop9'
+      ? [{
+          origem: item.origem,
+          codigo: item.codigo,
+          banco: item.banco,
+          status: item.banco.trim() ? 'Aprovado' as const : 'Reprogramado' as const,
+        }]
+      : [],
+  );
+}
+
 export async function aprovarProcessoDiario(
   id: number,
   usuario: string,
