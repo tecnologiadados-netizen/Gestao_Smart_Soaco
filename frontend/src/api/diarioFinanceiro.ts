@@ -382,6 +382,7 @@ export interface DiarioProcesso {
   enviadoEm: string | null;
   criadoEm: string;
   editavel: boolean;
+  totalAprovado: number;
 }
 
 async function lerErro(res: Response, fallback: string): Promise<string> {

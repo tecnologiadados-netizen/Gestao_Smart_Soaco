@@ -34,6 +34,7 @@ export interface DiarioProcessoDto {
   enviadoEm: string | null;
   criadoEm: string;
   editavel: boolean;
+  totalAprovado: number;
 }
 
 type Row = {
@@ -58,7 +59,7 @@ export function processoEditavel(status: string): boolean {
   return status === 'rascunho' || status === 'em_correcao';
 }
 
-function dto(row: Row): DiarioProcessoDto {
+function dto(row: Row, totalAprovado = 0): DiarioProcessoDto {
   const status = STATUS_PROCESSO.includes(row.status as StatusProcessoDiario)
     ? (row.status as StatusProcessoDiario)
     : 'rascunho';
@@ -75,19 +76,34 @@ function dto(row: Row): DiarioProcessoDto {
     enviadoEm: iso(row.enviadoEm),
     criadoEm: row.criadoEm.toISOString(),
     editavel: processoEditavel(status),
+    totalAprovado: status === 'aprovado' ? totalAprovado : 0,
   };
 }
 
 export async function listarProcessosDiario(): Promise<DiarioProcessoDto[]> {
-  const rows = await prisma.diarioContasPagarProcesso.findMany({
-    orderBy: [{ dataVencimento: 'desc' }, { codigo: 'desc' }],
-  });
-  return rows.map(dto);
+  const [rows, totais] = await Promise.all([
+    prisma.diarioContasPagarProcesso.findMany({
+      orderBy: [{ dataVencimento: 'desc' }, { codigo: 'desc' }],
+    }),
+    prisma.diarioContasPagarAprovacao.groupBy({
+      by: ['processoId'],
+      where: { banco: { not: '' } },
+      _sum: { saldo: true },
+    }),
+  ]);
+  const totalPorProcesso = new Map(totais.map((item) => [item.processoId, item._sum.saldo ?? 0]));
+  return rows.map((row) => dto(row, totalPorProcesso.get(row.id) ?? 0));
 }
 
 export async function obterProcessoDiario(id: number): Promise<DiarioProcessoDto | null> {
-  const row = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
-  return row ? dto(row) : null;
+  const [row, total] = await Promise.all([
+    prisma.diarioContasPagarProcesso.findUnique({ where: { id } }),
+    prisma.diarioContasPagarAprovacao.aggregate({
+      where: { processoId: id, banco: { not: '' } },
+      _sum: { saldo: true },
+    }),
+  ]);
+  return row ? dto(row, total._sum.saldo ?? 0) : null;
 }
 
 export async function iniciarProcessoDiario(input: {
@@ -240,7 +256,10 @@ export async function aprovarProcessoDiario(
     if (!processo) throw new Error('Processo não encontrado.');
     return processo;
   });
-  return dto(salvo);
+  return dto(
+    salvo,
+    itens.reduce((total, item) => total + (item.banco ? item.saldo : 0), 0),
+  );
 }
 
 export async function devolverProcessoDiario(id: number, motivoBruto: string): Promise<DiarioProcessoDto> {

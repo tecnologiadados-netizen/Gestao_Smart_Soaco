@@ -64,6 +64,10 @@ function formatarDataHora(iso: string | null | undefined): string {
   });
 }
 
+function formatarMoeda(valor: number): string {
+  return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function DiarioProcessosPage() {
   const { hasPermission } = useAuth();
   const podeAprovar =
@@ -225,7 +229,7 @@ export default function DiarioProcessosPage() {
       ) : null}
 
       <div className="card-panel min-h-0 overflow-auto !p-0">
-        <table className="min-w-[720px] w-full table-fixed text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:[overflow-wrap:anywhere]">
+        <table className="min-w-[840px] w-full table-fixed text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:[overflow-wrap:anywhere]">
           <thead className="sticky top-0 z-10 bg-primary-600 text-white">
             <tr>
               <th className="px-3 py-2 text-left font-semibold">Código</th>
@@ -234,13 +238,14 @@ export default function DiarioProcessosPage() {
               <th className="px-3 py-2 text-left font-semibold">Descrição</th>
               <th className="px-3 py-2 text-left font-semibold">Usuário</th>
               <th className="px-3 py-2 text-left font-semibold">Status</th>
+              <th className="px-3 py-2 text-right font-semibold">Total aprovado</th>
               <th className="px-3 py-2 text-left font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody className="[&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:overflow-visible [&_td]:text-clip [&_td]:[overflow-wrap:anywhere]">
             {processos.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={8} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {loading ? 'Carregando…' : 'Nenhum contas a pagar iniciado.'}
                 </td>
               </tr>
@@ -258,6 +263,9 @@ export default function DiarioProcessosPage() {
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASSE[p.status]}`}>
                       {STATUS_LABEL[p.status]}
                     </span>
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
+                    {p.status === 'aprovado' ? formatarMoeda(p.totalAprovado) : '—'}
                   </td>
                   <td className="px-3 py-2">
                     <button
