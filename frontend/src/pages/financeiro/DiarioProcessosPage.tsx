@@ -415,7 +415,7 @@ export default function DiarioProcessosPage() {
                   </td>
                   <td className="px-2 py-2 text-right whitespace-nowrap">
                     {p.status === 'aprovado' ? (
-                      <span className="inline-flex min-w-[7rem] justify-end rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 font-semibold tabular-nums text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                      <span className="inline-flex min-w-[6rem] justify-end rounded border border-emerald-200 bg-emerald-50/60 px-1.5 py-0.5 text-xs font-normal tabular-nums text-slate-700 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-slate-200">
                         {formatarMoeda(p.totalAprovado)}
                       </span>
                     ) : '—'}
