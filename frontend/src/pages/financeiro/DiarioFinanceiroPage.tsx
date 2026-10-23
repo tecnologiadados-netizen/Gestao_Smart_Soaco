@@ -47,7 +47,11 @@ import { DiarioPaletaCorExcel } from './diario/DiarioPaletaCorExcel';
 import { corObservacaoDiario } from './diario/coresObservacaoDiario';
 import { DiarioAlocarSubclassificacaoModal } from './diario/DiarioAlocarSubclassificacaoModal';
 import { DiarioSubclassificacaoModal } from './diario/DiarioSubclassificacaoModal';
-import { DiarioVencidosPainel, type DiarioVencidosPainelHandle } from './diario/DiarioVencidosPainel';
+import {
+  DiarioVencidosPainel,
+  type DiarioVencidosAprovacaoSelecao,
+  type DiarioVencidosPainelHandle,
+} from './diario/DiarioVencidosPainel';
 import { BadgeCartorio, textoCartorio } from './diario/cartorioDiario';
 import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
 import {
@@ -356,6 +360,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
   const [bancosAprovacao, setBancosAprovacao] = useState<Record<string, string>>({});
+  const [aprovacaoVencidos, setAprovacaoVencidos] = useState<DiarioVencidosAprovacaoSelecao[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
   const [modalLinhas, setModalLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [novaData, setNovaData] = useState('');
@@ -770,6 +775,9 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       return;
     }
     const unicos = new Map<string, DiarioAprovacaoSelecao>();
+    for (const item of aprovacaoVencidos) {
+      unicos.set(`${item.linha.origem}:${item.linha.codigo}`, item);
+    }
     for (const linha of linhas) {
       if (!podeAprovarConta(linha) || !selecionadas.has(chaveLinha(linha))) continue;
       unicos.set(`${linha.origem}:${linha.codigo}`, {
@@ -778,7 +786,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       });
     }
     modo.onAprovacaoChange([...unicos.values()]);
-  }, [bancosAprovacao, linhas, modo?.aprovacao, modo?.onAprovacaoChange, selecionadas]);
+  }, [aprovacaoVencidos, bancosAprovacao, linhas, modo?.aprovacao, modo?.onAprovacaoChange, selecionadas]);
 
   const alternarTodos = () => {
     setSelecionadas((prev) => {
@@ -1372,7 +1380,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             >
               Contas a pagar
             </button>
-            {modo ? null : <button
+            <button
               type="button"
               onClick={() => {
                 setVencidosVisitado(true);
@@ -1385,7 +1393,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               }`}
             >
               Vencidos/Reprogramados
-            </button>}
+            </button>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 py-1.5">
             <input
@@ -1765,6 +1773,9 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             ref={vencidosRef}
             ativo={aba === 'vencidos'}
             filtrosVisivel={filtrosVencidosVisivel}
+            aprovacao={Boolean(modo?.aprovacao)}
+            somenteLeitura={Boolean(modo && !modo.editavel && !modo.aprovacao)}
+            onAprovacaoChange={setAprovacaoVencidos}
             onResumo={onResumoVencidos}
           />
         </div>

@@ -29,7 +29,11 @@ import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import { DiarioCabecalhoTh, DiarioGradeFiltroPortal } from './DiarioGradeCabecalho';
 import { BadgeCartorio, textoCartorio } from './cartorioDiario';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
-import { GradeColunasMenu, useGradeColunasExcel } from '../../../components/grade/GradeColunasExcel';
+import {
+  GradeColunasMenu,
+  useGradeColunasExcel,
+  type GradeColunaConfiguravel,
+} from '../../../components/grade/GradeColunasExcel';
 
 type Subaba = 'titulos' | 'dashboard';
 
@@ -285,6 +289,20 @@ export type DiarioVencidosPainelHandle = {
   aplicarCartorio: (itens: Array<{ origem: DiarioContaPagarLinha['origem']; codigo: number }>, emCartorio: boolean) => void;
 };
 
+export type DiarioVencidosAprovacaoSelecao = {
+  linha: DiarioContaPagarLinha;
+  banco: string;
+};
+
+type DiarioVencidosPainelProps = {
+  filtrosVisivel: boolean;
+  ativo?: boolean;
+  aprovacao?: boolean;
+  somenteLeitura?: boolean;
+  onAprovacaoChange?: (itens: DiarioVencidosAprovacaoSelecao[]) => void;
+  onResumo?: (resumo: { linhas: number; selecionadas: number; loading: boolean }) => void;
+};
+
 function ehVencido(l: DiarioContaPagarLinha, hoje: string): boolean {
   return l.status === 'Em aberto' && !!l.dataVencimento && l.dataVencimento.slice(0, 10) < hoje;
 }
@@ -458,8 +476,15 @@ function FiltroMulti(props: {
 
 export const DiarioVencidosPainel = forwardRef<
   DiarioVencidosPainelHandle,
-  { filtrosVisivel: boolean; ativo?: boolean; onResumo?: (resumo: { linhas: number; selecionadas: number; loading: boolean }) => void }
->(function DiarioVencidosPainel({ filtrosVisivel, ativo = true, onResumo }, ref) {
+  DiarioVencidosPainelProps
+>(function DiarioVencidosPainel({
+  filtrosVisivel,
+  ativo = true,
+  aprovacao = false,
+  somenteLeitura = false,
+  onAprovacaoChange,
+  onResumo,
+}, ref) {
   const [fornecedores, setFornecedores] = useState('');
   const [empresas, setEmpresas] = useState('');
   const [planos, setPlanos] = useState('');
@@ -474,12 +499,13 @@ export const DiarioVencidosPainel = forwardRef<
   const [erro, setErro] = useState<string | null>(null);
   const [subaba, setSubaba] = useState<Subaba>('titulos');
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
+  const [bancosAprovacao, setBancosAprovacao] = useState<Record<string, string>>({});
   const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: DiarioContaPagarLinha[] } | null>(null);
   const [dinamicoSubAberto, setDinamicoSubAberto] = useState(false);
   const [colunasAberto, setColunasAberto] = useState(false);
   const hoje = hojeYmd();
-  const configuracaoColunasTitulos = useMemo(() => (
-    COLUNAS_TITULOS_VENCIDOS.map((coluna) => ({
+  const configuracaoColunasTitulos = useMemo(() => {
+    const colunas: GradeColunaConfiguravel[] = COLUNAS_TITULOS_VENCIDOS.map((coluna) => ({
       ...coluna,
       largura: {
         codigo: 86,
@@ -495,10 +521,15 @@ export const DiarioVencidosPainel = forwardRef<
         descricao: 260,
         observacao: 190,
         saldo: 130,
+        banco: 170,
       }[coluna.id] ?? 140,
       larguraMinima: 68,
-    }))
-  ), []);
+    }));
+    if (aprovacao) {
+      colunas.push({ id: 'banco', label: 'BANCO', largura: 170, larguraMinima: 110 });
+    }
+    return colunas;
+  }, [aprovacao]);
   const colunasTitulos = useGradeColunasExcel(
     'financeiro.diario.vencidos.colunas.v1',
     configuracaoColunasTitulos,
@@ -510,6 +541,8 @@ export const DiarioVencidosPainel = forwardRef<
     try {
       const res = await fetchDiarioVencidosReprogramados();
       setLinhas(res.linhas);
+      setSelecionadas(new Set());
+      setBancosAprovacao({});
       const partes = [res.erroShop9, res.erroNomus].filter(Boolean);
       if (partes.length > 0) setErro(partes.join(' · '));
     } catch (e) {
@@ -563,8 +596,11 @@ export const DiarioVencidosPainel = forwardRef<
   }, [linhas, fornecedores, empresas, planos, subclassificacoes, origens, situacoes, cartorioFiltro, observacao, hoje, mapaSub]);
 
   const getCellTextTitulos = useCallback(
-    (row: DiarioContaPagarLinha, colId: string) => textoCelulaVencidos(row, colId, mapaSub, hoje),
-    [mapaSub, hoje],
+    (row: DiarioContaPagarLinha, colId: string) =>
+      colId === 'banco'
+        ? bancosAprovacao[chaveSelecao(row)] || VAZIO_CELULA
+        : textoCelulaVencidos(row, colId, mapaSub, hoje),
+    [bancosAprovacao, mapaSub, hoje],
   );
   const valueForSortTitulos = useCallback(
     (row: DiarioContaPagarLinha, colId: string) => valorOrdenacaoVencidos(row, colId, mapaSub, hoje),
@@ -572,7 +608,7 @@ export const DiarioVencidosPainel = forwardRef<
   );
   const gradeTitulos = useGradeFiltrosExcel({
     rows: base,
-    columnIds: COLUNAS_TITULOS_VENCIDOS.map((c) => c.id),
+    columnIds: configuracaoColunasTitulos.map((c) => c.id),
     getCellText: getCellTextTitulos,
     valueForSort: valueForSortTitulos,
     dateColumnIds: ['vencimento'],
@@ -666,15 +702,43 @@ export const DiarioVencidosPainel = forwardRef<
     };
   }, [base, hoje, mapaSub]);
 
-  const elegiveis = useMemo(() => titulosExibidos.filter(podeAlterar), [titulosExibidos]);
+  const elegiveis = useMemo(
+    () => (somenteLeitura
+      ? []
+      : titulosExibidos.filter((linha) =>
+          aprovacao
+            ? linha.status === 'Em aberto' && linha.codigo > 0 && Number(linha.saldo) > 0
+            : podeAlterar(linha))),
+    [aprovacao, somenteLeitura, titulosExibidos],
+  );
   const marcadas = useMemo(
     () => elegiveis.filter((l) => selecionadas.has(chaveSelecao(l))),
     [elegiveis, selecionadas],
+  );
+  const marcadasAprovacao = useMemo(
+    () => linhas.filter((linha) =>
+      linha.status === 'Em aberto'
+      && linha.codigo > 0
+      && Number(linha.saldo) > 0
+      && selecionadas.has(chaveSelecao(linha))),
+    [linhas, selecionadas],
   );
 
   useEffect(() => {
     onResumo?.({ linhas: base.length, selecionadas: marcadas.length, loading });
   }, [base.length, marcadas.length, loading, onResumo]);
+
+  useEffect(() => {
+    if (!onAprovacaoChange) return;
+    if (!aprovacao) {
+      onAprovacaoChange([]);
+      return;
+    }
+    onAprovacaoChange(marcadasAprovacao.map((linha) => ({
+      linha,
+      banco: bancosAprovacao[chaveSelecao(linha)]?.trim() ?? '',
+    })));
+  }, [aprovacao, bancosAprovacao, marcadasAprovacao, onAprovacaoChange]);
 
   useImperativeHandle(ref, () => ({
     limparFiltros: () => {
@@ -774,6 +838,26 @@ export const DiarioVencidosPainel = forwardRef<
         return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.observacao ?? ''}>{l.observacao ?? '—'}</td>;
       case 'saldo':
         return <td key={colId} style={style} className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>;
+      case 'banco': {
+        const chave = chaveSelecao(l);
+        return (
+          <td key={colId} style={style} className="px-1 py-1 normal-case">
+            <input
+              type="text"
+              value={bancosAprovacao[chave] ?? ''}
+              maxLength={100}
+              disabled={!selecionadas.has(chave)}
+              onChange={(evento) => setBancosAprovacao((atual) => ({
+                ...atual,
+                [chave]: evento.target.value.toLocaleUpperCase('pt-BR'),
+              }))}
+              placeholder="Digite o banco"
+              aria-label={`Banco da conta vencida ${l.codigo}`}
+              className="h-7 w-full rounded border border-slate-300 bg-white px-1.5 text-xs uppercase text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-700"
+            />
+          </td>
+        );
+      }
       default:
         return null;
     }
@@ -1083,7 +1167,11 @@ export const DiarioVencidosPainel = forwardRef<
               ) : titulosExibidos.map((l, i) => {
                 const dias = diasAtrasoTitulo(l, hoje);
                 const chave = chaveSelecao(l);
-                const alteravel = podeAlterar(l);
+                const alteravel = !somenteLeitura && (
+                  aprovacao
+                    ? l.status === 'Em aberto' && l.codigo > 0 && Number(l.saldo) > 0
+                    : podeAlterar(l)
+                );
                 return (
                   <tr key={`${l.origem}-${l.codigo}-${i}`} className="border-t border-slate-100 text-slate-800 dark:border-slate-700/80 dark:text-slate-100">
                     <td className="px-2 py-1.5">

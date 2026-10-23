@@ -37,6 +37,16 @@ export interface DiarioProcessoDto {
   totalAprovado: number;
 }
 
+export interface DiarioProcessoHistoricoDto {
+  id: number;
+  acao: string;
+  statusAnterior: string | null;
+  statusNovo: string;
+  usuario: string;
+  detalhe: string | null;
+  criadoEm: string;
+}
+
 type Row = {
   id: number;
   codigo: number;
@@ -106,6 +116,24 @@ export async function obterProcessoDiario(id: number): Promise<DiarioProcessoDto
   return row ? dto(row, total._sum.saldo ?? 0) : null;
 }
 
+export async function listarHistoricoProcessoDiario(
+  processoId: number,
+): Promise<DiarioProcessoHistoricoDto[]> {
+  const itens = await prisma.diarioContasPagarProcessoHistorico.findMany({
+    where: { processoId },
+    orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
+  });
+  return itens.map((item) => ({
+    id: item.id,
+    acao: item.acao,
+    statusAnterior: item.statusAnterior,
+    statusNovo: item.statusNovo,
+    usuario: item.usuario,
+    detalhe: item.detalhe,
+    criadoEm: item.criadoEm.toISOString(),
+  }));
+}
+
 export async function iniciarProcessoDiario(input: {
   dataVencimento: string;
   descricao: string;
@@ -131,6 +159,14 @@ export async function iniciarProcessoDiario(input: {
           descricao,
           usuario: input.usuario,
           status: 'rascunho',
+        },
+      });
+      await tx.diarioContasPagarProcessoHistorico.create({
+        data: {
+          processoId: row.id,
+          acao: 'Processo iniciado',
+          statusNovo: 'rascunho',
+          usuario: input.usuario,
         },
       });
       return { row, existente: false as const };
@@ -160,21 +196,33 @@ export async function atualizarDescricaoProcessoDiario(id: number): Promise<Diar
   return dto(salvo);
 }
 
-export async function enviarProcessoDiarioAprovacao(id: number): Promise<DiarioProcessoDto> {
+export async function enviarProcessoDiarioAprovacao(id: number, usuario: string): Promise<DiarioProcessoDto> {
   const atual = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
   if (!atual) throw new Error('Processo não encontrado.');
   if (!processoEditavel(atual.status)) {
     throw new Error('Só um rascunho ou uma correção pode ser enviado para aprovação.');
   }
-  const alterado = await prisma.diarioContasPagarProcesso.updateMany({
-    where: { id, status: { in: ['rascunho', 'em_correcao'] } },
-    data: { status: 'em_aprovacao', enviadoEm: new Date(), motivoDevolucao: null },
+  const salvo = await prisma.$transaction(async (tx) => {
+    const alterado = await tx.diarioContasPagarProcesso.updateMany({
+      where: { id, status: { in: ['rascunho', 'em_correcao'] } },
+      data: { status: 'em_aprovacao', enviadoEm: new Date(), motivoDevolucao: null },
+    });
+    if (alterado.count !== 1) {
+      throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
+    }
+    await tx.diarioContasPagarProcessoHistorico.create({
+      data: {
+        processoId: id,
+        acao: 'Enviado para aprovação',
+        statusAnterior: atual.status,
+        statusNovo: 'em_aprovacao',
+        usuario,
+      },
+    });
+    const processo = await tx.diarioContasPagarProcesso.findUnique({ where: { id } });
+    if (!processo) throw new Error('Processo não encontrado.');
+    return processo;
   });
-  if (alterado.count !== 1) {
-    throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
-  }
-  const salvo = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
-  if (!salvo) throw new Error('Processo não encontrado.');
   return dto(salvo);
 }
 
@@ -252,6 +300,19 @@ export async function aprovarProcessoDiario(
         aprovadoEm,
       })),
     });
+    const aprovados = itens.filter((item) => item.banco).length;
+    const reprogramados = itens.length - aprovados;
+    const total = itens.reduce((soma, item) => soma + (item.banco ? item.saldo : 0), 0);
+    await tx.diarioContasPagarProcessoHistorico.create({
+      data: {
+        processoId: id,
+        acao: 'Processo aprovado',
+        statusAnterior: 'em_aprovacao',
+        statusNovo: 'aprovado',
+        usuario,
+        detalhe: `${aprovados} aprovado(s), ${reprogramados} reprogramado(s), total ${total.toFixed(2)}`,
+      },
+    });
     const processo = await tx.diarioContasPagarProcesso.findUnique({ where: { id } });
     if (!processo) throw new Error('Processo não encontrado.');
     return processo;
@@ -262,27 +323,44 @@ export async function aprovarProcessoDiario(
   );
 }
 
-export async function devolverProcessoDiario(id: number, motivoBruto: string): Promise<DiarioProcessoDto> {
+export async function devolverProcessoDiario(
+  id: number,
+  motivoBruto: string,
+  usuario: string,
+): Promise<DiarioProcessoDto> {
   const atual = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
   if (!atual) throw new Error('Processo não encontrado.');
   if (atual.status !== 'em_aprovacao' && atual.status !== 'aprovado') {
     throw new Error('Só um contas a pagar em aprovação ou aprovado pode voltar para correção.');
   }
   const motivo = motivoBruto.trim();
-  const alterado = await prisma.diarioContasPagarProcesso.updateMany({
-    where: { id, status: { in: ['em_aprovacao', 'aprovado'] } },
-    data: {
-      status: 'em_correcao',
-      motivoDevolucao: motivo || null,
-      aprovadoPor: null,
-      aprovadoEm: null,
-    },
+  const salvo = await prisma.$transaction(async (tx) => {
+    const alterado = await tx.diarioContasPagarProcesso.updateMany({
+      where: { id, status: { in: ['em_aprovacao', 'aprovado'] } },
+      data: {
+        status: 'em_correcao',
+        motivoDevolucao: motivo || null,
+        aprovadoPor: null,
+        aprovadoEm: null,
+      },
+    });
+    if (alterado.count !== 1) {
+      throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
+    }
+    await tx.diarioContasPagarProcessoHistorico.create({
+      data: {
+        processoId: id,
+        acao: 'Devolvido para correção',
+        statusAnterior: atual.status,
+        statusNovo: 'em_correcao',
+        usuario,
+        detalhe: motivo || null,
+      },
+    });
+    const processo = await tx.diarioContasPagarProcesso.findUnique({ where: { id } });
+    if (!processo) throw new Error('Processo não encontrado.');
+    return processo;
   });
-  if (alterado.count !== 1) {
-    throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
-  }
-  const salvo = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
-  if (!salvo) throw new Error('Processo não encontrado.');
   return dto(salvo);
 }
 

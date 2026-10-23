@@ -404,6 +404,23 @@ export interface DiarioResultadoAprovacaoItem {
   status: 'Aprovado' | 'Reprogramado';
 }
 
+export interface DiarioProcessoHistorico {
+  id: number;
+  acao: string;
+  statusAnterior: string | null;
+  statusNovo: string;
+  usuario: string;
+  detalhe: string | null;
+  criadoEm: string;
+}
+
+export async function listarHistoricoProcessoDiario(id: number): Promise<DiarioProcessoHistorico[]> {
+  const res = await apiFetch(`/api/financeiro/diario/processos/${id}/historico`);
+  if (!res.ok) throw new Error(await lerErro(res, `Erro ao carregar o histórico (${res.status})`));
+  const body = (await res.json()) as { historico?: DiarioProcessoHistorico[] };
+  return Array.isArray(body.historico) ? body.historico : [];
+}
+
 export async function obterResultadoAprovacaoDiario(id: number): Promise<DiarioResultadoAprovacaoItem[]> {
   const res = await apiFetch(`/api/financeiro/diario/processos/${id}/resultado`);
   if (!res.ok) throw new Error(await lerErro(res, `Erro ao carregar o resultado da aprovação (${res.status})`));

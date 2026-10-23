@@ -33,6 +33,7 @@ import {
   postSalvarAnotacaoDiario,
 } from '../controllers/diarioFinanceiroController.js';
 import {
+  getHistoricoProcessoDiario,
   getProcessosDiario,
   getResultadoAprovacaoProcessoDiario,
   patchDescricaoProcessoDiario,
@@ -187,6 +188,7 @@ router.post('/diario/contas-pagar/anotacoes/cor', verFinanceiroDiario, postAplic
 router.post('/diario/contas-pagar/anotacoes/importar', verFinanceiroDiario, postImportarAnotacoesDiario);
 router.post('/diario/contas-pagar/cartorio', verFinanceiroDiario, postAplicarCartorioDiario);
 router.get('/diario/processos', verFinanceiroDiario, getProcessosDiario);
+router.get('/diario/processos/:id/historico', verFinanceiroDiario, getHistoricoProcessoDiario);
 router.get('/diario/processos/:id/resultado', verFinanceiroDiario, getResultadoAprovacaoProcessoDiario);
 router.post('/diario/processos', verFinanceiroDiario, postIniciarProcessoDiario);
 router.patch('/diario/processos/:id', verFinanceiroDiario, patchDescricaoProcessoDiario);

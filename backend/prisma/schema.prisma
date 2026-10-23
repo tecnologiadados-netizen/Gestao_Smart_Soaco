@@ -3266,8 +3266,25 @@ model DiarioContasPagarProcesso {
   atualizadoEm    DateTime  @updatedAt @map("atualizado_em")
   criadoEm        DateTime  @default(now()) @map("criado_em")
   aprovacoes       DiarioContasPagarAprovacao[]
+  historico        DiarioContasPagarProcessoHistorico[]
 
   @@map("diario_contas_pagar_processo")
+}
+
+/// Histórico das mudanças de status do processo diário.
+model DiarioContasPagarProcessoHistorico {
+  id             Int      @id @default(autoincrement())
+  processoId     Int      @map("processo_id")
+  acao           String
+  statusAnterior String?  @map("status_anterior")
+  statusNovo     String   @map("status_novo")
+  usuario        String
+  detalhe        String?
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  processo       DiarioContasPagarProcesso @relation(fields: [processoId], references: [id], onDelete: Cascade)
+
+  @@index([processoId, criadoEm])
+  @@map("diario_contas_pagar_processo_historico")
 }
 
 /// Resultado dos títulos do processo: banco preenchido = aprovado; banco vazio = reprogramado.

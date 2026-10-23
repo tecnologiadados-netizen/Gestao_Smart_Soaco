@@ -9,12 +9,16 @@ import {
   devolverProcessoDiario,
   enviarProcessoDiarioAprovacao,
   iniciarProcessoDiario,
+  listarHistoricoProcessoDiario,
   listarProcessosDiario,
   listarResultadoAprovacaoProcesso,
   obterProcessoDiario,
   type DiarioAprovacaoItem,
 } from '../data/diarioProcessoRepository.js';
-import { queryDiarioContasPagar } from '../data/diarioContasPagarRepository.js';
+import {
+  queryDiarioContasPagar,
+  queryDiarioVencidosReprogramados,
+} from '../data/diarioContasPagarRepository.js';
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -52,6 +56,25 @@ export async function getResultadoAprovacaoProcessoDiario(req: Request, res: Res
     res.json({ itens });
   } catch (err) {
     console.error('[getResultadoAprovacaoProcessoDiario]', msg(err));
+    res.status(500).json({ error: msg(err) });
+  }
+}
+
+export async function getHistoricoProcessoDiario(req: Request, res: Response): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'Processo inválido.' });
+    return;
+  }
+  try {
+    const processo = await obterProcessoDiario(id);
+    if (!processo) {
+      res.status(404).json({ error: 'Processo não encontrado.' });
+      return;
+    }
+    res.json({ historico: await listarHistoricoProcessoDiario(id) });
+  } catch (err) {
+    console.error('[getHistoricoProcessoDiario]', msg(err));
     res.status(500).json({ error: msg(err) });
   }
 }
@@ -98,7 +121,7 @@ export async function postEnviarProcessoDiario(req: Request, res: Response): Pro
     return;
   }
   try {
-    const processo = await enviarProcessoDiarioAprovacao(id);
+    const processo = await enviarProcessoDiarioAprovacao(id, req.user?.login ?? '?');
     res.json({ processo });
   } catch (err) {
     console.error('[postEnviarProcessoDiario]', msg(err));
@@ -143,14 +166,19 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
       res.status(404).json({ error: 'Processo não encontrado.' });
       return;
     }
-    const consulta = await queryDiarioContasPagar({
-      dataInicio: processoAtual.dataVencimento,
-      dataFim: processoAtual.dataVencimento,
-      incluirItens: false,
-    });
+    const [consulta, consultaVencidos] = await Promise.all([
+      queryDiarioContasPagar({
+        dataInicio: processoAtual.dataVencimento,
+        dataFim: processoAtual.dataVencimento,
+        incluirItens: false,
+      }),
+      queryDiarioVencidosReprogramados(),
+    ]);
     const fontesComErro = [
       consulta.erroNomus ? `Nomus: ${consulta.erroNomus}` : null,
       consulta.erroShop9 ? `Shop9: ${consulta.erroShop9}` : null,
+      consultaVencidos.erroNomus ? `Nomus vencidos: ${consultaVencidos.erroNomus}` : null,
+      consultaVencidos.erroShop9 ? `Shop9 vencidos: ${consultaVencidos.erroShop9}` : null,
     ].filter((erro): erro is string => Boolean(erro));
     if (fontesComErro.length > 0) {
       res.status(503).json({
@@ -158,21 +186,29 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
       });
       return;
     }
-    const porChave = new Map(
+    const porChaveAtual = new Map<string, (typeof consulta.linhas)[number]>(
       consulta.linhas
         .filter((linha) => linha.status === 'Em aberto' && Number(linha.saldo) > 0)
         .map((linha) => [`${linha.origem}:${linha.codigo}`, linha] as const),
     );
+    const porChaveVencidos = new Map<string, (typeof consultaVencidos.linhas)[number]>(
+      consultaVencidos.linhas
+        .filter((linha) => linha.status === 'Em aberto' && Number(linha.saldo) > 0)
+        .map((linha) => [`${linha.origem}:${linha.codigo}`, linha] as const),
+    );
+    const linhasPersistidas = new Map(porChaveAtual);
     for (const solicitado of solicitados.values()) {
-      const linha = porChave.get(`${solicitado.origem}:${solicitado.codigo}`);
+      const chave = `${solicitado.origem}:${solicitado.codigo}`;
+      const linha = porChaveAtual.get(chave) ?? porChaveVencidos.get(chave);
       if (!linha) {
         res.status(409).json({
           error: `A conta ${solicitado.origem} ${solicitado.codigo} não está mais em aberto neste processo. Atualize a grade.`,
         });
         return;
       }
+      linhasPersistidas.set(chave, linha);
     }
-    const itens: DiarioAprovacaoItem[] = [...porChave.values()].map((linha) => ({
+    const itens: DiarioAprovacaoItem[] = [...linhasPersistidas.values()].map((linha) => ({
         origem: linha.origem,
         codigo: linha.codigo,
         banco: solicitados.get(`${linha.origem}:${linha.codigo}`)?.banco ?? '',
@@ -197,7 +233,11 @@ export async function postDevolverProcessoDiario(req: Request, res: Response): P
     return;
   }
   try {
-    const processo = await devolverProcessoDiario(id, String(req.body?.motivo ?? ''));
+    const processo = await devolverProcessoDiario(
+      id,
+      String(req.body?.motivo ?? ''),
+      req.user?.login ?? '?',
+    );
     res.json({ processo });
   } catch (err) {
     console.error('[postDevolverProcessoDiario]', msg(err));

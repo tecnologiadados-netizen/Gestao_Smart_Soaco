@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { History, Plus } from 'lucide-react';
 import { PERMISSOES } from '../../config/permissoes';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -7,8 +7,10 @@ import {
   devolverProcessoDiario,
   enviarProcessoDiario,
   iniciarProcessoDiario,
+  listarHistoricoProcessoDiario,
   listarProcessosDiario,
   type DiarioProcesso,
+  type DiarioProcessoHistorico,
   type StatusProcessoDiario,
 } from '../../api/diarioFinanceiro';
 import DiarioFinanceiroPage, { type DiarioAprovacaoSelecao } from './DiarioFinanceiroPage';
@@ -86,6 +88,10 @@ export default function DiarioProcessosPage() {
   const [filtroDescricao, setFiltroDescricao] = useState('');
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<StatusProcessoDiario | ''>('');
+  const [historicoProcesso, setHistoricoProcesso] = useState<DiarioProcesso | null>(null);
+  const [historico, setHistorico] = useState<DiarioProcessoHistorico[]>([]);
+  const [historicoLoading, setHistoricoLoading] = useState(false);
+  const [historicoErro, setHistoricoErro] = useState<string | null>(null);
 
   const [iniciarAberto, setIniciarAberto] = useState(false);
   const [novaData, setNovaData] = useState(hojeYmd);
@@ -141,6 +147,20 @@ export default function DiarioProcessosPage() {
     setFiltroDescricao('');
     setFiltroUsuario('');
     setFiltroStatus('');
+  };
+
+  const abrirHistorico = async (processo: DiarioProcesso) => {
+    setHistoricoProcesso(processo);
+    setHistorico([]);
+    setHistoricoErro(null);
+    setHistoricoLoading(true);
+    try {
+      setHistorico(await listarHistoricoProcessoDiario(processo.id));
+    } catch (e) {
+      setHistoricoErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistoricoLoading(false);
+    }
   };
 
   const abrir = (processo: DiarioProcesso) => {
@@ -344,7 +364,17 @@ export default function DiarioProcessosPage() {
       ) : null}
 
       <div className="card-panel min-h-0 overflow-auto !p-0">
-        <table className="min-w-[840px] w-full table-fixed text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:[overflow-wrap:anywhere]">
+        <table className="min-w-[980px] w-full table-fixed text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:[overflow-wrap:anywhere]">
+          <colgroup>
+            <col className="w-[7%]" />
+            <col className="w-[11%]" />
+            <col className="w-[15%]" />
+            <col className="w-[23%]" />
+            <col className="w-[13%]" />
+            <col className="w-[11%]" />
+            <col className="w-[140px]" />
+            <col className="w-[170px]" />
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-primary-600 text-white">
             <tr>
               <th className="px-3 py-2 text-left font-semibold">Código</th>
@@ -383,20 +413,34 @@ export default function DiarioProcessosPage() {
                       {STATUS_LABEL[p.status]}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap font-semibold">
-                    {p.status === 'aprovado' ? formatarMoeda(p.totalAprovado) : '—'}
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    {p.status === 'aprovado' ? (
+                      <span className="inline-flex min-w-[7rem] justify-end rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 font-semibold tabular-nums text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                        {formatarMoeda(p.totalAprovado)}
+                      </span>
+                    ) : '—'}
                   </td>
                   <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAviso(null);
-                        abrir(p);
-                      }}
-                      className="inline-flex h-7 items-center rounded-lg border border-primary-600 px-2.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-slate-700"
-                    >
-                      Abrir
-                    </button>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAviso(null);
+                          abrir(p);
+                        }}
+                        className="inline-flex h-7 items-center rounded-lg border border-primary-600 px-2.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-slate-700"
+                      >
+                        Abrir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void abrirHistorico(p)}
+                        className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                        Histórico
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -404,6 +448,65 @@ export default function DiarioProcessosPage() {
           </tbody>
         </table>
       </div>
+
+      {historicoProcesso ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl dark:bg-slate-800">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+              <div>
+                <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                  Histórico do contas a pagar #{historicoProcesso.codigo}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {descricaoPadraoContasPagar(historicoProcesso.dataVencimento)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoricoProcesso(null)}
+                className="h-8 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+              {historicoLoading ? (
+                <p className="py-8 text-center text-sm text-slate-500">Carregando histórico…</p>
+              ) : historicoErro ? (
+                <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                  {historicoErro}
+                </p>
+              ) : historico.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">Nenhuma movimentação registrada.</p>
+              ) : (
+                <ol className="space-y-3">
+                  {[...historico].reverse().map((item) => (
+                    <li key={item.id} className="rounded-lg border border-slate-200 px-3 py-3 dark:border-slate-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.acao}</span>
+                        <time className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                          {formatarDataHora(item.criadoEm)}
+                        </time>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                        Usuário: <span className="font-medium">{item.usuario}</span>
+                        {' · '}
+                        Status: {item.statusAnterior
+                          ? `${STATUS_LABEL[item.statusAnterior as StatusProcessoDiario] ?? item.statusAnterior} → `
+                          : ''}
+                        {STATUS_LABEL[item.statusNovo as StatusProcessoDiario] ?? item.statusNovo}
+                      </p>
+                      {item.detalhe ? (
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500 dark:text-slate-400">{item.detalhe}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {iniciarAberto ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
