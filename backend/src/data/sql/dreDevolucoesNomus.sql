@@ -18,6 +18,14 @@ WHERE (ISNULL(nfe.status) = 1 OR nfe.status = 4)
   AND DATE(de.dataEmissao) >= ?
   AND DATE(de.dataEmissao) BETWEEN ? AND ?
   AND de.idEmpresaEntrada IN (?)
+  -- A venda de origem com movimento 150 não compõe a receita da DRE;
+  -- portanto, sua devolução também não pode reduzir essa receita.
+  AND NOT EXISTS (
+    SELECT 1
+    FROM documentoestoque origem
+    WHERE origem.id = de.idDocumentoOrigemDevolucao
+      AND origem.idTipoMovimentacao = 150
+  )
 GROUP BY
   de.idEmpresaEntrada,
   DATE(de.dataEmissao),
