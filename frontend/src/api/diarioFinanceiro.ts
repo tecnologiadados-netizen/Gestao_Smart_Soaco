@@ -426,12 +426,11 @@ export interface DiarioAprovacaoContaInput {
 
 export async function aprovarProcessoDiario(
   id: number,
-  senha: string,
   itens: DiarioAprovacaoContaInput[],
 ): Promise<{ processo: DiarioProcesso; aprovados: number }> {
   const res = await apiFetch(`/api/financeiro/diario/processos/${id}/aprovar`, {
     method: 'POST',
-    body: { senha, itens },
+    body: { itens },
   });
   if (!res.ok) throw new Error(await lerErro(res, `Erro ao aprovar (${res.status})`));
   const body = (await res.json()) as { processo: DiarioProcesso; aprovados?: number };

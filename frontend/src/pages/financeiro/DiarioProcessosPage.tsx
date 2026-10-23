@@ -79,8 +79,7 @@ export default function DiarioProcessosPage() {
   const [iniciarAberto, setIniciarAberto] = useState(false);
   const [novaData, setNovaData] = useState(hojeYmd);
 
-  const [senhaAberta, setSenhaAberta] = useState(false);
-  const [senha, setSenha] = useState('');
+  const [aprovacaoAberta, setAprovacaoAberta] = useState(false);
   const [contasAprovacao, setContasAprovacao] = useState<DiarioAprovacaoSelecao[]>([]);
   const [devolverAberto, setDevolverAberto] = useState(false);
   const [motivo, setMotivo] = useState('');
@@ -158,7 +157,6 @@ export default function DiarioProcessosPage() {
     try {
       const resultado = await aprovarProcessoDiario(
         aberto.id,
-        senha,
         contasAprovacao.map(({ linha, banco }) => ({
           origem: linha.origem,
           codigo: linha.codigo,
@@ -167,8 +165,7 @@ export default function DiarioProcessosPage() {
       );
       substituir(resultado.processo);
       setAviso(`${resultado.aprovados.toLocaleString('pt-BR')} conta(s) aprovada(s) e enviada(s).`);
-      setSenha('');
-      setSenhaAberta(false);
+      setAprovacaoAberta(false);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -397,9 +394,8 @@ export default function DiarioProcessosPage() {
                     setErro('Informe o Banco de todas as contas marcadas antes de aprovar.');
                     return;
                   }
-                  setSenha('');
                   setErro(null);
-                  setSenhaAberta(true);
+                  setAprovacaoAberta(true);
                 }}
                 disabled={fluxo}
                 className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
@@ -425,7 +421,7 @@ export default function DiarioProcessosPage() {
         </div>
       ) : null}
 
-      {senhaAberta ? (
+      {aprovacaoAberta ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
           <form
             className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800"
@@ -472,24 +468,12 @@ export default function DiarioProcessosPage() {
                 </tfoot>
               </table>
             </div>
-            <label className="mt-4 block text-xs font-medium text-slate-600 dark:text-slate-300">
-              Senha de quem está logado
-            <input
-              type="password"
-              autoFocus
-              required
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              className="mt-1 h-9 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-            />
-            </label>
             {erro ? <p className="mt-3 text-sm text-red-600 dark:text-red-300">{erro}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setSenhaAberta(false);
-                  setSenha('');
+                  setAprovacaoAberta(false);
                   setErro(null);
                 }}
                 className="h-8 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200"
@@ -498,7 +482,7 @@ export default function DiarioProcessosPage() {
               </button>
               <button
                 type="submit"
-                disabled={fluxo || !senha.trim()}
+                disabled={fluxo}
                 className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 {fluxo ? 'Aprovando…' : 'Confirmar e enviar'}

@@ -3,8 +3,6 @@
  */
 
 import type { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
-import { prisma } from '../config/prisma.js';
 import {
   aprovarProcessoDiario,
   atualizarDescricaoProcessoDiario,
@@ -85,13 +83,8 @@ export async function postEnviarProcessoDiario(req: Request, res: Response): Pro
 
 export async function postAprovarProcessoDiario(req: Request, res: Response): Promise<void> {
   const id = Math.trunc(Number(req.params.id));
-  const senha = typeof req.body?.senha === 'string' ? req.body.senha.trim() : '';
   if (!Number.isInteger(id) || id <= 0) {
     res.status(400).json({ error: 'Processo inválido.' });
-    return;
-  }
-  if (!senha) {
-    res.status(400).json({ error: 'Informe sua senha para aprovar.' });
     return;
   }
   const bruto = req.body?.itens;
@@ -120,19 +113,6 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
     return;
   }
   try {
-    const usuario = await prisma.usuario.findUnique({
-      where: { login },
-      select: { senhaHash: true },
-    });
-    if (!usuario) {
-      res.status(401).json({ error: 'Usuário não encontrado.' });
-      return;
-    }
-    const senhaOk = await bcrypt.compare(senha, usuario.senhaHash);
-    if (!senhaOk) {
-      res.status(401).json({ error: 'Senha incorreta. O contas a pagar não foi aprovado.' });
-      return;
-    }
     const processoAtual = await obterProcessoDiario(id);
     if (!processoAtual) {
       res.status(404).json({ error: 'Processo não encontrado.' });
