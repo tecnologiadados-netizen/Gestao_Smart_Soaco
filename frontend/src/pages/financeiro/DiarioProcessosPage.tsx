@@ -11,7 +11,7 @@ import {
   type DiarioProcesso,
   type StatusProcessoDiario,
 } from '../../api/diarioFinanceiro';
-import DiarioFinanceiroPage from './DiarioFinanceiroPage';
+import DiarioFinanceiroPage, { type DiarioAprovacaoSelecao } from './DiarioFinanceiroPage';
 
 const STATUS_LABEL: Record<StatusProcessoDiario, string> = {
   rascunho: 'Rascunho',
@@ -81,6 +81,7 @@ export default function DiarioProcessosPage() {
 
   const [senhaAberta, setSenhaAberta] = useState(false);
   const [senha, setSenha] = useState('');
+  const [contasAprovacao, setContasAprovacao] = useState<DiarioAprovacaoSelecao[]>([]);
   const [devolverAberto, setDevolverAberto] = useState(false);
   const [motivo, setMotivo] = useState('');
 
@@ -101,6 +102,7 @@ export default function DiarioProcessosPage() {
   }, [carregar]);
 
   const abrir = (processo: DiarioProcesso) => {
+    setContasAprovacao([]);
     setAberto(processo);
   };
 
@@ -154,7 +156,17 @@ export default function DiarioProcessosPage() {
     setFluxo(true);
     setErro(null);
     try {
-      substituir(await aprovarProcessoDiario(aberto.id, senha));
+      const resultado = await aprovarProcessoDiario(
+        aberto.id,
+        senha,
+        contasAprovacao.map(({ linha, banco }) => ({
+          origem: linha.origem,
+          codigo: linha.codigo,
+          banco: banco.trim(),
+        })),
+      );
+      substituir(resultado.processo);
+      setAviso(`${resultado.aprovados.toLocaleString('pt-BR')} conta(s) aprovada(s) e enviada(s).`);
       setSenha('');
       setSenhaAberta(false);
     } catch (e) {
@@ -163,6 +175,10 @@ export default function DiarioProcessosPage() {
       setFluxo(false);
     }
   };
+
+  const receberSelecaoAprovacao = useCallback((itens: DiarioAprovacaoSelecao[]) => {
+    setContasAprovacao(itens);
+  }, []);
 
   const devolver = async () => {
     if (!aberto || fluxo) return;
@@ -345,7 +361,12 @@ export default function DiarioProcessosPage() {
           <div className="min-h-0 flex-1 overflow-hidden">
             <DiarioFinanceiroPage
               key={aberto.id}
-              modo={{ dataFixa: aberto.dataVencimento, editavel: aberto.editavel }}
+              modo={{
+                dataFixa: aberto.dataVencimento,
+                editavel: aberto.editavel,
+                aprovacao: podeAprovar && aberto.status === 'em_aprovacao',
+                onAprovacaoChange: receberSelecaoAprovacao,
+              }}
             />
           </div>
           {erro ? (
@@ -368,6 +389,14 @@ export default function DiarioProcessosPage() {
               <button
                 type="button"
                 onClick={() => {
+                  if (contasAprovacao.length === 0) {
+                    setErro('Marque ao menos uma conta para aprovar.');
+                    return;
+                  }
+                  if (contasAprovacao.some((item) => !item.banco.trim())) {
+                    setErro('Informe o Banco de todas as contas marcadas antes de aprovar.');
+                    return;
+                  }
                   setSenha('');
                   setErro(null);
                   setSenhaAberta(true);
@@ -399,22 +428,61 @@ export default function DiarioProcessosPage() {
       {senhaAberta ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
           <form
-            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800"
+            className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white p-5 shadow-xl dark:bg-slate-800"
             onSubmit={(e) => {
               e.preventDefault();
               void aprovar();
             }}
           >
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Aprovar contas a pagar</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Informe a senha de quem está logado.</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Confira o lote parcial. Somente estas {contasAprovacao.length.toLocaleString('pt-BR')} conta(s) serão aprovadas e enviadas.
+            </p>
+            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-600">
+              <table className="w-full min-w-[680px] text-xs">
+                <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                  <tr>
+                    <th className="px-2 py-2 text-left">Origem / código</th>
+                    <th className="px-2 py-2 text-left">Pessoa</th>
+                    <th className="px-2 py-2 text-left">Empresa</th>
+                    <th className="px-2 py-2 text-left">Banco</th>
+                    <th className="px-2 py-2 text-right">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contasAprovacao.map(({ linha, banco }) => (
+                    <tr key={`${linha.origem}:${linha.codigo}`} className="border-t border-slate-100 dark:border-slate-700">
+                      <td className="px-2 py-1.5 whitespace-nowrap">{linha.origem} · {linha.codigo}</td>
+                      <td className="max-w-[15rem] truncate px-2 py-1.5" title={linha.fornecedor ?? ''}>{linha.fornecedor ?? '—'}</td>
+                      <td className="max-w-[12rem] truncate px-2 py-1.5" title={linha.filial ?? linha.empresa ?? ''}>{linha.filial ?? linha.empresa ?? '—'}</td>
+                      <td className="max-w-[12rem] truncate px-2 py-1.5 font-medium" title={banco}>{banco}</td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                        {Number(linha.saldo).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="sticky bottom-0 bg-slate-50 font-semibold dark:bg-slate-700">
+                  <tr>
+                    <td colSpan={4} className="px-2 py-2 text-right">Total</td>
+                    <td className="px-2 py-2 text-right whitespace-nowrap">
+                      {contasAprovacao.reduce((total, item) => total + (Number(item.linha.saldo) || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <label className="mt-4 block text-xs font-medium text-slate-600 dark:text-slate-300">
+              Senha de quem está logado
             <input
               type="password"
               autoFocus
               required
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
-              className="mt-4 h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="mt-1 h-9 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             />
+            </label>
             {erro ? <p className="mt-3 text-sm text-red-600 dark:text-red-300">{erro}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -433,7 +501,7 @@ export default function DiarioProcessosPage() {
                 disabled={fluxo || !senha.trim()}
                 className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {fluxo ? 'Aprovando…' : 'Confirmar'}
+                {fluxo ? 'Aprovando…' : 'Confirmar e enviar'}
               </button>
             </div>
           </form>

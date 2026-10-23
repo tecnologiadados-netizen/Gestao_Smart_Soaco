@@ -418,14 +418,24 @@ export async function enviarProcessoDiario(id: number): Promise<DiarioProcesso> 
   return body.processo;
 }
 
-export async function aprovarProcessoDiario(id: number, senha: string): Promise<DiarioProcesso> {
+export interface DiarioAprovacaoContaInput {
+  origem: 'Nomus' | 'Shop9';
+  codigo: number;
+  banco: string;
+}
+
+export async function aprovarProcessoDiario(
+  id: number,
+  senha: string,
+  itens: DiarioAprovacaoContaInput[],
+): Promise<{ processo: DiarioProcesso; aprovados: number }> {
   const res = await apiFetch(`/api/financeiro/diario/processos/${id}/aprovar`, {
     method: 'POST',
-    body: { senha },
+    body: { senha, itens },
   });
   if (!res.ok) throw new Error(await lerErro(res, `Erro ao aprovar (${res.status})`));
-  const body = (await res.json()) as { processo: DiarioProcesso };
-  return body.processo;
+  const body = (await res.json()) as { processo: DiarioProcesso; aprovados?: number };
+  return { processo: body.processo, aprovados: Number(body.aprovados) || itens.length };
 }
 
 export async function devolverProcessoDiario(id: number, motivo: string): Promise<DiarioProcesso> {

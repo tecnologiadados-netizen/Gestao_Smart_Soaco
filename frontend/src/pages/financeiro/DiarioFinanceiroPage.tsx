@@ -49,6 +49,11 @@ import { DiarioSubclassificacaoModal } from './diario/DiarioSubclassificacaoModa
 import { DiarioVencidosPainel, type DiarioVencidosPainelHandle } from './diario/DiarioVencidosPainel';
 import { BadgeCartorio, textoCartorio } from './diario/cartorioDiario';
 import { lerPlanilhaAnotacoes } from './diario/lerPlanilhaAnotacoes';
+import {
+  GradeColunasMenu,
+  useGradeColunasExcel,
+  type GradeColunaConfiguravel,
+} from '../../components/grade/GradeColunasExcel';
 
 type Atalho = 'hoje' | 'ontem' | 'amanha' | 'mes';
 
@@ -305,7 +310,18 @@ function opcoesCampo(linhas: DiarioContaPagarLinha[], campo: 'fornecedor' | 'pla
 export type DiarioFinanceiroModo = {
   dataFixa: string;
   editavel: boolean;
+  aprovacao?: boolean;
+  onAprovacaoChange?: (itens: DiarioAprovacaoSelecao[]) => void;
 };
+
+export type DiarioAprovacaoSelecao = {
+  linha: DiarioContaPagarLinha;
+  banco: string;
+};
+
+function podeAprovarConta(l: DiarioContaPagarLinha): boolean {
+  return l.status === 'Em aberto' && l.codigo > 0 && Number(l.saldo) > 0;
+}
 
 export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiroModo } = {}) {
   const inicial = modo ? { inicio: modo.dataFixa, fim: modo.dataFixa } : periodoAtalho('hoje');
@@ -320,6 +336,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [vencidosVisitado, setVencidosVisitado] = useState(false);
   const filtrosVisivel = aba === 'vencidos' ? filtrosVencidosVisivel : filtrosPagarVisivel;
   const [acoesAberto, setAcoesAberto] = useState(false);
+  const [colunasAberto, setColunasAberto] = useState(false);
   const acoesRef = useRef<HTMLDivElement>(null);
   const [fornecedores, setFornecedores] = useState('');
   const [empresas, setEmpresas] = useState('');
@@ -334,6 +351,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const [classificarCorAberto, setClassificarCorAberto] = useState(false);
   const [linhas, setLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
+  const [bancosAprovacao, setBancosAprovacao] = useState<Record<string, string>>({});
   const [modalAberto, setModalAberto] = useState(false);
   const [modalLinhas, setModalLinhas] = useState<DiarioContaPagarLinha[]>([]);
   const [novaData, setNovaData] = useState('');
@@ -458,6 +476,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       const res = await fetchDiarioContasPagar({ dataInicio: inicio, dataFim: fim });
       setLinhas(res.linhas);
       setSelecionadas(new Set());
+      setBancosAprovacao({});
       setCargaTick((n) => n + 1);
       const partes = [res.erroShop9, res.erroNomus].filter(Boolean);
       setAviso(partes.length > 0 ? partes.join(' · ') : null);
@@ -556,7 +575,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
       if (cor) usadas.add(cor);
       else temSem = true;
     }
-    const lista = [...usadas].sort().map((hex) => ({ id: hex, hex }));
+    const lista: Array<{ id: string; hex: string | null }> = [...usadas].sort().map((hex) => ({ id: hex, hex }));
     if (temSem) lista.push({ id: '', hex: null });
     return lista;
   }, [linhasFiltradas]);
@@ -569,15 +588,63 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     return linhasFiltradas.filter((l) => (corObservacaoDiario(l.anotacaoCor) ?? '') === filtroCorHex);
   }, [linhasFiltradas, filtroCorHex]);
 
+  const colunasDaGrade = useMemo<GradeColunaConfiguravel[]>(() => {
+    const larguras: Record<string, number> = {
+      codigo: 86,
+      situacao: 105,
+      plano: 180,
+      vencimento: 112,
+      reprogramado: 118,
+      cartorio: 90,
+      empresa: 160,
+      conta: 170,
+      forma: 165,
+      fornecedor: 190,
+      descricao: 260,
+      observacao: 190,
+      anotacao: 190,
+      pc: 210,
+      saldo: 130,
+      nfe: 110,
+      banco: 170,
+      prioridade: 170,
+      itens: 72,
+    };
+    const base: GradeColunaConfiguravel[] = DIARIO_COLUNAS_GRADE.map((coluna) => ({
+      ...coluna,
+      largura: larguras[coluna.id] ?? 140,
+      larguraMinima: coluna.id === 'itens' ? 60 : 72,
+    }));
+    if (!modo?.aprovacao) return base;
+    const posicao = base.findIndex((coluna) => coluna.id === 'prioridade');
+    base.splice(posicao < 0 ? base.length : posicao, 0, {
+      id: 'banco',
+      label: 'Banco',
+      largura: larguras.banco,
+      larguraMinima: 110,
+      fixa: true,
+    });
+    return base;
+  }, [modo?.aprovacao]);
+  const colunasGrade = useGradeColunasExcel('financeiro.diario.contas-pagar.colunas.v1', colunasDaGrade);
+
   const getCellText = useCallback(
     (row: DiarioContaPagarLinha, colId: string) =>
-      colId === 'prioridade' ? rotuloPrioridade(row) || VAZIO_CELULA : textoCelula(row, colId),
-    [rotuloPrioridade],
+      colId === 'prioridade'
+        ? rotuloPrioridade(row) || VAZIO_CELULA
+        : colId === 'banco'
+          ? bancosAprovacao[chaveLinha(row)] || VAZIO_CELULA
+          : textoCelula(row, colId),
+    [bancosAprovacao, rotuloPrioridade],
   );
   const valueForSort = useCallback(
     (row: DiarioContaPagarLinha, colId: string) =>
-      colId === 'prioridade' ? prioridadeDaLinha(row).efetiva ?? -1 : valorOrdenacao(row, colId),
-    [prioridadeDaLinha],
+      colId === 'prioridade'
+        ? prioridadeDaLinha(row).efetiva ?? -1
+        : colId === 'banco'
+          ? bancosAprovacao[chaveLinha(row)] || ''
+          : valorOrdenacao(row, colId),
+    [bancosAprovacao, prioridadeDaLinha],
   );
   const compareRows = useCallback(
     (
@@ -604,7 +671,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   );
   const grade = useGradeFiltrosExcel({
     rows: linhasComCor,
-    columnIds: DIARIO_COLUNAS_GRADE.map((c) => c.id),
+    columnIds: colunasDaGrade.map((c) => c.id),
     getCellText,
     valueForSort,
     compareRows,
@@ -639,8 +706,8 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   const linhasExibidas = grade.rowsExibidas;
 
   const elegiveisVisiveis = useMemo(
-    () => linhasExibidas.filter(podeReprogramar),
-    [linhasExibidas],
+    () => linhasExibidas.filter(modo?.aprovacao ? podeAprovarConta : podeReprogramar),
+    [linhasExibidas, modo?.aprovacao],
   );
   const qtdSelecionadaVisivel = useMemo(
     () => elegiveisVisiveis.filter((l) => selecionadas.has(chaveLinha(l))).length,
@@ -656,6 +723,23 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     el.indeterminate = qtdSelecionadaVisivel > 0 && !todosVisiveisMarcados;
   }, [qtdSelecionadaVisivel, todosVisiveisMarcados]);
 
+  useEffect(() => {
+    if (!modo?.onAprovacaoChange) return;
+    if (!modo.aprovacao) {
+      modo.onAprovacaoChange([]);
+      return;
+    }
+    const unicos = new Map<string, DiarioAprovacaoSelecao>();
+    for (const linha of linhas) {
+      if (!podeAprovarConta(linha) || !selecionadas.has(chaveLinha(linha))) continue;
+      unicos.set(`${linha.origem}:${linha.codigo}`, {
+        linha,
+        banco: bancosAprovacao[chaveLinha(linha)]?.trim() ?? '',
+      });
+    }
+    modo.onAprovacaoChange([...unicos.values()]);
+  }, [bancosAprovacao, linhas, modo?.aprovacao, modo?.onAprovacaoChange, selecionadas]);
+
   const alternarTodos = () => {
     setSelecionadas((prev) => {
       const next = new Set(prev);
@@ -669,7 +753,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
   };
 
   const alternarUm = (l: DiarioContaPagarLinha) => {
-    if (!podeReprogramar(l)) return;
+    if (!(modo?.aprovacao ? podeAprovarConta(l) : podeReprogramar(l))) return;
     const chave = chaveLinha(l);
     setSelecionadas((prev) => {
       const next = new Set(prev);
@@ -1097,6 +1181,112 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     }
   };
 
+  const renderCelulaGrade = (
+    colId: string,
+    l: DiarioContaPagarLinha,
+    prio: ReturnType<typeof prioridadeDaLinha>,
+    salvandoPrio: boolean,
+  ) => {
+    const style = colunasGrade.estiloColuna(colId);
+    switch (colId) {
+      case 'codigo':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap tabular-nums">{l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '—'}</td>;
+      case 'situacao':
+        return (
+          <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap">
+            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${l.status === 'Baixado' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'}`}>{l.status}</span>
+          </td>
+        );
+      case 'plano':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.planoContas ?? ''}>{l.planoContas ?? '—'}</td>;
+      case 'vencimento':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>;
+      case 'reprogramado':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>;
+      case 'cartorio':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeCartorio sim={l.emCartorio} /></td>;
+      case 'empresa':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={empresaExibida(l) ?? ''}>{empresaExibida(l) ?? '—'}</td>;
+      case 'conta':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.contaBancaria ?? ''}>{l.contaBancaria ?? '—'}</td>;
+      case 'forma':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.formaPagamento ?? ''}>{l.formaPagamento ?? '—'}</td>;
+      case 'fornecedor':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.fornecedor ?? ''}>{l.fornecedor ?? '—'}</td>;
+      case 'descricao':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.descricao ?? ''}><DescricaoReprogramadaGrade texto={l.descricao} /></td>;
+      case 'observacao':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.observacao ?? ''}>{l.observacao ?? '—'}</td>;
+      case 'anotacao':
+        return (
+          <td key={colId} style={style} className="px-1 py-1">
+            <DiarioAnotacaoCelula
+              linha={l}
+              dataProcesso={dataProcesso}
+              somenteLeitura={!editavel}
+              onGravada={(gravado) => {
+                setLinhas((prev) => prev.map((item) => item.origem === l.origem && item.codigo === l.codigo ? { ...item, anotacao: gravado.texto, anotacaoCor: gravado.cor } : item));
+              }}
+            />
+          </td>
+        );
+      case 'pc':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>;
+      case 'saldo':
+        return <td key={colId} style={style} className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>;
+      case 'nfe':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5 whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>;
+      case 'banco': {
+        const chave = chaveLinha(l);
+        return (
+          <td key={colId} style={style} className="px-1 py-1 normal-case">
+            <input
+              type="text"
+              value={bancosAprovacao[chave] ?? ''}
+              maxLength={100}
+              disabled={!podeAprovarConta(l)}
+              onChange={(evento) => setBancosAprovacao((atual) => ({ ...atual, [chave]: evento.target.value }))}
+              placeholder="Digite o banco"
+              aria-label={`Banco da conta ${l.codigo}`}
+              className="h-7 w-full rounded border border-slate-300 bg-white px-1.5 text-xs uppercase text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-700"
+            />
+          </td>
+        );
+      }
+      case 'prioridade':
+        return (
+          <td key={colId} style={style} className="px-2 py-1.5">
+            {prio.chave == null ? <span className="text-slate-400">—</span> : (
+              <select
+                value={prio.override ?? ''}
+                disabled={salvandoPrio || !editavel}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  void alterarPrioridade(l, v === '' ? null : (Number(v) as DfcPrioridade));
+                }}
+                className={`w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[11px] dark:border-slate-600 dark:bg-slate-700 ${prio.efetiva != null ? `${DFC_PRIORIDADE_CHIP[prio.efetiva]} font-semibold` : ''}`}
+              >
+                <option value="">{prio.override == null && prio.plano != null ? `${prio.plano} — ${DFC_PRIORIDADE_LABEL_CURTO[prio.plano]}` : prio.override == null ? '— Sem prioridade —' : '— Remover —'}</option>
+                {DFC_PRIORIDADES.filter((p) => prio.override != null || prio.plano == null || p !== prio.plano).map((p) => <option key={p} value={p}>{p} — {DFC_PRIORIDADE_LABEL_CURTO[p]}</option>)}
+              </select>
+            )}
+          </td>
+        );
+      case 'itens':
+        return (
+          <td key={colId} style={style} className="px-2 py-1.5 text-center">
+            {(l.itens?.length ?? 0) > 0 ? (
+              <button type="button" onClick={() => setItensModal(l)} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-slate-700" title="Ver itens da nota" aria-label={`Ver itens da nota ${l.notaFiscal ?? l.codigo}`}>
+                <svg className="h-4 w-4 text-primary-700 dark:text-primary-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" /></svg>
+              </button>
+            ) : <span className="text-slate-300">—</span>}
+          </td>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className={`flex flex-col gap-3 min-h-0 ${modo ? 'h-full overflow-hidden' : ''}`}>
       <div className={`shrink-0 overflow-visible ${modo ? '' : 'card-panel'}`}>
@@ -1141,6 +1331,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               className="hidden"
               onChange={(e) => void importarAnotacoes(e.target.files?.[0])}
             />
+            {aba === 'pagar' ? (
+              <GradeColunasMenu
+                configuracao={colunasGrade}
+                aberto={colunasAberto}
+                onAlternar={() => setColunasAberto((valor) => !valor)}
+                onFechar={() => setColunasAberto(false)}
+              />
+            ) : null}
             <div className="relative" ref={acoesRef}>
               <button
                 type="button"
@@ -1513,7 +1711,10 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {selecionadas.size.toLocaleString('pt-BR')} selecionado(s). Título baixado não pode ser reprogramado nem ter a conta alterada.
+          {selecionadas.size.toLocaleString('pt-BR')} selecionado(s).{' '}
+          {modo?.aprovacao
+            ? 'Apenas as contas marcadas serão aprovadas; informe o Banco em cada uma.'
+            : 'Título baixado não pode ser reprogramado nem ter a conta alterada.'}
           {linhasFiltradas.length !== linhasExibidas.length
             ? ` ${linhasExibidas.length.toLocaleString('pt-BR')} de ${linhasFiltradas.length.toLocaleString('pt-BR')} na grade.`
             : ''}
@@ -1526,7 +1727,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           filtrosPagarVisivel ? 'max-h-[calc(100svh-18.5rem)]' : 'max-h-[calc(100svh-14rem)]'
         }`}
       >
-        <table className="min-w-[1100px] w-full text-xs">
+        <table
+          className="table-fixed text-xs"
+          style={{ width: Math.max(1100, colunasGrade.larguraTotal + 36) }}
+        >
+          <colgroup>
+            <col style={{ width: 36 }} />
+            {colunasGrade.colunasVisiveis.map((coluna) => <col key={coluna.id} style={colunasGrade.estiloColuna(coluna.id)} />)}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-primary-600 text-white">
             <tr>
               <th className="sticky left-0 z-20 w-8 bg-primary-600 px-2 py-2">
@@ -1536,17 +1744,18 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   checked={todosVisiveisMarcados}
                   onChange={alternarTodos}
                   disabled={elegiveisVisiveis.length === 0}
-                  aria-label="Selecionar todos os títulos em aberto"
+                  aria-label={modo?.aprovacao ? 'Selecionar todas as contas visíveis para aprovação' : 'Selecionar todos os títulos em aberto'}
                   className="rounded border-white/70 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                 />
               </th>
-              {DIARIO_COLUNAS_GRADE.map((col) => (
+              {colunasGrade.colunasVisiveis.map((col) => (
                 <DiarioCabecalhoTh
                   key={col.id}
                   colId={col.id}
                   label={col.label}
                   grade={grade}
-                  align={'align' in col ? col.align : 'left'}
+                  colunas={colunasGrade}
+                  align={col.align ?? 'left'}
                   filtroExtraAtivo={col.id === 'anotacao' && (filtroCorHex != null || niveisCor.length > 0)}
                 />
               ))}
@@ -1555,7 +1764,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           <tbody className="uppercase">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
-                <td colSpan={19} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={colunasGrade.colunasVisiveis.length + 1} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
                   {linhasFiltradas.length === 0
                     ? 'Nenhum contas a pagar neste vencimento.'
                     : 'Nenhum lançamento com os filtros da grade.'}
@@ -1564,7 +1773,9 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             )}
             {linhasExibidas.map((l, i) => {
               const chave = chaveLinha(l);
-              const bloqueio = motivoBloqueio(l);
+              const bloqueio = modo?.aprovacao
+                ? (podeAprovarConta(l) ? null : 'Somente contas em aberto com saldo podem ser aprovadas.')
+                : motivoBloqueio(l);
               const marcado = selecionadas.has(chave);
               const prio = prioridadeDaLinha(l);
               const salvandoPrio = prio.chave != null && salvandoPrioridade === prio.chave;
@@ -1588,112 +1799,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     className="rounded border-slate-400 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                   />
                 </td>
-                <td className="px-2 py-1.5 whitespace-nowrap tabular-nums">
-                  {l.codigoClassificacao != null && l.codigoClassificacao > 0 ? l.codigoClassificacao : '—'}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                      l.status === 'Baixado'
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                        : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-                    }`}
-                  >
-                    {l.status}
-                  </span>
-                </td>
-                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.planoContas ?? ''}>
-                  {l.planoContas ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">
-                  {l.reprogramado ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap normal-case">
-                  <BadgeCartorio sim={l.emCartorio} />
-                </td>
-                <td className="px-2 py-1.5 max-w-[12rem] truncate" title={empresaExibida(l) ?? ''}>
-                  {empresaExibida(l) ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 max-w-[10rem] truncate" title={l.contaBancaria ?? ''}>
-                  {l.contaBancaria ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{l.formaPagamento ?? '—'}</td>
-                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.fornecedor ?? ''}>
-                  {l.fornecedor ?? '—'}
-                </td>
-                <td className="px-2 py-1.5 min-w-[14rem] max-w-[24rem] truncate" title={l.descricao ?? ''}>
-                  <DescricaoReprogramadaGrade texto={l.descricao} />
-                </td>
-                <td className="px-2 py-1.5 max-w-[14rem] truncate" title={l.observacao ?? ''}>
-                  {l.observacao ?? '—'}
-                </td>
-                <td className="px-1 py-1">
-                  <DiarioAnotacaoCelula
-                    linha={l}
-                    dataProcesso={dataProcesso}
-                    somenteLeitura={!editavel}
-                    onGravada={(gravado) => {
-                      setLinhas((prev) =>
-                        prev.map((item) =>
-                          item.origem === l.origem && item.codigo === l.codigo
-                            ? { ...item, anotacao: gravado.texto, anotacaoCor: gravado.cor }
-                            : item,
-                        ),
-                      );
-                    }}
-                  />
-                </td>
-                <td className="px-2 py-1.5 min-w-[12rem] max-w-[22rem] truncate" title={l.pedidoCompra ?? ''}>{l.pedidoCompra ?? '—'}</td>
-                <td className="px-2 py-1.5 text-right whitespace-nowrap tabular-nums">{formatMoeda(l.saldo)}</td>
-                <td className="px-2 py-1.5 max-w-[10rem] truncate whitespace-nowrap" title={l.notaFiscal ?? ''}>{l.notaFiscal ?? '—'}</td>
-                <td className="px-2 py-1.5 min-w-[11rem]">
-                  {prio.chave == null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <select
-                      value={prio.override ?? ''}
-                      disabled={salvandoPrio}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        void alterarPrioridade(l, v === '' ? null : (Number(v) as DfcPrioridade));
-                      }}
-                      className={`w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[11px] dark:border-slate-600 dark:bg-slate-700 ${
-                        prio.efetiva != null ? `${DFC_PRIORIDADE_CHIP[prio.efetiva]} font-semibold` : ''
-                      }`}
-                    >
-                      <option value="">
-                        {prio.override == null && prio.plano != null
-                          ? `${prio.plano} — ${DFC_PRIORIDADE_LABEL_CURTO[prio.plano]}`
-                          : prio.override == null
-                            ? '— Sem prioridade —'
-                            : '— Remover —'}
-                      </option>
-                      {DFC_PRIORIDADES.filter((p) => prio.override != null || prio.plano == null || p !== prio.plano).map((p) => (
-                        <option key={p} value={p}>
-                          {p} — {DFC_PRIORIDADE_LABEL_CURTO[p]}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  {(l.itens?.length ?? 0) > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setItensModal(l)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-slate-700"
-                      title="Ver itens da nota"
-                      aria-label={`Ver itens da nota ${l.notaFiscal ?? l.codigo}`}
-                    >
-                      <svg className="h-4 w-4 text-primary-700 dark:text-primary-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-                      </svg>
-                    </button>
-                  ) : (
-                    <span className="text-slate-300">—</span>
-                  )}
-                </td>
+                {colunasGrade.colunasVisiveis.map((coluna) => renderCelulaGrade(coluna.id, l, prio, salvandoPrio))}
               </tr>
               );
             })}

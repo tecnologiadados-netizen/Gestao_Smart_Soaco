@@ -1,7 +1,7 @@
 import GradeFiltroCabecalhoBtn from '../../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal, { type FiltroCorCabecalho } from '../../../components/grade/GradeFiltroExcelPortal';
 import type { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
-import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
+import type { GradeColunasExcelApi } from '../../../components/grade/GradeColunasExcel';
 
 export const DIARIO_COLUNAS_GRADE = [
   { id: 'codigo', label: 'Código' },
@@ -34,6 +34,7 @@ export function DiarioCabecalhoTh({
   colId,
   label,
   grade,
+  colunas,
   align = 'left',
   filtroExtraAtivo = false,
   className = '',
@@ -41,12 +42,17 @@ export function DiarioCabecalhoTh({
   colId: string;
   label: string;
   grade: GradeApi;
+  colunas?: GradeColunasExcelApi;
   align?: 'left' | 'right' | 'center';
   filtroExtraAtivo?: boolean;
   className?: string;
 }) {
   return (
-    <th className={`px-0 py-0 font-medium whitespace-nowrap ${className}`.trim()}>
+    <th
+      className={`relative px-0 py-0 font-medium whitespace-nowrap ${className}`.trim()}
+      style={colunas?.estiloColuna(colId)}
+      {...colunas?.propsArrastar(colId)}
+    >
       <div
         className={`flex min-h-[2rem] items-center gap-1 px-1.5 py-1 ${
           align === 'right' ? 'flex-row-reverse justify-end' : align === 'center' ? 'justify-center' : 'justify-between'
@@ -59,6 +65,17 @@ export function DiarioCabecalhoTh({
           className="shrink-0"
         />
       </div>
+      {colunas ? (
+        <button
+          type="button"
+          aria-label={`Redimensionar coluna ${label}`}
+          title="Arraste para redimensionar"
+          draggable={false}
+          onMouseDown={(evento) => colunas.iniciarRedimensionamento(colId, evento)}
+          onClick={(evento) => evento.stopPropagation()}
+          className="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-white/70"
+        />
+      ) : null}
     </th>
   );
 }

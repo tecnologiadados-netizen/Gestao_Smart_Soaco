@@ -3265,8 +3265,30 @@ model DiarioContasPagarProcesso {
   enviadoEm       DateTime? @map("enviado_em")
   atualizadoEm    DateTime  @updatedAt @map("atualizado_em")
   criadoEm        DateTime  @default(now()) @map("criado_em")
+  aprovacoes       DiarioContasPagarAprovacao[]
 
   @@map("diario_contas_pagar_processo")
+}
+
+/// Títulos efetivamente selecionados pelo aprovador, com o banco informado na aprovação.
+model DiarioContasPagarAprovacao {
+  id          Int      @id @default(autoincrement())
+  processoId  Int      @map("processo_id")
+  origem      String
+  codigo      Int
+  banco       String
+  fornecedor  String?
+  empresa     String?
+  descricao   String?
+  vencimento  String?  @map("vencimento")
+  saldo       Float
+  aprovadoPor String   @map("aprovado_por")
+  aprovadoEm  DateTime @default(now()) @map("aprovado_em")
+  processo    DiarioContasPagarProcesso @relation(fields: [processoId], references: [id], onDelete: Cascade)
+
+  @@unique([processoId, origem, codigo])
+  @@index([processoId])
+  @@map("diario_contas_pagar_aprovacao")
 }
 
 /// Primeira reprogramação conhecida do título. Não altera Nomus nem Shop9.

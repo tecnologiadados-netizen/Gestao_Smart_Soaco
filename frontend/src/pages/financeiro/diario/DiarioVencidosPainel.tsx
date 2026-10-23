@@ -29,6 +29,7 @@ import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import { DiarioCabecalhoTh, DiarioGradeFiltroPortal } from './DiarioGradeCabecalho';
 import { BadgeCartorio, textoCartorio } from './cartorioDiario';
 import { DescricaoReprogramadaGrade, temMarcadorReprogramado } from './descricaoReprogramada';
+import { GradeColunasMenu, useGradeColunasExcel } from '../../../components/grade/GradeColunasExcel';
 
 type Subaba = 'titulos' | 'dashboard';
 
@@ -475,7 +476,33 @@ export const DiarioVencidosPainel = forwardRef<
   const [selecionadas, setSelecionadas] = useState<Set<string>>(() => new Set());
   const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: DiarioContaPagarLinha[] } | null>(null);
   const [dinamicoSubAberto, setDinamicoSubAberto] = useState(false);
+  const [colunasAberto, setColunasAberto] = useState(false);
   const hoje = hojeYmd();
+  const configuracaoColunasTitulos = useMemo(() => (
+    COLUNAS_TITULOS_VENCIDOS.map((coluna) => ({
+      ...coluna,
+      largura: {
+        codigo: 86,
+        situacao: 105,
+        plano: 180,
+        subclassificacao: 180,
+        vencimento: 112,
+        reprogramado: 118,
+        cartorio: 90,
+        dias: 72,
+        empresa: 160,
+        fornecedor: 190,
+        descricao: 260,
+        observacao: 190,
+        saldo: 130,
+      }[coluna.id] ?? 140,
+      larguraMinima: 68,
+    }))
+  ), []);
+  const colunasTitulos = useGradeColunasExcel(
+    'financeiro.diario.vencidos.colunas.v1',
+    configuracaoColunasTitulos,
+  );
 
   const carregar = async () => {
     setLoading(true);
@@ -718,27 +745,71 @@ export const DiarioVencidosPainel = forwardRef<
     );
   };
 
+  const renderCelulaTitulo = (colId: string, l: DiarioContaPagarLinha, dias: number | null) => {
+    const style = colunasTitulos.estiloColuna(colId);
+    switch (colId) {
+      case 'codigo':
+        return <td key={colId} style={style} className="px-2 py-1.5 tabular-nums">{l.codigoClassificacao ?? '—'}</td>;
+      case 'situacao':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>;
+      case 'plano':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.planoContas ?? ''}>{l.planoContas ?? '—'}</td>;
+      case 'subclassificacao':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5 normal-case"><BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} /></td>;
+      case 'vencimento':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>;
+      case 'reprogramado':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>;
+      case 'cartorio':
+        return <td key={colId} style={style} className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeCartorio sim={l.emCartorio} /></td>;
+      case 'dias':
+        return <td key={colId} style={style} className="px-2 py-1.5 tabular-nums">{dias ?? '—'}</td>;
+      case 'empresa':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={empresaExibida(l)}>{empresaExibida(l)}</td>;
+      case 'fornecedor':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.fornecedor ?? ''}>{l.fornecedor ?? '—'}</td>;
+      case 'descricao':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.descricao ?? ''}><DescricaoReprogramadaGrade texto={l.descricao} /></td>;
+      case 'observacao':
+        return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.observacao ?? ''}>{l.observacao ?? '—'}</td>;
+      case 'saldo':
+        return <td key={colId} style={style} className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="card-panel shrink-0 overflow-visible">
-        <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-slate-700">
-          {([
-            ['titulos', 'Títulos'],
-            ['dashboard', 'Dashboard'],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setSubaba(id)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 ${
-                subaba === id
-                  ? 'border-primary-600 text-primary-700 dark:text-primary-300'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 dark:border-slate-700">
+          <div className="flex items-center gap-2">
+            {([
+              ['titulos', 'Títulos'],
+              ['dashboard', 'Dashboard'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSubaba(id)}
+                className={`px-3 py-2 text-sm font-medium border-b-2 ${
+                  subaba === id
+                    ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {subaba === 'titulos' ? (
+            <GradeColunasMenu
+              configuracao={colunasTitulos}
+              aberto={colunasAberto}
+              onAlternar={() => setColunasAberto((valor) => !valor)}
+              onFechar={() => setColunasAberto(false)}
+            />
+          ) : null}
         </div>
         {filtrosVisivel ? <div className="flex flex-wrap items-end gap-2 px-3 py-2">
           <FiltroMulti label="Fornecedor" placeholder="Todos" options={opcoes('fornecedor')} value={fornecedores} onChange={setFornecedores} optionLabel="fornecedores" minWidth="150px" disabled={loading} />
@@ -958,7 +1029,14 @@ export const DiarioVencidosPainel = forwardRef<
         </div>
       ) : (
         <div ref={gradeTitulos.tableScrollRef} className="card-panel min-h-0 overflow-auto !p-0">
-          <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-xs uppercase">
+          <table
+            className="table-fixed border-separate border-spacing-0 text-xs uppercase"
+            style={{ width: Math.max(1100, colunasTitulos.larguraTotal + 36) }}
+          >
+            <colgroup>
+              <col style={{ width: 36 }} />
+              {colunasTitulos.colunasVisiveis.map((coluna) => <col key={coluna.id} style={colunasTitulos.estiloColuna(coluna.id)} />)}
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-primary-600 text-white">
               <tr>
                 <th className="sticky top-0 z-20 w-8 bg-primary-600 px-2 py-2">
@@ -980,13 +1058,14 @@ export const DiarioVencidosPainel = forwardRef<
                     }}
                   />
                 </th>
-                {COLUNAS_TITULOS_VENCIDOS.map((col) => (
+                {colunasTitulos.colunasVisiveis.map((col) => (
                   <DiarioCabecalhoTh
                     key={col.id}
                     colId={col.id}
                     label={col.label}
                     grade={gradeTitulos}
-                    align={'align' in col ? col.align : 'left'}
+                    colunas={colunasTitulos}
+                    align={col.align ?? 'left'}
                     className="sticky top-0 bg-primary-600"
                   />
                 ))}
@@ -995,7 +1074,7 @@ export const DiarioVencidosPainel = forwardRef<
             <tbody>
               {titulosExibidos.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={14} className="px-3 py-8 text-center normal-case text-slate-500">
+                  <td colSpan={colunasTitulos.colunasVisiveis.length + 1} className="px-3 py-8 text-center normal-case text-slate-500">
                     {base.length === 0
                       ? 'Nenhum título vencido ou reprogramado em aberto.'
                       : 'Nenhum lançamento com os filtros da grade.'}
@@ -1024,21 +1103,7 @@ export const DiarioVencidosPainel = forwardRef<
                         }}
                       />
                     </td>
-                    <td className="px-2 py-1.5 tabular-nums">{l.codigoClassificacao ?? '—'}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeSituacao status={l.status} /></td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5">{l.planoContas ?? '—'}</td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5 normal-case">
-                      <BadgeSubclassificacao nome={nomeSubclassificacao(l, mapaSub)} />
-                    </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{formatData(l.dataVencimento)}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{l.reprogramado ?? '—'}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap normal-case"><BadgeCartorio sim={l.emCartorio} /></td>
-                    <td className="px-2 py-1.5 tabular-nums">{dias ?? '—'}</td>
-                    <td className="max-w-[12rem] truncate px-2 py-1.5">{empresaExibida(l)}</td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5">{l.fornecedor ?? '—'}</td>
-                    <td className="max-w-[22rem] truncate px-2 py-1.5"><DescricaoReprogramadaGrade texto={l.descricao} /></td>
-                    <td className="max-w-[14rem] truncate px-2 py-1.5">{l.observacao ?? '—'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoeda(l.saldo)}</td>
+                    {colunasTitulos.colunasVisiveis.map((coluna) => renderCelulaTitulo(coluna.id, l, dias))}
                   </tr>
                 );
               })}

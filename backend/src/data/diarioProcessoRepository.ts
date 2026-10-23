@@ -157,15 +157,50 @@ export async function enviarProcessoDiarioAprovacao(id: number): Promise<DiarioP
   return dto(salvo);
 }
 
-export async function aprovarProcessoDiario(id: number, usuario: string): Promise<DiarioProcessoDto> {
+export type DiarioAprovacaoItem = {
+  origem: 'Nomus' | 'Shop9';
+  codigo: number;
+  banco: string;
+  fornecedor: string | null;
+  empresa: string | null;
+  descricao: string | null;
+  vencimento: string | null;
+  saldo: number;
+};
+
+export async function aprovarProcessoDiario(
+  id: number,
+  usuario: string,
+  itens: DiarioAprovacaoItem[],
+): Promise<DiarioProcessoDto> {
   const atual = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
   if (!atual) throw new Error('Processo não encontrado.');
   if (atual.status !== 'em_aprovacao') {
     throw new Error('Só um contas a pagar em aprovação pode ser aprovado.');
   }
-  const salvo = await prisma.diarioContasPagarProcesso.update({
-    where: { id },
-    data: { status: 'aprovado', aprovadoPor: usuario, aprovadoEm: new Date() },
+  if (itens.length === 0) throw new Error('Selecione ao menos uma conta para aprovar.');
+  const aprovadoEm = new Date();
+  const salvo = await prisma.$transaction(async (tx) => {
+    await tx.diarioContasPagarAprovacao.deleteMany({ where: { processoId: id } });
+    await tx.diarioContasPagarAprovacao.createMany({
+      data: itens.map((item) => ({
+        processoId: id,
+        origem: item.origem,
+        codigo: item.codigo,
+        banco: item.banco,
+        fornecedor: item.fornecedor,
+        empresa: item.empresa,
+        descricao: item.descricao,
+        vencimento: item.vencimento,
+        saldo: item.saldo,
+        aprovadoPor: usuario,
+        aprovadoEm,
+      })),
+    });
+    return tx.diarioContasPagarProcesso.update({
+      where: { id },
+      data: { status: 'aprovado', aprovadoPor: usuario, aprovadoEm },
+    });
   });
   return dto(salvo);
 }
