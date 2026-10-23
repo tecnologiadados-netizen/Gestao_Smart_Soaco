@@ -1205,6 +1205,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
           dataInicio: periodo.inicio,
           dataFim: periodo.fim,
           rotuloPrioridade: (l) => rotuloPrioridade(l),
+          incluirResultadoAprovacao: modo?.resultadoAprovacao,
         });
       } else {
         exportarDiarioContasPagarPdf({

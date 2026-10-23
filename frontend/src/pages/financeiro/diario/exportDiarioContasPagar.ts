@@ -146,11 +146,16 @@ export async function exportarDiarioContasPagarExcel(opts: {
   dataInicio: string;
   dataFim: string;
   rotuloPrioridade?: (linha: DiarioContaPagarLinha) => string;
+  incluirResultadoAprovacao?: boolean;
 }): Promise<void> {
   const wb = new Workbook();
   const ws = wb.addWorksheet('Contas a pagar');
-  ws.addRow([...COLUNAS]);
-  styleHeader(ws, COLUNAS.length);
+  const colunas = [
+    ...COLUNAS,
+    ...(opts.incluirResultadoAprovacao ? ['STATUS DA APROVAÇÃO', 'BANCO'] : []),
+  ];
+  ws.addRow(colunas);
+  styleHeader(ws, colunas.length);
 
   for (const l of opts.linhas) {
     const row = ws.addRow([
@@ -171,6 +176,9 @@ export async function exportarDiarioContasPagarExcel(opts: {
       maiusculo(l.notaFiscal),
       maiusculo(opts.rotuloPrioridade?.(l)),
       l.emCartorio ? 'SIM' : '',
+      ...(opts.incluirResultadoAprovacao
+        ? [maiusculo(l.statusAprovacao), maiusculo(l.bancoAprovacao)]
+        : []),
     ]);
     row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
@@ -195,6 +203,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
     '',
     '',
     '',
+    ...(opts.incluirResultadoAprovacao ? ['', ''] : []),
   ]);
   total.font = { bold: true };
   total.getCell(COL_SALDO).numFmt = MONEY_FMT;
@@ -203,9 +212,9 @@ export async function exportarDiarioContasPagarExcel(opts: {
   ws.views = [{ state: 'frozen', ySplit: 1 }];
   ws.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: Math.max(1, opts.linhas.length + 1), column: COLUNAS.length },
+    to: { row: Math.max(1, opts.linhas.length + 1), column: colunas.length },
   };
-  autosize(ws, COLUNAS.length);
+  autosize(ws, colunas.length);
   opts.linhas.forEach((l, i) => {
     const fundo = hexObservacaoDiario(l.anotacaoCor);
     if (!fundo) return;
