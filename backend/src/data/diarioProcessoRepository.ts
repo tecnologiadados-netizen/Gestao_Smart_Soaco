@@ -150,10 +150,15 @@ export async function enviarProcessoDiarioAprovacao(id: number): Promise<DiarioP
   if (!processoEditavel(atual.status)) {
     throw new Error('Só um rascunho ou uma correção pode ser enviado para aprovação.');
   }
-  const salvo = await prisma.diarioContasPagarProcesso.update({
-    where: { id },
+  const alterado = await prisma.diarioContasPagarProcesso.updateMany({
+    where: { id, status: { in: ['rascunho', 'em_correcao'] } },
     data: { status: 'em_aprovacao', enviadoEm: new Date(), motivoDevolucao: null },
   });
+  if (alterado.count !== 1) {
+    throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
+  }
+  const salvo = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
+  if (!salvo) throw new Error('Processo não encontrado.');
   return dto(salvo);
 }
 
@@ -181,6 +186,13 @@ export async function aprovarProcessoDiario(
   if (itens.length === 0) throw new Error('Selecione ao menos uma conta para aprovar.');
   const aprovadoEm = new Date();
   const salvo = await prisma.$transaction(async (tx) => {
+    const alterado = await tx.diarioContasPagarProcesso.updateMany({
+      where: { id, status: 'em_aprovacao' },
+      data: { status: 'aprovado', aprovadoPor: usuario, aprovadoEm },
+    });
+    if (alterado.count !== 1) {
+      throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
+    }
     await tx.diarioContasPagarAprovacao.deleteMany({ where: { processoId: id } });
     await tx.diarioContasPagarAprovacao.createMany({
       data: itens.map((item) => ({
@@ -197,10 +209,9 @@ export async function aprovarProcessoDiario(
         aprovadoEm,
       })),
     });
-    return tx.diarioContasPagarProcesso.update({
-      where: { id },
-      data: { status: 'aprovado', aprovadoPor: usuario, aprovadoEm },
-    });
+    const processo = await tx.diarioContasPagarProcesso.findUnique({ where: { id } });
+    if (!processo) throw new Error('Processo não encontrado.');
+    return processo;
   });
   return dto(salvo);
 }
@@ -212,8 +223,8 @@ export async function devolverProcessoDiario(id: number, motivoBruto: string): P
     throw new Error('Só um contas a pagar em aprovação ou aprovado pode voltar para correção.');
   }
   const motivo = motivoBruto.trim();
-  const salvo = await prisma.diarioContasPagarProcesso.update({
-    where: { id },
+  const alterado = await prisma.diarioContasPagarProcesso.updateMany({
+    where: { id, status: { in: ['em_aprovacao', 'aprovado'] } },
     data: {
       status: 'em_correcao',
       motivoDevolucao: motivo || null,
@@ -221,6 +232,11 @@ export async function devolverProcessoDiario(id: number, motivoBruto: string): P
       aprovadoEm: null,
     },
   });
+  if (alterado.count !== 1) {
+    throw new Error('O status deste contas a pagar mudou. Atualize a tela e tente novamente.');
+  }
+  const salvo = await prisma.diarioContasPagarProcesso.findUnique({ where: { id } });
+  if (!salvo) throw new Error('Processo não encontrado.');
   return dto(salvo);
 }
 

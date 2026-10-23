@@ -143,6 +143,16 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
       dataFim: processoAtual.dataVencimento,
       incluirItens: false,
     });
+    const fontesComErro = [
+      consulta.erroNomus ? `Nomus: ${consulta.erroNomus}` : null,
+      consulta.erroShop9 ? `Shop9: ${consulta.erroShop9}` : null,
+    ].filter((erro): erro is string => Boolean(erro));
+    if (fontesComErro.length > 0) {
+      res.status(503).json({
+        error: `A aprovação foi bloqueada porque a consulta está incompleta. ${fontesComErro.join(' · ')}`,
+      });
+      return;
+    }
     const porChave = new Map(
       consulta.linhas
         .filter((linha) => linha.status === 'Em aberto' && Number(linha.saldo) > 0)
