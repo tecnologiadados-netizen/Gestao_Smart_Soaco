@@ -645,14 +645,14 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
     if (modo.resultadoAprovacao) {
       extras.push({
         id: 'statusAprovacao',
-        label: 'Status da aprovação',
+        label: 'STATUS DA APROVAÇÃO',
         largura: larguras.statusAprovacao,
         larguraMinima: 110,
       });
     }
     extras.push({
       id: 'banco',
-      label: 'Banco',
+      label: 'BANCO',
       largura: larguras.banco,
       larguraMinima: 110,
     });
@@ -1293,7 +1293,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         if (modo?.resultadoAprovacao) {
           return (
             <td key={colId} style={style} className="px-2 py-1.5 font-medium normal-case">
-              {l.bancoAprovacao || '—'}
+              {l.bancoAprovacao?.toLocaleUpperCase('pt-BR') || '—'}
             </td>
           );
         }
@@ -1305,7 +1305,10 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               value={bancosAprovacao[chave] ?? ''}
               maxLength={100}
               disabled={!podeAprovarConta(l)}
-              onChange={(evento) => setBancosAprovacao((atual) => ({ ...atual, [chave]: evento.target.value }))}
+              onChange={(evento) => setBancosAprovacao((atual) => ({
+                ...atual,
+                [chave]: evento.target.value.toLocaleUpperCase('pt-BR'),
+              }))}
               placeholder="Digite o banco"
               aria-label={`Banco da conta ${l.codigo}`}
               className="h-7 w-full rounded border border-slate-300 bg-white px-1.5 text-xs uppercase text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-700"

@@ -121,7 +121,7 @@ export async function postAprovarProcessoDiario(req: Request, res: Response): Pr
   for (const item of bruto) {
     const origem = item?.origem;
     const codigo = Math.trunc(Number(item?.codigo));
-    const banco = String(item?.banco ?? '').trim();
+    const banco = String(item?.banco ?? '').trim().toLocaleUpperCase('pt-BR');
     if ((origem !== 'Nomus' && origem !== 'Shop9') || !Number.isInteger(codigo) || codigo <= 0) {
       res.status(400).json({ error: 'Há uma conta sem origem ou código válido.' });
       return;
