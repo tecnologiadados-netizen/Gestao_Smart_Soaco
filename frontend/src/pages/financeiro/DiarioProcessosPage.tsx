@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { PERMISSOES } from '../../config/permissoes';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,6 +12,7 @@ import {
   type StatusProcessoDiario,
 } from '../../api/diarioFinanceiro';
 import DiarioFinanceiroPage, { type DiarioAprovacaoSelecao } from './DiarioFinanceiroPage';
+import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const STATUS_LABEL: Record<StatusProcessoDiario, string> = {
   rascunho: 'Rascunho',
@@ -79,6 +80,12 @@ export default function DiarioProcessosPage() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [aberto, setAberto] = useState<DiarioProcesso | null>(null);
   const [fluxo, setFluxo] = useState(false);
+  const [filtroCodigo, setFiltroCodigo] = useState('');
+  const [filtroDataInicio, setFiltroDataInicio] = useState('');
+  const [filtroDataFim, setFiltroDataFim] = useState('');
+  const [filtroDescricao, setFiltroDescricao] = useState('');
+  const [filtroUsuario, setFiltroUsuario] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState<StatusProcessoDiario | ''>('');
 
   const [iniciarAberto, setIniciarAberto] = useState(false);
   const [novaData, setNovaData] = useState(hojeYmd);
@@ -103,6 +110,38 @@ export default function DiarioProcessosPage() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  const processosFiltrados = useMemo(() => {
+    const codigo = criarMatcherTextoLivre(filtroCodigo);
+    const descricao = criarMatcherTextoLivre(filtroDescricao);
+    const usuario = criarMatcherTextoLivre(filtroUsuario);
+    return processos.filter((processo) => {
+      if (filtroCodigo.trim() && !codigo(String(processo.codigo))) return false;
+      if (filtroDataInicio && processo.dataVencimento < filtroDataInicio) return false;
+      if (filtroDataFim && processo.dataVencimento > filtroDataFim) return false;
+      if (filtroDescricao.trim() && !descricao(descricaoPadraoContasPagar(processo.dataVencimento))) return false;
+      if (filtroUsuario.trim() && !usuario(processo.usuario)) return false;
+      if (filtroStatus && processo.status !== filtroStatus) return false;
+      return true;
+    });
+  }, [
+    filtroCodigo,
+    filtroDataFim,
+    filtroDataInicio,
+    filtroDescricao,
+    filtroStatus,
+    filtroUsuario,
+    processos,
+  ]);
+
+  const limparFiltros = () => {
+    setFiltroCodigo('');
+    setFiltroDataInicio('');
+    setFiltroDataFim('');
+    setFiltroDescricao('');
+    setFiltroUsuario('');
+    setFiltroStatus('');
+  };
 
   const abrir = (processo: DiarioProcesso) => {
     setContasAprovacao([]);
@@ -217,6 +256,82 @@ export default function DiarioProcessosPage() {
         </div>
       </div>
 
+      <div className="card-panel shrink-0">
+        <div className="flex flex-wrap items-end gap-2 px-3 py-2">
+          <label className="w-24">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Código</span>
+            <input
+              type="search"
+              value={filtroCodigo}
+              onChange={(e) => setFiltroCodigo(e.target.value)}
+              placeholder="Ex.: 8 ou 8%"
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="w-36">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Vencimento de</span>
+            <input
+              type="date"
+              value={filtroDataInicio}
+              onChange={(e) => setFiltroDataInicio(e.target.value)}
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="w-36">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Até</span>
+            <input
+              type="date"
+              value={filtroDataFim}
+              onChange={(e) => setFiltroDataFim(e.target.value)}
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="min-w-48 flex-1">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Descrição</span>
+            <input
+              type="search"
+              value={filtroDescricao}
+              onChange={(e) => setFiltroDescricao(e.target.value)}
+              placeholder="Digite parte do texto; use % para refinar"
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="w-40">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Usuário</span>
+            <input
+              type="search"
+              value={filtroUsuario}
+              onChange={(e) => setFiltroUsuario(e.target.value)}
+              placeholder="Nome; use %"
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+          </label>
+          <label className="w-40">
+            <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">Status</span>
+            <select
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value as StatusProcessoDiario | '')}
+              className="h-8 w-full rounded-lg border border-slate-300 bg-slate-100 px-2.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            >
+              <option value="">Todos</option>
+              {Object.entries(STATUS_LABEL).map(([valor, label]) => (
+                <option key={valor} value={valor}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={limparFiltros}
+            className="h-8 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            Limpar
+          </button>
+          <span className="pb-2 text-xs text-slate-500 dark:text-slate-400">
+            {processosFiltrados.length.toLocaleString('pt-BR')} resultado(s)
+          </span>
+        </div>
+      </div>
+
       {erro && !aberto ? (
         <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
           {erro}
@@ -243,14 +358,18 @@ export default function DiarioProcessosPage() {
             </tr>
           </thead>
           <tbody className="[&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:overflow-visible [&_td]:text-clip [&_td]:[overflow-wrap:anywhere]">
-            {processos.length === 0 ? (
+            {processosFiltrados.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">
-                  {loading ? 'Carregando…' : 'Nenhum contas a pagar iniciado.'}
+                  {loading
+                    ? 'Carregando…'
+                    : processos.length === 0
+                      ? 'Nenhum contas a pagar iniciado.'
+                      : 'Nenhum processo encontrado com os filtros informados.'}
                 </td>
               </tr>
             ) : (
-              processos.map((p) => (
+              processosFiltrados.map((p) => (
                 <tr key={p.id} className="border-t border-slate-200 dark:border-slate-700">
                   <td className="px-3 py-2 whitespace-nowrap">{p.codigo}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatarData(p.dataVencimento)}</td>
