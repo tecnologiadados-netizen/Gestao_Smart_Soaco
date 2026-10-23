@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { salvarAnotacaoDiario, type DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 import { corObservacaoDiario, hexObservacaoDiario, type CorObservacaoDiario } from './coresObservacaoDiario';
 
@@ -16,12 +16,39 @@ export function DiarioAnotacaoCelula({
   const [valor, setValor] = useState(linha.anotacao ?? '');
   const [cor, setCor] = useState<CorObservacaoDiario | null>(corObservacaoDiario(linha.anotacaoCor));
   const [salvando, setSalvando] = useState(false);
+  const campoRef = useRef<HTMLTextAreaElement>(null);
+  const larguraRef = useRef(0);
   const bloqueado = somenteLeitura || salvando || !(linha.codigo > 0);
+
+  const ajustarAltura = useCallback(() => {
+    const campo = campoRef.current;
+    if (!campo) return;
+    campo.style.height = 'auto';
+    campo.style.height = `${Math.max(26, campo.scrollHeight)}px`;
+  }, []);
 
   useEffect(() => {
     setValor(linha.anotacao ?? '');
     setCor(corObservacaoDiario(linha.anotacaoCor));
   }, [linha.anotacao, linha.anotacaoCor, linha.origem, linha.codigo]);
+
+  useLayoutEffect(() => {
+    ajustarAltura();
+  }, [ajustarAltura, valor]);
+
+  useEffect(() => {
+    const campo = campoRef.current;
+    if (!campo || typeof ResizeObserver === 'undefined') return;
+    larguraRef.current = campo.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const largura = campo.clientWidth;
+      if (largura === larguraRef.current) return;
+      larguraRef.current = largura;
+      ajustarAltura();
+    });
+    observer.observe(campo);
+    return () => observer.disconnect();
+  }, [ajustarAltura]);
 
   const gravar = async (textoInformado: string, corInformada: CorObservacaoDiario | null) => {
     const texto = textoInformado.trim();
@@ -56,8 +83,11 @@ export function DiarioAnotacaoCelula({
   const fundo = hexObservacaoDiario(cor);
 
   return (
-    <input
+    <textarea
+      ref={campoRef}
       value={valor}
+      rows={1}
+      wrap="soft"
       disabled={bloqueado}
       maxLength={1000}
       placeholder="Observação"
@@ -67,9 +97,12 @@ export function DiarioAnotacaoCelula({
         void gravar(valor, cor).catch(falha);
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
       }}
-      className="w-full min-w-[10rem] rounded border border-transparent px-1 py-0.5 text-[11px] uppercase outline-none hover:border-slate-300 focus:border-primary-500 disabled:opacity-60 dark:hover:border-slate-600"
+      className="block w-full min-w-0 resize-none overflow-hidden whitespace-pre-wrap break-words rounded border border-transparent px-1 py-1 text-[11px] leading-4 uppercase outline-none hover:border-slate-300 focus:border-primary-500 disabled:opacity-60 dark:hover:border-slate-600"
       style={{ backgroundColor: fundo ?? 'transparent' }}
     />
   );

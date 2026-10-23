@@ -1219,7 +1219,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
         return <td key={colId} style={style} className="truncate px-2 py-1.5" title={l.observacao ?? ''}>{l.observacao ?? '—'}</td>;
       case 'anotacao':
         return (
-          <td key={colId} style={style} className="px-1 py-1">
+          <td key={colId} style={style} className="px-1 py-1 align-top">
             <DiarioAnotacaoCelula
               linha={l}
               dataProcesso={dataProcesso}
