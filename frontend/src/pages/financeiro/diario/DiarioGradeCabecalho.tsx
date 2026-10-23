@@ -49,7 +49,7 @@ export function DiarioCabecalhoTh({
 }) {
   return (
     <th
-      className={`relative px-0 py-0 font-medium whitespace-nowrap ${className}`.trim()}
+      className={`relative px-0 py-0 align-top font-medium whitespace-normal break-words [overflow-wrap:anywhere] ${className}`.trim()}
       style={colunas?.estiloColuna(colId)}
       {...colunas?.propsArrastar(colId)}
     >
@@ -58,7 +58,7 @@ export function DiarioCabecalhoTh({
           align === 'right' ? 'flex-row-reverse justify-end' : align === 'center' ? 'justify-center' : 'justify-between'
         }`}
       >
-        <span className={`min-w-0 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}`}>{label}</span>
+        <span className={`min-w-0 whitespace-normal break-words [overflow-wrap:anywhere] ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}`}>{label}</span>
         <GradeFiltroCabecalhoBtn
           ativo={grade.colunaComFiltroAtivo(colId) || filtroExtraAtivo}
           onClick={(e) => grade.abrirFiltroExcel(colId, e)}

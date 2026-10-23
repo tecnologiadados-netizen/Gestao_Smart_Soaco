@@ -1761,7 +1761,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
               ))}
             </tr>
           </thead>
-          <tbody className="uppercase">
+          <tbody className="uppercase [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:overflow-visible [&_td]:text-clip [&_td]:[overflow-wrap:anywhere]">
             {linhasExibidas.length === 0 && !loading && (
               <tr>
                 <td colSpan={colunasGrade.colunasVisiveis.length + 1} className="px-3 py-8 text-center text-slate-500 dark:text-slate-400">

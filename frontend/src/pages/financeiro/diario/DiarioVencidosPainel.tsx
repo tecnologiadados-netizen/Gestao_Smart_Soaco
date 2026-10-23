@@ -1071,7 +1071,7 @@ export const DiarioVencidosPainel = forwardRef<
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="[&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words [&_td]:overflow-visible [&_td]:text-clip [&_td]:[overflow-wrap:anywhere]">
               {titulosExibidos.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={colunasTitulos.colunasVisiveis.length + 1} className="px-3 py-8 text-center normal-case text-slate-500">
