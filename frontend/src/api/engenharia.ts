@@ -138,6 +138,23 @@ export async function atualizarValorTotalManualItemPrecificacao(
   return { item: body.item };
 }
 
+export async function atualizarValorUnitarioItemPrecificacao(
+  idPrecificacao: number,
+  idItem: number,
+  valorUnitario: number | null
+): Promise<{ item?: { id: number; valorUnitario: number | null; valorTotal: number | null }; error?: string }> {
+  const res = await apiFetch(`/api/engenharia/precificacao/${idPrecificacao}/item/${idItem}/valor-unitario`, {
+    method: 'PATCH',
+    body: { valorUnitario },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    item?: { id: number; valorUnitario: number | null; valorTotal: number | null };
+    error?: string;
+  };
+  if (!res.ok) return { error: body.error ?? res.statusText };
+  return { item: body.item };
+}
+
 export async function excluirItemPrecificacao(
   idPrecificacao: number,
   idItem: number

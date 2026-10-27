@@ -3,6 +3,7 @@ import type { PrecificacaoItemRow } from '../../api/engenharia';
 import {
   salvarPrecificacaoValores,
   atualizarValorTotalManualItemPrecificacao,
+  atualizarValorUnitarioItemPrecificacao,
   excluirItemPrecificacao,
 } from '../../api/engenharia';
 import { useAuth } from '../../contexts/AuthContext';
@@ -160,7 +161,7 @@ export default function ModalResultadoPrecificacao({
   const [mensagemSalvar, setMensagemSalvar] = useState<'ok' | 'erro' | null>(null);
   const [itensLocal, setItensLocal] = useState<PrecificacaoItemRow[]>(() => [...itens]);
   const [editandoItemId, setEditandoItemId] = useState<number | null>(null);
-  const [valorTotalEdicao, setValorTotalEdicao] = useState('');
+  const [valorEdicao, setValorEdicao] = useState('');
   const [salvandoValorItem, setSalvandoValorItem] = useState(false);
   const [excluindoItemId, setExcluindoItemId] = useState<number | null>(null);
   const { hasPermission } = useAuth();
@@ -187,7 +188,7 @@ export default function ModalResultadoPrecificacao({
   useEffect(() => {
     setItensLocal([...itens]);
     setEditandoItemId(null);
-    setValorTotalEdicao('');
+    setValorEdicao('');
   }, [idPrecificacao, itens]);
 
   useEffect(() => {
@@ -281,34 +282,45 @@ export default function ModalResultadoPrecificacao({
 
   const iniciarEdicaoItem = (item: PrecificacaoItemRow) => {
     setEditandoItemId(item.id);
-    setValorTotalEdicao(formatDecimalInput(item.valorTotalManual ?? item.valorTotal));
+    setValorEdicao(
+      formatDecimalInput(
+        isComponenteConsumivelCalculadoMarkup(item)
+          ? item.valorTotalManual ?? item.valorTotal
+          : item.valorUnitario
+      )
+    );
   };
 
   const cancelarEdicaoItem = () => {
     setEditandoItemId(null);
-    setValorTotalEdicao('');
+    setValorEdicao('');
   };
 
   const salvarEdicaoItem = async (item: PrecificacaoItemRow) => {
-    const parsed = parseDecimalInput(valorTotalEdicao);
-    if (valorTotalEdicao.trim() !== '' && parsed == null) return;
+    const parsed = parseDecimalInput(valorEdicao);
+    if (valorEdicao.trim() !== '' && parsed == null) return;
 
     setSalvandoValorItem(true);
-    const { item: atualizado, error } = await atualizarValorTotalManualItemPrecificacao(
-      idPrecificacao,
-      item.id,
-      parsed
-    );
-    setSalvandoValorItem(false);
-    if (error || !atualizado) return;
-
-    setItensLocal((prev) =>
-      prev.map((it) =>
-        it.id === item.id
-          ? { ...it, valorTotalManual: atualizado.valorTotalManual }
-          : it
-      )
-    );
+    const consumivelMarkup = isComponenteConsumivelCalculadoMarkup(item);
+    if (consumivelMarkup) {
+      const resultado = await atualizarValorTotalManualItemPrecificacao(idPrecificacao, item.id, parsed);
+      setSalvandoValorItem(false);
+      if (resultado.error || !resultado.item) return;
+      setItensLocal((prev) =>
+        prev.map((it) => it.id === item.id ? { ...it, valorTotalManual: resultado.item!.valorTotalManual } : it)
+      );
+    } else {
+      const resultado = await atualizarValorUnitarioItemPrecificacao(idPrecificacao, item.id, parsed);
+      setSalvandoValorItem(false);
+      if (resultado.error || !resultado.item) return;
+      setItensLocal((prev) =>
+        prev.map((it) =>
+          it.id === item.id
+            ? { ...it, valorUnitario: resultado.item!.valorUnitario, valorTotal: resultado.item!.valorTotal }
+            : it
+        )
+      );
+    }
     cancelarEdicaoItem();
   };
 
@@ -520,7 +532,17 @@ export default function ModalResultadoPrecificacao({
                             : item.qtd}
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums">
-                        {consumivelMarkup ? '—' : item.valorUnitario != null ? (
+                        {!consumivelMarkup && editandoItemId === item.id ? (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={valorEdicao}
+                            onChange={(e) => setValorEdicao(e.target.value)}
+                            className="w-28 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 text-sm text-right"
+                            placeholder="0,00"
+                            aria-label={`Editar valor unitário do item ${item.codigocomponente ?? item.id}`}
+                          />
+                        ) : consumivelMarkup ? '—' : item.valorUnitario != null ? (
                           item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                         ) : (
                           '—'
@@ -528,17 +550,25 @@ export default function ModalResultadoPrecificacao({
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1">
-                          {consumivelMarkup && editandoItemId === item.id ? (
+                          {editandoItemId === item.id ? (
                             <>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={valorTotalEdicao}
-                                onChange={(e) => setValorTotalEdicao(e.target.value)}
-                                className="w-28 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 text-sm text-right"
-                                placeholder="Vazio = automático"
-                                aria-label={`Editar preço total do item ${item.codigocomponente ?? item.id}`}
-                              />
+                              {consumivelMarkup ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={valorEdicao}
+                                  onChange={(e) => setValorEdicao(e.target.value)}
+                                  className="w-28 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 text-sm text-right"
+                                  placeholder="Vazio = automático"
+                                  aria-label={`Editar preço total do item ${item.codigocomponente ?? item.id}`}
+                                />
+                              ) : (
+                                <span>
+                                  {item.valorTotal != null
+                                    ? item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                    : '—'}
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => salvarEdicaoItem(item)}
@@ -563,8 +593,13 @@ export default function ModalResultadoPrecificacao({
                                   ? item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                                   : '—'}
                               </span>
-                              {consumivelMarkup && podeEditar && (
-                                <button type="button" onClick={() => iniciarEdicaoItem(item)} className={btnIconGrade} title="Editar preço">
+                              {podeEditar && (
+                                <button
+                                  type="button"
+                                  onClick={() => iniciarEdicaoItem(item)}
+                                  className={btnIconGrade}
+                                  title={consumivelMarkup ? 'Editar preço total' : 'Editar preço unitário'}
+                                >
                                   <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
                                     <path d="M17.414 2.586a2 2 0 010 2.828l-9.193 9.193a1 1 0 01-.39.244l-3.3 1.1a1 1 0 01-1.265-1.265l1.1-3.3a1 1 0 01.244-.39l9.193-9.193a2 2 0 012.828 0zM6.121 12.465l1.414 1.414 8.486-8.486-1.414-1.414-8.486 8.486z" />
                                   </svg>

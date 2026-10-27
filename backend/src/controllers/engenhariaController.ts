@@ -1281,6 +1281,61 @@ export async function atualizarValorTotalManualItemPrecificacao(req: Request, re
 }
 
 /**
+ * PATCH /api/engenharia/precificacao/:id/item/:itemId/valor-unitario
+ * Atualiza o valor unitário de um item comum e recalcula seu valor total.
+ */
+export async function atualizarValorUnitarioItemPrecificacao(req: Request, res: Response): Promise<void> {
+  const id = parseInt(String(req.params.id), 10);
+  const itemId = parseInt(String(req.params.itemId), 10);
+  if (Number.isNaN(id) || id < 1 || Number.isNaN(itemId) || itemId < 1) {
+    res.status(400).json({ error: 'IDs inválidos' });
+    return;
+  }
+
+  const valorRaw = (req.body as { valorUnitario?: unknown } | undefined)?.valorUnitario;
+  let valorUnitario: number | null = null;
+  if (valorRaw !== null && valorRaw !== undefined && String(valorRaw).trim() !== '') {
+    const parsed = Number(valorRaw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      res.status(400).json({ error: 'valorUnitario inválido' });
+      return;
+    }
+    valorUnitario = Math.round(parsed * 100000) / 100000;
+  }
+
+  try {
+    const item = await prisma.precificacaoItem.findFirst({
+      where: { id: itemId, precificacaoId: id },
+      select: { id: true, qtd: true, codigocomponente: true },
+    });
+    if (!item) {
+      res.status(404).json({ error: 'Item da precificação não encontrado' });
+      return;
+    }
+
+    const codigo = (item.codigocomponente ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const consumiveisEspeciais = new Set(['MP 1309', 'MUC 4377', 'MUC 4378', 'SUB 0001']);
+    if (consumiveisEspeciais.has(codigo)) {
+      res.status(400).json({ error: 'Use a edição de valor total para este consumível especial' });
+      return;
+    }
+
+    const valorTotal = valorUnitario != null ? Math.round(item.qtd * valorUnitario * 100) / 100 : null;
+    const atualizado = await prisma.precificacaoItem.update({
+      where: { id: itemId },
+      data: { valorUnitario, valorTotal },
+      select: { id: true, valorUnitario: true, valorTotal: true },
+    });
+
+    res.json({ ok: true, item: atualizado });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[engenhariaController] atualizarValorUnitarioItemPrecificacao:', msg);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/**
  * DELETE /api/engenharia/precificacao/:id/item/:itemId
  * Remove um insumo (linha) da composição da precificação.
  */
