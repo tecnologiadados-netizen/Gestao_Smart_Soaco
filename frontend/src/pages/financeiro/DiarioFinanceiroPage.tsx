@@ -1604,7 +1604,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                     key={a.id}
                     type="button"
                     onClick={() => aplicarAtalho(a.id)}
-                    disabled={loading || Boolean(modo)}
+                    disabled={loading}
                     className={`inline-flex h-8 items-center px-3 text-xs font-medium transition-colors disabled:opacity-60 ${
                       i > 0 ? 'border-l border-slate-300 dark:border-slate-600' : ''
                     } ${
@@ -1628,7 +1628,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataInicio(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading || Boolean(modo)}
+                disabled={loading}
               />
             </div>
             <div className="w-[9.25rem]">
@@ -1641,7 +1641,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
                   setDataFim(e.target.value);
                 }}
                 className={FILTRO_INPUT_CLASS}
-                disabled={loading || Boolean(modo)}
+                disabled={loading}
               />
             </div>
             <FiltroMulti
@@ -1745,7 +1745,7 @@ export default function DiarioFinanceiroPage({ modo }: { modo?: DiarioFinanceiro
             <button
               type="button"
               onClick={aplicarIntervalo}
-              disabled={loading || Boolean(modo) || !dataInicio || !dataFim}
+              disabled={loading || !dataInicio || !dataFim}
               className={`${FILTRO_BTN} border-primary-600 bg-primary-600 text-white hover:bg-primary-700`}
             >
               {loading ? 'Buscando…' : 'Buscar'}
