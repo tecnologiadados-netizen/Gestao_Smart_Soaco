@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MutableRefObject } from 'react';
+import { useCallback, useState, type MutableRefObject } from 'react';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
 import {
   obterDetalheAcompanhamento,
@@ -48,27 +48,27 @@ function celula(valor: string | null | undefined): string {
 }
 
 export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDocumento, onClose }: Props) {
-  const [detalhe, setDetalhe] = useState<DetalheAcompanhamento | null>(null);
-
-  useEffect(() => {
-    setDetalhe(null);
-  }, [alvo?.idProduto, alvo?.etapa]);
+  const [resultado, setResultado] = useState<{
+    key: string;
+    detalhe: DetalheAcompanhamento;
+  } | null>(null);
 
   const onLoad = useCallback(async () => {
     if (!alvo) return {};
     const key = chave(alvo);
     const cached = cacheRef.current.get(key);
     if (cached) {
-      setDetalhe(cached);
+      setResultado({ key, detalhe: cached });
       return {};
     }
     const r = await obterDetalheAcompanhamento(alvo.idProduto, alvo.etapa);
     if (r.error || !r.detalhe) return { error: r.error ?? 'Não foi possível carregar o detalhe.' };
     cacheRef.current.set(key, r.detalhe);
-    setDetalhe(r.detalhe);
+    setResultado({ key, detalhe: r.detalhe });
     return {};
   }, [alvo, cacheRef]);
 
+  const detalhe = alvo && resultado?.key === chave(alvo) ? resultado.detalhe : null;
   const linhas = detalhe && alvo && detalhe.etapa === alvo.etapa ? detalhe.linhas : [];
   const total = soma(linhas);
 
