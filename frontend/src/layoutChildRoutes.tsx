@@ -51,7 +51,7 @@ import RessupNaoAlmoxAnalisePage from './pages/pedidos/RessupNaoAlmoxAnalisePage
 import SequenciamentoCarradasPage from './pages/pedidos/SequenciamentoCarradasPage';
 import RegrasDataEntregaPage from './pages/pedidos/RegrasDataEntregaPage';
 import ConsultaEstoquePage from './pages/pedidos/ConsultaEstoquePage';
-import AcompanhamentoSolicitacaoPage from './pages/pedidos/AcompanhamentoSolicitacaoPage';
+import MateriaisAChegarPage from './pages/compras/MateriaisAChegarPage';
 import CoberturaEstoquePage from './pages/pedidos/CoberturaEstoquePage';
 import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProducaoGerencialPage';
 import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
@@ -132,7 +132,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/ressup-almox', element: <ErrorBoundary><RessupAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/ressup-nao-almox', element: <ErrorBoundary><RessupNaoAlmoxAnalisePage /></ErrorBoundary> },
   { path: 'pedidos/consulta-estoque', element: <ErrorBoundary><ConsultaEstoquePage /></ErrorBoundary> },
-  { path: 'pedidos/acompanhamento-solicitacao', element: <ErrorBoundary><AcompanhamentoSolicitacaoPage /></ErrorBoundary> },
+  { path: 'pedidos/acompanhamento-solicitacao', element: <Navigate to="/compras/materiais-a-chegar" replace /> },
   { path: 'pedidos/cobertura-estoque', element: <ErrorBoundary><CoberturaEstoquePage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/gerencial', element: <ErrorBoundary><PainelProducaoGerencialPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
@@ -152,6 +152,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/pre-compra', element: <ErrorBoundary><PreCompraPage /></ErrorBoundary> },
   { path: 'compras/painel-rupturas', element: <ErrorBoundary><PainelRupturasPage /></ErrorBoundary> },
   { path: 'compras/double-checkin', element: <ErrorBoundary><DoubleCheckInPage /></ErrorBoundary> },
+  { path: 'compras/materiais-a-chegar', element: <ErrorBoundary><MateriaisAChegarPage /></ErrorBoundary> },
   { path: 'compras/rotina/pendencias', element: <ErrorBoundary><PendenciasComprasPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },

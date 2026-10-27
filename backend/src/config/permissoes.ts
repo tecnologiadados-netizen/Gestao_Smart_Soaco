@@ -24,6 +24,12 @@ export const PERMISSOES = {
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
   /** Lista na finalização da coleta pedidos já recebidos (status 1) e cotações nos últimos 180 dias. */
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
+  /** Materiais a chegar — acesso à tela (grade por produto e documentos). */
+  COMPRAS_MATERIAIS_CHEGAR_VER: 'compras.materiais_chegar.ver',
+  /** Materiais a chegar — ver a guia "Datas de entrega a atualizar". */
+  COMPRAS_MATERIAIS_CHEGAR_DATAS_VER: 'compras.materiais_chegar.datas_entrega.ver',
+  /** Materiais a chegar — alterar a data de entrega do item do pedido de compra. */
+  COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_VER: 'comercial.ver',
@@ -218,6 +224,9 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3,
   PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO,
+  PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER,
+  PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER,
+  PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR,
   PERMISSOES.PRECIFICACAO_VER,
   PERMISSOES.PRECIFICACAO_GERAR,
   PERMISSOES.COMERCIAL_VER,
@@ -401,6 +410,10 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
     'Pendências compras — editar prioridade fixa (Comprador 3) — por usuário',
   [PERMISSOES.COMPRAS_VINCULO_FINALIZACAO_AMPLIADO]:
     'Compras: vincular finalização a pedidos já recebidos / lista ampliada (últimos 180 dias)',
+  [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER]: 'Materiais a chegar — acesso à tela',
+  [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER]:
+    'Materiais a chegar — ver a guia "Datas de entrega a atualizar"',
+  [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR]: 'Materiais a chegar — alterar datas de entrega',
   [PERMISSOES.PRECIFICACAO_VER]: 'Visualizar Precificação',
   [PERMISSOES.PRECIFICACAO_GERAR]: 'Gerar precificação',
   [PERMISSOES.COMERCIAL_VER]: 'Ver Comercial',

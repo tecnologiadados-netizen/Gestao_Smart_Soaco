@@ -46,10 +46,6 @@ import {
   putDecomposicaoPai,
 } from '../controllers/decomposicaoController.js';
 import {
-  getDetalheAcompanhamento,
-  getPipelineAcompanhamento,
-} from '../controllers/acompanhamentoSolicitacaoController.js';
-import {
   deleteGondolasOrdem,
   getGondolasItemDetalhe,
   getGondolasItens,
@@ -70,12 +66,6 @@ const podeConsultaEstoque = requirePermission(
 );
 
 const podeCoberturaEstoque = requirePermission(...PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE);
-
-const podeAcompanhamentoSolicitacao = requirePermission(
-  PERMISSOES.PCP_VER_TELA,
-  PERMISSOES.PCP_TOTAL,
-  PERMISSOES.PEDIDOS_VER
-);
 
 /** Qualquer permissão de gôndolas libera a consulta; cada ação de escrita tem a sua. */
 const podeGondolas = requirePermission(
@@ -189,17 +179,6 @@ router.get(
   '/consulta-estoque/detalhe/pedido-compra',
   podeConsultaEstoque,
   async503(getPcDetalheConsultaEstoque)
-);
-
-router.get(
-  '/acompanhamento-solicitacao',
-  podeAcompanhamentoSolicitacao,
-  async503(getPipelineAcompanhamento)
-);
-router.get(
-  '/acompanhamento-solicitacao/detalhe',
-  podeAcompanhamentoSolicitacao,
-  async503(getDetalheAcompanhamento)
 );
 
 router.get('/gondolas-porta-paletes/itens', podeGondolas, async503(getGondolasItens));

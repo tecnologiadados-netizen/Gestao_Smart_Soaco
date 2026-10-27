@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import FiltroDatasPopoverPedidoCompra from '../../components/FiltroDatasPopoverPedidoCompra';
-import ModalGerenciarMotivosDataEntregaCompra from '../../components/ModalGerenciarMotivosDataEntregaCompra';
+import ModalAlterarDataEntregaCompra from '../../components/ModalAlterarDataEntregaCompra';
 import { useAuth } from '../../contexts/AuthContext';
 import { PERMISSOES } from '../../config/permissoes';
-import { listarMotivosAlteracaoDataEntregaCompra, type MotivoAlteracaoDataEntregaCompra } from '../../api/motivosAlteracaoDataEntregaCompra';
 import {
   listarPedidoCompraDataEntrega,
   obterFiltrosOpcoesPedidoCompra,
-  atualizarDataEntregaItemPedidoCompra,
   listarHistoricoAlteracaoDataEntregaCompra,
   type RowPedidoCompraDataEntrega,
   type FiltrosOpcoesPedidoCompra,
@@ -94,39 +92,17 @@ export default function AlteracaoDataEntregaCompraPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalItem, setModalItem] = useState<RowPedidoCompraDataEntrega | null>(null);
-  const [modalDataEntrega, setModalDataEntrega] = useState('');
-  const [modalMotivo, setModalMotivo] = useState('');
-  const [modalObservacao, setModalObservacao] = useState('');
-  const [modalSaving, setModalSaving] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
-  const [motivosDataEntregaCompra, setMotivosDataEntregaCompra] = useState<MotivoAlteracaoDataEntregaCompra[]>([]);
-  const [loadingMotivos, setLoadingMotivos] = useState(false);
-  const [abrirGerenciarMotivos, setAbrirGerenciarMotivos] = useState(false);
   const [historicoItem, setHistoricoItem] = useState<RowPedidoCompraDataEntrega | null>(null);
   const [historicoLista, setHistoricoLista] = useState<HistoricoAlteracaoDataEntregaItem[]>([]);
   const [historicoLoading, setHistoricoLoading] = useState(false);
   const { hasPermission } = useAuth();
   const podeEditarIntegracao = hasPermission(PERMISSOES.INTEGRACAO_EDITAR);
-  const podeGerenciarMotivos = podeEditarIntegracao;
 
   useEffect(() => {
     obterFiltrosOpcoesPedidoCompra()
       .then(setOpcoes)
       .catch(() => setOpcoes({ pedidos: [], fornecedores: [], codigosProduto: [], descricoesProduto: [] }));
   }, []);
-
-  const carregarMotivos = useCallback(() => {
-    setLoadingMotivos(true);
-    listarMotivosAlteracaoDataEntregaCompra()
-      .then(setMotivosDataEntregaCompra)
-      .catch(() => setMotivosDataEntregaCompra([]))
-      .finally(() => setLoadingMotivos(false));
-  }, []);
-
-  useEffect(() => {
-    carregarMotivos();
-  }, [carregarMotivos]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -173,17 +149,6 @@ export default function AlteracaoDataEntregaCompraPage() {
 
   const abrirModalAlterarData = (row: RowPedidoCompraDataEntrega) => {
     setModalItem(row);
-    setModalDataEntrega(row.DataEntrega && row.DataEntrega.length >= 10 ? row.DataEntrega : '');
-    setModalMotivo('');
-    setModalObservacao('');
-    setModalError(null);
-    setModalSuccess(null);
-  };
-
-  const fecharModalAlterarData = () => {
-    setModalItem(null);
-    setModalError(null);
-    setModalSuccess(null);
   };
 
   const abrirModalHistorico = useCallback((row: RowPedidoCompraDataEntrega) => {
@@ -205,45 +170,23 @@ export default function AlteracaoDataEntregaCompraPage() {
     return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   };
 
-  const salvarDataEntrega = async () => {
-    if (!modalItem || modalItem.idItemPedidoCompra <= 0) return;
-    const dataValida = modalDataEntrega.trim().slice(0, 10);
-    if (!dataValida || !/^\d{4}-\d{2}-\d{2}$/.test(dataValida)) {
-      setModalError('Informe uma data válida (YYYY-MM-DD).');
-      return;
-    }
-    const motivoTrim = modalMotivo.trim();
-    if (!motivoTrim) {
-      setModalError('Informe o motivo da alteração.');
-      return;
-    }
-    if (motivoTrim.length > 500) {
-      setModalError('Motivo deve ter no máximo 500 caracteres.');
-      return;
-    }
-    setModalSaving(true);
-    setModalError(null);
-    try {
-      const dataAnterior = modalItem.DataEntrega && modalItem.DataEntrega.length >= 10 ? modalItem.DataEntrega : dataValida;
-      await atualizarDataEntregaItemPedidoCompra(modalItem.idItemPedidoCompra, {
-        dataEntrega: dataValida,
-        dataEntregaAnterior: dataAnterior,
-        motivo: motivoTrim,
-        observacao: modalObservacao.trim() || null,
-      });
-      setData((prev) =>
-        prev.map((r) =>
-          r.idItemPedidoCompra === modalItem.idItemPedidoCompra ? { ...r, DataEntrega: dataValida } : r
-        )
-      );
-      setModalSuccess('Alteração do pedido no Nomus realizada com sucesso. Histórico gravado.');
-      setTimeout(() => fecharModalAlterarData(), 2000);
-    } catch (err) {
-      setModalError(err instanceof Error ? err.message : 'Erro ao salvar');
-    } finally {
-      setModalSaving(false);
-    }
-  };
+  const itemAlterarData = useMemo(
+    () =>
+      modalItem
+        ? {
+            idItemPedidoCompra: modalItem.idItemPedidoCompra,
+            pedido: modalItem.Pedido,
+            codigoProduto: modalItem.CodigoProduto,
+            descricaoProduto: modalItem.DescricaoProduto,
+            dataEntrega: modalItem.DataEntrega,
+          }
+        : null,
+    [modalItem]
+  );
+
+  const onDataEntregaSalva = useCallback((idItem: number, dataNova: string) => {
+    setData((prev) => prev.map((r) => (r.idItemPedidoCompra === idItem ? { ...r, DataEntrega: dataNova } : r)));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -396,118 +339,12 @@ export default function AlteracaoDataEntregaCompraPage() {
         </div>
       </div>
 
-      {modalItem && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-alterar-data-title"
-        >
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
-            <h3 id="modal-alterar-data-title" className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">
-              Alterar data de entrega
-            </h3>
-            <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1.5 mb-4">
-              <p><span className="font-medium text-slate-700 dark:text-slate-300">Pedido</span><br />{modalItem.Pedido || '—'}</p>
-              <p><span className="font-medium text-slate-700 dark:text-slate-300">Código do Produto</span><br />{modalItem.CodigoProduto || '—'}</p>
-              <p><span className="font-medium text-slate-700 dark:text-slate-300">Descrição do Produto</span><br />{modalItem.DescricaoProduto || '—'}</p>
-              <p><span className="font-medium text-slate-700 dark:text-slate-300">Data de Entrega Atual</span><br />{formatDate(modalItem.DataEntrega)}</p>
-            </div>
-            <div className="mb-4">
-              <label className={labelClass}>Nova data de entrega</label>
-              <input
-                type="date"
-                value={modalDataEntrega}
-                onChange={(e) => setModalDataEntrega(e.target.value)}
-                className={inputClass}
-                disabled={modalSaving || !podeEditarIntegracao}
-              />
-            </div>
-            <div className="mb-4">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <label className={labelClass}>Motivo da alteração da data de entrega</label>
-                {podeGerenciarMotivos && (
-                  <button
-                    type="button"
-                    onClick={() => setAbrirGerenciarMotivos(true)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-600 transition-colors"
-                    title="Gerenciar motivos (incluir, excluir, editar)"
-                    aria-label="Gerenciar motivos"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              <select
-                value={modalMotivo}
-                onChange={(e) => setModalMotivo(e.target.value)}
-                className={inputClass}
-                required
-                disabled={modalSaving || !podeEditarIntegracao}
-              >
-                <option value="">Selecione um motivo</option>
-                {motivosDataEntregaCompra.map((s) => (
-                  <option key={s.id} value={s.descricao}>
-                    {s.descricao}
-                  </option>
-                ))}
-              </select>
-              {loadingMotivos && (
-                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Carregando motivos...</p>
-              )}
-            </div>
-            <div className="mb-4">
-              <label className={labelClass}>Observação</label>
-              <textarea
-                value={modalObservacao}
-                onChange={(e) => setModalObservacao(e.target.value)}
-                rows={2}
-                placeholder="Opcional"
-                className={`${inputClass} resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500`}
-                disabled={modalSaving || !podeEditarIntegracao}
-              />
-            </div>
-            {modalSuccess && (
-              <div className="mb-4 p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-sm">
-                {modalSuccess}
-              </div>
-            )}
-            {modalError && (
-              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">{modalError}</p>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={fecharModalAlterarData}
-                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-                disabled={modalSaving}
-              >
-                Cancelar
-              </button>
-              {podeEditarIntegracao && (
-                <button
-                  type="button"
-                  onClick={salvarDataEntrega}
-                  className={btnPrimaryClass}
-                  disabled={modalSaving}
-                >
-                  {modalSaving ? 'Salvando...' : 'Salvar'}
-                </button>
-              )}
-            </div>
-          </div>
-          {abrirGerenciarMotivos && podeGerenciarMotivos && (
-            <ModalGerenciarMotivosDataEntregaCompra
-              onClose={() => setAbrirGerenciarMotivos(false)}
-              onError={(msg) => setModalError(msg)}
-              onAtualizado={carregarMotivos}
-            />
-          )}
-        </div>
-      )}
+      <ModalAlterarDataEntregaCompra
+        item={itemAlterarData}
+        podeEditar={podeEditarIntegracao}
+        onClose={() => setModalItem(null)}
+        onSalvo={onDataEntregaSalva}
+      />
 
       {historicoItem && (
         <div

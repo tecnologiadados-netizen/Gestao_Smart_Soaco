@@ -14,7 +14,11 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-router.get('/', requirePermission(PERMISSOES.INTEGRACAO_VER), getMotivosAlteracaoDataEntregaCompra);
+router.get(
+  '/',
+  requirePermission(PERMISSOES.INTEGRACAO_VER, PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR),
+  getMotivosAlteracaoDataEntregaCompra
+);
 router.post('/', validateCsrf, requireMasterOrAdmin, postMotivoAlteracaoDataEntregaCompra);
 router.put('/:id', validateCsrf, requireMasterOrAdmin, putMotivoAlteracaoDataEntregaCompra);
 router.delete('/:id', validateCsrf, requireMasterOrAdmin, deleteMotivoAlteracaoDataEntregaCompra);

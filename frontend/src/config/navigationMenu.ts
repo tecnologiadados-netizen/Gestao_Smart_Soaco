@@ -16,6 +16,7 @@ import {
 } from '../utils/painelProducaoPermissoes';
 import { podeAcessarSequenciamentoCarradas } from '../utils/sequenciamentoCarradasPermissoes';
 import { podeAcessarProgramacaoSetorial } from '../utils/programacaoSetorialPermissoes';
+import { podeAcessarMateriaisAChegar } from '../utils/materiaisAChegarPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -33,7 +34,6 @@ export const PCP_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/pedidos/decomposicao', label: 'Ordem de produção' },
   { kind: 'link', to: '/pedidos/gondolas-porta-paletes', label: 'Gôndolas e porta-paletes' },
   { kind: 'link', to: '/pedidos/encerrados', label: 'Pedidos encerrados' },
-  { kind: 'link', to: '/pedidos/acompanhamento-solicitacao', label: 'Materiais a chegar' },
   {
     kind: 'submenu',
     label: 'Estoque',
@@ -107,6 +107,7 @@ export const COMPRAS_SUBMENUS: { to: string; label: string }[] = [
   { to: '/compras/pre-compra', label: 'Pré Compra' },
   { to: '/compras/double-checkin', label: 'Double Check NFe' },
   { to: '/compras/painel-rupturas', label: 'Painel de Rupturas' },
+  { to: '/compras/materiais-a-chegar', label: 'Materiais a chegar' },
 ];
 
 export const COMPRAS_MENU: NavMenuEntry[] = [
@@ -115,6 +116,7 @@ export const COMPRAS_MENU: NavMenuEntry[] = [
   { kind: 'link', to: '/compras/pre-compra', label: 'Pré Compra' },
   { kind: 'link', to: '/compras/double-checkin', label: 'Double Check NFe' },
   { kind: 'link', to: '/compras/painel-rupturas', label: 'Painel de Rupturas' },
+  { kind: 'link', to: '/compras/materiais-a-chegar', label: 'Materiais a chegar' },
   {
     kind: 'submenu',
     label: 'Rotina',
@@ -252,7 +254,6 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/ressup-almox': 'Ressup Almox',
   '/pedidos/ressup-nao-almox': 'Ressup Não Almox',
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
-  '/pedidos/acompanhamento-solicitacao': 'Materiais a chegar',
   '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
   '/kpis/gestao-entradas/painel': 'Gestão entradas',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
@@ -268,6 +269,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/compras/painel-rupturas': 'Painel de Rupturas',
   '/compras/double-checkin': 'Double Check NFe',
   '/compras/rotina/pendencias': 'Pendências compras',
+  '/compras/materiais-a-chegar': 'Materiais a chegar',
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
   '/qualidade': 'Qualidade',
@@ -445,6 +447,10 @@ export function buildComprasMenuForUser(hasPermission: HasPermission): NavMenuEn
     if (entry.kind === 'link') {
       if (entry.to === '/compras/double-checkin') {
         if (podeAcessarDoubleCheckIn(hasPermission)) filtered.push(entry);
+        continue;
+      }
+      if (entry.to === '/compras/materiais-a-chegar') {
+        if (podeAcessarMateriaisAChegar(hasPermission)) filtered.push(entry);
         continue;
       }
       if (podeComprasGeral) filtered.push(entry);

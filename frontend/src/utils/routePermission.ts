@@ -28,6 +28,7 @@ import {
   PERMISSOES_ACESSO_RECEBIMENTO,
 } from './recebimentoPermissoes';
 import { PERMISSOES_ACESSO_DOUBLE_CHECKIN } from './doubleCheckInPermissoes';
+import { PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR } from './materiaisAChegarPermissoes';
 import { PERMISSOES_ACESSO_QUALIDADE } from './qualidadePermissoes';
 import {
   PERMISSOES_ACESSO_HUB_KPIS,
@@ -80,7 +81,6 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/ressup-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/ressup-nao-almox': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/consulta-estoque': [PERMISSOES.PCP_CONSULTA_ESTOQUE_VER, PERMISSOES.PCP_TOTAL],
-  '/pedidos/acompanhamento-solicitacao': [PERMISSOES.PCP_VER_TELA, PERMISSOES.PCP_TOTAL, PERMISSOES.PEDIDOS_VER],
   '/pedidos/cobertura-estoque': PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
   '/pedidos/painel-metas/tv': PERMISSOES_ACESSO_PAINEL_TV,
   '/pedidos/painel-metas/gerencial': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
@@ -92,13 +92,14 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_APURACAO,
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
-  '/compras': [PERMISSOES.COMPRAS_VER, ...PERMISSOES_ACESSO_DOUBLE_CHECKIN],
+  '/compras': [PERMISSOES.COMPRAS_VER, ...PERMISSOES_ACESSO_DOUBLE_CHECKIN, ...PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR],
   '/compras/dashboard': [PERMISSOES.COMPRAS_VER],
   '/compras/coletas-precos': [PERMISSOES.COMPRAS_VER],
   '/compras/pre-compra': [PERMISSOES.COMPRAS_VER],
   '/compras/painel-rupturas': [PERMISSOES.COMPRAS_VER],
   '/compras/double-checkin': PERMISSOES_ACESSO_DOUBLE_CHECKIN,
   '/compras/rotina/pendencias': [PERMISSOES.COMPRAS_VER],
+  '/compras/materiais-a-chegar': PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR,
   '/engenharia': [PERMISSOES.PRECIFICACAO_VER],
   '/engenharia/precificacao': [PERMISSOES.PRECIFICACAO_VER],
   '/qualidade': PERMISSOES_ACESSO_QUALIDADE,
@@ -212,7 +213,6 @@ export const ROTAS_ORDEM = [
   '/pedidos/ressup-almox',
   '/pedidos/ressup-nao-almox',
   '/pedidos/consulta-estoque',
-  '/pedidos/acompanhamento-solicitacao',
   '/pedidos/cobertura-estoque',
   '/pedidos/painel-metas/tv',
   '/pedidos/painel-metas/gerencial',
@@ -227,6 +227,7 @@ export const ROTAS_ORDEM = [
   '/compras/painel-rupturas',
   '/compras/double-checkin',
   '/compras/rotina/pendencias',
+  '/compras/materiais-a-chegar',
   '/engenharia',
   '/engenharia/precificacao',
   '/qualidade',

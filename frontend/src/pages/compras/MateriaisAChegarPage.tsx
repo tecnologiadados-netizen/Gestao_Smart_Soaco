@@ -1,19 +1,29 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { PERMISSOES } from '../../config/permissoes';
+import {
+  podeAcessarMateriaisAChegar,
+  podeAlterarDatasEntrega,
+  podeVerDatasEntregaAtualizar,
+} from '../../utils/materiaisAChegarPermissoes';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import {
+  listarDatasEntregaAtualizar,
   obterPipelineAcompanhamento,
   type DetalheAcompanhamento,
+  type DocumentoAcompanhamento,
   type EtapaAcompanhamento,
   type LinhaAcompanhamento,
+  type PedidoDataEntregaAtualizar,
+  type TipoDocumentoAcompanhamento,
 } from '../../api/acompanhamentoSolicitacao';
-import AcompanhamentoSolicitacaoAjudaModal from './AcompanhamentoSolicitacaoAjudaModal';
-import AcompanhamentoSolicitacaoDetalheModal from './AcompanhamentoSolicitacaoDetalheModal';
+import MateriaisAChegarDocumentoModal, { type AlvoDocumento } from './MateriaisAChegarDocumentoModal';
+import DatasEntregaAtualizarPainel from './DatasEntregaAtualizarPainel';
+import MateriaisAChegarAjudaModal from './MateriaisAChegarAjudaModal';
+import MateriaisAChegarDetalheModal from './MateriaisAChegarDetalheModal';
 
 type FiltroEtapa = 'todas' | EtapaAcompanhamento;
 
@@ -123,13 +133,17 @@ function Seta() {
   );
 }
 
-export default function AcompanhamentoSolicitacaoPage() {
+export default function MateriaisAChegarPage() {
   const { hasPermission, profileLoaded } = useAuth();
-  const podeVer =
-    hasPermission(PERMISSOES.PCP_VER_TELA) ||
-    hasPermission(PERMISSOES.PCP_TOTAL) ||
-    hasPermission(PERMISSOES.PEDIDOS_VER);
+  const podeVer = podeAcessarMateriaisAChegar(hasPermission);
+  const podeVerDatas = podeVerDatasEntregaAtualizar(hasPermission);
+  const podeAlterarData = podeAlterarDatasEntrega(hasPermission);
 
+  const [visaoEscolhida, setVisao] = useState<'produtos' | 'datas'>('produtos');
+  const visao = podeVerDatas ? visaoEscolhida : 'produtos';
+  const [pedidosData, setPedidosData] = useState<PedidoDataEntregaAtualizar[]>([]);
+  const [carregandoDatas, setCarregandoDatas] = useState(podeVerDatas);
+  const [erroDatas, setErroDatas] = useState<string | null>(null);
   const [linhas, setLinhas] = useState<LinhaAcompanhamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -150,11 +164,68 @@ export default function AcompanhamentoSolicitacaoPage() {
     qtdeGrade: number;
   } | null>(null);
   const cacheRef = useRef(new Map<string, DetalheAcompanhamento>());
+  const [pilhaDocumentos, setPilhaDocumentos] = useState<AlvoDocumento[]>([]);
+  const documentoCacheRef = useRef(new Map<string, DocumentoAcompanhamento>());
+
+  const abrirDocumento = useCallback((doc: AlvoDocumento) => {
+    setPilhaDocumentos((pilha) => {
+      const topo = pilha[pilha.length - 1];
+      if (topo && topo.tipo === doc.tipo && topo.id === doc.id) return pilha;
+      return [...pilha, doc];
+    });
+  }, []);
+
+  const fecharTudo = useCallback(() => {
+    setPilhaDocumentos([]);
+    setAlvo(null);
+  }, []);
+
+  const verNaGrade = useCallback(
+    (codigo: string) => {
+      fecharTudo();
+      setVisao('produtos');
+      setFiltroProduto(codigo);
+      setFiltroSolicitacao('');
+      setFiltroPedido('');
+      setFiltroDocumento('');
+      setEtapaFiltro('todas');
+    },
+    [fecharTudo]
+  );
+
+  const filtrarGradePorDocumento = useCallback(
+    (tipo: TipoDocumentoAcompanhamento, numero: string) => {
+      fecharTudo();
+      setVisao('produtos');
+      setFiltroProduto('');
+      setFiltroSolicitacao('');
+      setFiltroPedido(tipo === 'pedido' ? numero : '');
+      setFiltroDocumento(tipo === 'pre_entrada' ? numero : '');
+      setEtapaFiltro('todas');
+    },
+    [fecharTudo]
+  );
+
+  const carregarDatas = useCallback(async () => {
+    if (!podeVerDatas) return;
+    setCarregandoDatas(true);
+    setErroDatas(null);
+    const r = await listarDatasEntregaAtualizar();
+    if (r.error) {
+      setPedidosData([]);
+      setErroDatas(r.error);
+    } else {
+      setPedidosData(r.pedidos);
+    }
+    setCarregandoDatas(false);
+  }, [podeVerDatas]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro(null);
     cacheRef.current.clear();
+    documentoCacheRef.current.clear();
+    void carregarDatas();
     const r = await obterPipelineAcompanhamento();
     if (r.error) {
       setLinhas([]);
@@ -163,7 +234,7 @@ export default function AcompanhamentoSolicitacaoPage() {
       setLinhas(r.linhas);
     }
     setCarregando(false);
-  }, []);
+  }, [carregarDatas]);
 
   useEffect(() => {
     if (podeVer) void carregar();
@@ -264,6 +335,54 @@ export default function AcompanhamentoSolicitacaoPage() {
         </button>
       </div>
 
+      {podeVerDatas ? (
+      <div className="flex shrink-0 flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900/60" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={visao === 'produtos'}
+          onClick={() => setVisao('produtos')}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+            visao === 'produtos'
+              ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-50'
+              : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-50'
+          }`}
+        >
+          Materiais por produto
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={visao === 'datas'}
+          onClick={() => setVisao('datas')}
+          className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+            visao === 'datas'
+              ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-50'
+              : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-50'
+          }`}
+          title="Pedidos com data de entrega atrasada, vazia ou vencendo em até 7 dias"
+        >
+          Datas de entrega a atualizar
+          <span
+            className={`min-w-[1.5rem] rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold tabular-nums ${
+              pedidosData.length > 0 ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-100'
+            }`}
+          >
+            {carregandoDatas ? '…' : pedidosData.length}
+          </span>
+        </button>
+      </div>
+      ) : null}
+
+      {visao === 'datas' ? (
+        <DatasEntregaAtualizarPainel
+          pedidos={pedidosData}
+          carregando={carregandoDatas}
+          erro={erroDatas}
+          onAbrirPedido={(p) => abrirDocumento({ tipo: 'pedido', id: p.idPedido, numero: p.pedido })}
+        />
+      ) : (
+      <>
       <div className="flex shrink-0 items-stretch gap-2">
         {resumo.map((etapa, i) => (
           <Fragment key={etapa.id}>
@@ -350,7 +469,7 @@ export default function AcompanhamentoSolicitacaoPage() {
               onClick={() => setModalDataId(col.id)}
               className={`rounded-lg border px-3 py-2 text-xs font-medium ${
                 ativo
-                  ? 'border-primary-600 bg-primary-50 text-primary-800 dark:border-primary-500 dark:bg-primary-950/40 dark:text-primary-100'
+                  ? 'border-primary-600 bg-primary-50 text-primary-800 dark:border-primary-500 dark:bg-primary-500/25 dark:text-primary-100'
                   : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
               }`}
               title={col.label}
@@ -460,6 +579,8 @@ export default function AcompanhamentoSolicitacaoPage() {
           ))
         )}
       </div>
+      </>
+      )}
 
       <FiltroDataModal
         colunaId={modalDataId}
@@ -491,8 +612,25 @@ export default function AcompanhamentoSolicitacaoPage() {
         }}
       />
 
-      <AcompanhamentoSolicitacaoAjudaModal aberto={ajudaAberta} onClose={() => setAjudaAberta(false)} />
-      <AcompanhamentoSolicitacaoDetalheModal alvo={alvo} cacheRef={cacheRef} onClose={() => setAlvo(null)} />
+      <MateriaisAChegarAjudaModal aberto={ajudaAberta} onClose={() => setAjudaAberta(false)} />
+      <MateriaisAChegarDetalheModal
+        alvo={alvo}
+        cacheRef={cacheRef}
+        onAbrirDocumento={abrirDocumento}
+        onClose={() => setAlvo(null)}
+      />
+      <MateriaisAChegarDocumentoModal
+        alvo={pilhaDocumentos[pilhaDocumentos.length - 1] ?? null}
+        anterior={pilhaDocumentos[pilhaDocumentos.length - 2] ?? null}
+        cacheRef={documentoCacheRef}
+        podeAlterarData={podeAlterarData}
+        onVoltar={() => setPilhaDocumentos((pilha) => pilha.slice(0, -1))}
+        onAbrirDocumento={abrirDocumento}
+        onVerNaGrade={verNaGrade}
+        onFiltrarGrade={filtrarGradePorDocumento}
+        onDataEntregaAlterada={() => void carregarDatas()}
+        onClose={() => setPilhaDocumentos([])}
+      />
     </div>
   );
 }
@@ -578,7 +716,7 @@ function FiltroDataModal({
               onClick={() => setDir('asc')}
               className={`rounded-lg border px-3 py-2 text-sm ${
                 dir === 'asc'
-                  ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:border-primary-500 dark:bg-primary-950/40 dark:text-primary-100'
+                  ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:border-primary-500 dark:bg-primary-500/25 dark:text-primary-100'
                   : 'border-slate-300 text-slate-700 dark:border-slate-600 dark:text-slate-200'
               }`}
               aria-pressed={dir === 'asc'}
@@ -590,7 +728,7 @@ function FiltroDataModal({
               onClick={() => setDir('desc')}
               className={`rounded-lg border px-3 py-2 text-sm ${
                 dir === 'desc'
-                  ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:border-primary-500 dark:bg-primary-950/40 dark:text-primary-100'
+                  ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:border-primary-500 dark:bg-primary-500/25 dark:text-primary-100'
                   : 'border-slate-300 text-slate-700 dark:border-slate-600 dark:text-slate-200'
               }`}
               aria-pressed={dir === 'desc'}

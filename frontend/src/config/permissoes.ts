@@ -19,6 +19,12 @@ export const PERMISSOES = {
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_3: 'compras.pendencias.prioridade.comprador_3',
   COMPRAS_VINCULO_FINALIZACAO_AMPLIADO: 'compras.vinculo_finalizacao.ampliado',
+  /** Materiais a chegar — acesso à tela. */
+  COMPRAS_MATERIAIS_CHEGAR_VER: 'compras.materiais_chegar.ver',
+  /** Materiais a chegar — guia "Datas de entrega a atualizar". */
+  COMPRAS_MATERIAIS_CHEGAR_DATAS_VER: 'compras.materiais_chegar.datas_entrega.ver',
+  /** Materiais a chegar — alterar data de entrega do item do pedido de compra. */
+  COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_VER: 'comercial.ver',

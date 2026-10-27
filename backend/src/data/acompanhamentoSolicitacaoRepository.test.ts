@@ -5,7 +5,15 @@ import {
   SQL_IPC_COMPRADO,
   SQL_IPC_ATENDIDO,
   SQL_SC_LIBERADA_SEM_PEDIDO,
+  SQL_STATUS_ITEM_PEDIDO,
+  SQL_IPC_DATA_ENTREGA_A_ATUALIZAR,
+  IPC_STATUS_DATA_ENTREGA_SQL,
+  DATA_ENTREGA_DIAS_ALERTA,
+  ordenarPedidosDataEntrega,
+  montarItensPedido,
+  montarItensPreEntrada,
   montarLinhasPipeline,
+  parseRefsDocumento,
   unirTokensBusca,
 } from './acompanhamentoSolicitacaoRepository.js';
 
@@ -103,5 +111,85 @@ describe('recorte SQL do pipeline', () => {
     expect(SQL_IPC_ATENDIDO).not.toContain('NOT IN (1,');
     expect(SQL_IPC_ATENDIDO).not.toContain('EXISTS');
     expect(SQL_IPC_COMPRADO).toContain('EXISTS');
+  });
+
+  it('status do item do pedido reaproveita os recortes da grade', () => {
+    expect(SQL_STATUS_ITEM_PEDIDO).toContain(SQL_IPC_COMPRADO);
+    expect(SQL_STATUS_ITEM_PEDIDO).toContain(SQL_IPC_ATENDIDO);
+  });
+});
+
+describe('datas de entrega a atualizar', () => {
+  it('Liberado/parcial ou atendido com pré-entrada, na janela de dias', () => {
+    expect(IPC_STATUS_DATA_ENTREGA_SQL).toBe('2, 3');
+    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`ipc.status IN (${IPC_STATUS_DATA_ENTREGA_SQL})`);
+    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(SQL_IPC_ATENDIDO);
+    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`INTERVAL ${DATA_ENTREGA_DIAS_ALERTA} DAY`);
+    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain('ipc.dataEntrega IS NULL');
+  });
+
+  it('ordena sem data primeiro, depois o mais atrasado', () => {
+    const base = {
+      fornecedor: null,
+      dataEmissao: null,
+      itens: 1,
+      liberados: 1,
+      parciais: 0,
+      preEntradas: 0,
+      menorDataEntrega: null,
+    };
+    const ordem = ordenarPedidosDataEntrega([
+      { ...base, idPedido: 1, pedido: 'PC 1', semData: 0, menorDias: 3 },
+      { ...base, idPedido: 2, pedido: 'PC 2', semData: 0, menorDias: -10 },
+      { ...base, idPedido: 3, pedido: 'PC 3', semData: 1, menorDias: null },
+    ]).map((p) => p.pedido);
+    expect(ordem).toEqual(['PC 3', 'PC 2', 'PC 1']);
+  });
+});
+
+describe('parseRefsDocumento', () => {
+  it('lê id|número sem repetir o mesmo id', () => {
+    expect(parseRefsDocumento('10|PC 10\n11|PC 11\n10|PC 10')).toEqual([
+      { id: 10, numero: 'PC 10' },
+      { id: 11, numero: 'PC 11' },
+    ]);
+    expect(parseRefsDocumento(null)).toEqual([]);
+  });
+});
+
+describe('montarItensPedido', () => {
+  it('em caminho: saldo no Comprado e soma única dos itens 173 na Pré-entrada', () => {
+    const itens = montarItensPedido(
+      [
+        { idItem: 1, idProduto: 7, codigo: 'MP 1', qtde: 10, qtdeAtendida: 4, saldo: 6, status: 'comprado' },
+        { idItem: 2, idProduto: 8, codigo: 'MP 2', qtde: 5, qtdeAtendida: 5, saldo: 0, status: 'pre_entrada' },
+        { idItem: 3, idProduto: 9, codigo: 'MP 3', qtde: 2, qtdeAtendida: 2, saldo: 0, status: 'recebido' },
+      ],
+      [
+        { idItemPedido: 2, idItemDocumento: 50, qtde: 3, idDocumento: 900, numeroDocumento: '55' },
+        { idItemPedido: 2, idItemDocumento: 51, qtde: 2, idDocumento: 900, numeroDocumento: '55' },
+        { idItemPedido: 2, idItemDocumento: 51, qtde: 2, idDocumento: 900, numeroDocumento: '55' },
+      ]
+    );
+    expect(itens.map((i) => i.qtdeCaminho)).toEqual([6, 5, 0]);
+    expect(itens[1].preEntradas).toEqual([{ id: 900, numero: '55' }]);
+  });
+});
+
+describe('montarItensPreEntrada', () => {
+  it('soma em caminho só o item dentro do recorte da grade', () => {
+    const itens = montarItensPreEntrada(
+      [
+        { idItem: 50, idProduto: 7, codigo: 'MP 1', qtde: 3, status: 'pre_entrada' },
+        { idItem: 51, idProduto: 8, codigo: 'MP 2', qtde: 4, status: 'pre_entrada_fora_grade' },
+      ],
+      [
+        { idItemDocumento: 50, idPedido: 10, pedido: 'PC 10', solicitacoes: '901' },
+        { idItemDocumento: 50, idPedido: 11, pedido: 'PC 11', solicitacoes: '900, 901' },
+      ]
+    );
+    expect(itens.map((i) => i.qtdeCaminho)).toEqual([3, 0]);
+    expect(itens[0].pedidos.map((p) => p.numero)).toEqual(['PC 10', 'PC 11']);
+    expect(itens[0].solicitacoes).toBe('900, 901');
   });
 });

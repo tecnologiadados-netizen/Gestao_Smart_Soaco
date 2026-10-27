@@ -8,6 +8,10 @@ import {
   type LinhaDetalhePreEntrada,
   type LinhaDetalheSolicitado,
 } from '../../api/acompanhamentoSolicitacao';
+import type { AlvoDocumento } from './MateriaisAChegarDocumentoModal';
+
+const CLASSE_LINK =
+  'font-medium text-sky-700 underline decoration-dotted underline-offset-2 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100';
 
 const TITULO: Record<EtapaAcompanhamento, string> = {
   solicitado: 'Solicitado',
@@ -26,6 +30,7 @@ type Alvo = {
 type Props = {
   alvo: Alvo | null;
   cacheRef: MutableRefObject<Map<string, DetalheAcompanhamento>>;
+  onAbrirDocumento: (alvo: AlvoDocumento) => void;
   onClose: () => void;
 };
 
@@ -42,7 +47,7 @@ function celula(valor: string | null | undefined): string {
   return t ? t : '—';
 }
 
-export default function AcompanhamentoSolicitacaoDetalheModal({ alvo, cacheRef, onClose }: Props) {
+export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDocumento, onClose }: Props) {
   const [detalhe, setDetalhe] = useState<DetalheAcompanhamento | null>(null);
 
   useEffect(() => {
@@ -133,7 +138,22 @@ export default function AcompanhamentoSolicitacaoDetalheModal({ alvo, cacheRef, 
                   (linhas as LinhaDetalheComprado[]).map((l) => (
                     <tr key={l.idItem} className="border-t border-slate-100 dark:border-slate-700">
                       <td className="px-2 py-2 font-medium text-slate-800 dark:text-slate-100">{celula(l.solicitacoes)}</td>
-                      <td className="px-2 py-2">{l.pedido}</td>
+                      <td className="px-2 py-2">
+                        {l.idPedido > 0 ? (
+                          <button
+                            type="button"
+                            className={CLASSE_LINK}
+                            title={`Ver todos os itens do pedido ${l.pedido}`}
+                            onClick={() =>
+                              onAbrirDocumento({ tipo: 'pedido', id: l.idPedido, numero: l.pedido, idProdutoOrigem: alvo.idProduto })
+                            }
+                          >
+                            {l.pedido}
+                          </button>
+                        ) : (
+                          l.pedido
+                        )}
+                      </td>
                       <td className="px-2 py-2">{celula(l.fornecedor)}</td>
                       <td className="px-2 py-2">{celula(l.dataEntrega)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtQtde(l.qtde)}</td>
@@ -143,8 +163,48 @@ export default function AcompanhamentoSolicitacaoDetalheModal({ alvo, cacheRef, 
                   (linhas as LinhaDetalhePreEntrada[]).map((l) => (
                     <tr key={l.idItem} className="border-t border-slate-100 dark:border-slate-700">
                       <td className="px-2 py-2 font-medium text-slate-800 dark:text-slate-100">{celula(l.solicitacoes)}</td>
-                      <td className="px-2 py-2">{celula(l.pedidos)}</td>
-                      <td className="px-2 py-2">{celula(l.numeroDocumento)}</td>
+                      <td className="px-2 py-2">
+                        {l.pedidosRef?.length ? (
+                          <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            {l.pedidosRef.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className={CLASSE_LINK}
+                                title={`Ver todos os itens do pedido ${p.numero}`}
+                                onClick={() =>
+                                  onAbrirDocumento({ tipo: 'pedido', id: p.id, numero: p.numero, idProdutoOrigem: alvo.idProduto })
+                                }
+                              >
+                                {p.numero}
+                              </button>
+                            ))}
+                          </span>
+                        ) : (
+                          celula(l.pedidos)
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {l.idDocumento > 0 ? (
+                          <button
+                            type="button"
+                            className={CLASSE_LINK}
+                            title={`Ver todos os itens da pré-entrada ${celula(l.numeroDocumento)}`}
+                            onClick={() =>
+                              onAbrirDocumento({
+                                tipo: 'pre_entrada',
+                                id: l.idDocumento,
+                                numero: l.numeroDocumento ?? String(l.idDocumento),
+                                idProdutoOrigem: alvo.idProduto,
+                              })
+                            }
+                          >
+                            {celula(l.numeroDocumento)}
+                          </button>
+                        ) : (
+                          celula(l.numeroDocumento)
+                        )}
+                      </td>
                       <td className="px-2 py-2">{celula(l.numeroNfe)}</td>
                       <td className="px-2 py-2">{celula(l.fornecedor)}</td>
                       <td className="px-2 py-2">{celula(l.dataEmissao)}</td>
@@ -164,6 +224,7 @@ export default function AcompanhamentoSolicitacaoDetalheModal({ alvo, cacheRef, 
             </table>
             <p className="mt-2 text-xs text-slate-500">
               Quantidade na linha do pipeline: {fmtQtde(alvo.qtdeGrade)}. A soma do detalhe usa a mesma regra.
+              {alvo.etapa !== 'solicitado' ? ' Clique no pedido ou no documento para ver todos os itens dele.' : ''}
             </p>
           </div>
         );

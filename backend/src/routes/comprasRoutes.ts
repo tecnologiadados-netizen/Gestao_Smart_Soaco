@@ -36,6 +36,13 @@ import {
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
 } from '../controllers/doubleCheckInController.js';
+import {
+  getDatasEntregaAtualizar,
+  getDetalheAcompanhamento,
+  getDocumentoAcompanhamento,
+  getPipelineAcompanhamento,
+} from '../controllers/acompanhamentoSolicitacaoController.js';
+import { patchPedidoCompraDataEntregaItem } from '../controllers/integracaoController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -55,6 +62,22 @@ function async503(handler: RequestHandler): RequestHandler {
     });
   };
 }
+
+const podeMateriaisAChegar = requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER);
+
+router.get('/materiais-a-chegar', podeMateriaisAChegar, async503(getPipelineAcompanhamento));
+router.get('/materiais-a-chegar/detalhe', podeMateriaisAChegar, async503(getDetalheAcompanhamento));
+router.get('/materiais-a-chegar/documento', podeMateriaisAChegar, async503(getDocumentoAcompanhamento));
+router.get(
+  '/materiais-a-chegar/datas-entrega',
+  requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER),
+  async503(getDatasEntregaAtualizar)
+);
+router.patch(
+  '/materiais-a-chegar/data-entrega/item/:idItemPedidoCompra',
+  requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR),
+  async503(patchPedidoCompraDataEntregaItem)
+);
 
 router.get(
   '/produtos-coleta',
