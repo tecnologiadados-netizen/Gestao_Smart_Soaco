@@ -12,6 +12,7 @@ import {
   IPC_STATUS_DATA_ENTREGA_SQL,
   DATA_ENTREGA_DIAS_ALERTA,
   buildSqlDocPedidoItens,
+  rotuloStatusNomusItemPedidoCompra,
   ordenarPedidosDataEntrega,
   montarItensPedido,
   montarItensPreEntrada,
@@ -110,11 +111,20 @@ describe('recorte SQL do pipeline', () => {
   });
 
   it('separa explicitamente Liberado/Parcial, Atendido e Aguardando liberação', () => {
-    expect(IPC_STATUS_ABERTO_SQL).toBe('2, 3');
+    expect(IPC_STATUS_ABERTO_SQL).toBe('2, 4');
     expect(SQL_IPC_ATENDIDO).toContain('ipc.status = 1');
-    expect(SQL_IPC_ATENDIDO).not.toContain('status = 4');
+    expect(SQL_IPC_ATENDIDO).not.toContain('status = 3');
     expect(SQL_IPC_ATENDIDO).not.toContain('EXISTS');
     expect(SQL_IPC_COMPRADO).toContain('EXISTS');
+  });
+
+  it('traduz os códigos de status do item conforme o Nomus', () => {
+    expect(rotuloStatusNomusItemPedidoCompra(1)).toBe('Atendido totalmente');
+    expect(rotuloStatusNomusItemPedidoCompra(2)).toBe('Liberado');
+    expect(rotuloStatusNomusItemPedidoCompra(3)).toBe('Aguardando liberação');
+    expect(rotuloStatusNomusItemPedidoCompra(4)).toBe('Atendido parcialmente');
+    expect(rotuloStatusNomusItemPedidoCompra(5)).toBe('Atendido com corte');
+    expect(rotuloStatusNomusItemPedidoCompra(6)).toBe('Cancelado');
   });
 
   it('status do item do pedido reaproveita os recortes da grade', () => {
@@ -125,10 +135,10 @@ describe('recorte SQL do pipeline', () => {
 
 describe('datas de entrega a atualizar', () => {
   it('Liberado/parcial ou atendido com pré-entrada, na janela de dias', () => {
-    expect(IPC_STATUS_DATA_ENTREGA_SQL).toBe('2, 3');
+    expect(IPC_STATUS_DATA_ENTREGA_SQL).toBe('2, 4');
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`ipc.status IN (${IPC_STATUS_DATA_ENTREGA_SQL})`);
     expect(SQL_IPC_ELEGIVEL_DATAS_ENTREGA).toContain(SQL_IPC_ATENDIDO);
-    expect(SQL_IPC_ELEGIVEL_DATAS_ENTREGA).not.toContain('status = 4');
+    expect(SQL_IPC_ELEGIVEL_DATAS_ENTREGA).not.toContain('status = 3');
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(SQL_IPC_ELEGIVEL_DATAS_ENTREGA);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`INTERVAL ${DATA_ENTREGA_DIAS_ALERTA} DAY`);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain('ipc.dataEntrega IS NULL');

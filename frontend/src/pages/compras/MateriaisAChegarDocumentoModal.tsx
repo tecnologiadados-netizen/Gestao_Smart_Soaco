@@ -8,8 +8,10 @@ import {
   obterDocumentoAcompanhamento,
   type DocumentoAcompanhamento,
   type EscopoDocumentoAcompanhamento,
+  type ItemDocumentoAcompanhamento,
   type RefDocumento,
   type StatusItemDocumento,
+  type StatusNomusItemPedidoCompra,
   type TipoDocumentoAcompanhamento,
 } from '../../api/acompanhamentoSolicitacao';
 import PrazoEntregaBadge from './PrazoEntregaBadge';
@@ -107,6 +109,59 @@ const ORDEM_STATUS: StatusItemDocumento[] = [
   'cancelado',
 ];
 
+const STATUS_NOMUS: Record<StatusNomusItemPedidoCompra, { rotulo: string; dica: string; classe: string }> = {
+  'Atendido totalmente': {
+    rotulo: 'Atendido totalmente',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:text-emerald-100',
+  },
+  Liberado: {
+    rotulo: 'Liberado',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/60 dark:bg-amber-500/15 dark:text-amber-100',
+  },
+  'Aguardando liberação': {
+    rotulo: 'Aguardando liberação',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-500 dark:bg-slate-700/60 dark:text-slate-100',
+  },
+  'Atendido parcialmente': {
+    rotulo: 'Atendido parcialmente',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-500/60 dark:bg-orange-500/15 dark:text-orange-100',
+  },
+  'Atendido com corte': {
+    rotulo: 'Atendido com corte',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-red-200 bg-red-50 text-red-800 dark:border-red-500/50 dark:bg-red-500/15 dark:text-red-200',
+  },
+  Cancelado: {
+    rotulo: 'Cancelado',
+    dica: 'Status atual do item no pedido de compra do Nomus.',
+    classe: 'border-red-200 bg-red-50 text-red-800 dark:border-red-500/50 dark:bg-red-500/15 dark:text-red-200',
+  },
+  Desconhecido: {
+    rotulo: 'Desconhecido',
+    dica: 'Código de status não reconhecido no item do pedido de compra do Nomus.',
+    classe: CLASSE_FORA,
+  },
+};
+
+const ORDEM_STATUS_NOMUS: StatusNomusItemPedidoCompra[] = [
+  'Liberado',
+  'Atendido parcialmente',
+  'Atendido totalmente',
+  'Aguardando liberação',
+  'Atendido com corte',
+  'Cancelado',
+  'Desconhecido',
+];
+
+function configStatusExibido(item: ItemDocumentoAcompanhamento, ehPedido: boolean) {
+  if (ehPedido && item.statusNomus) return STATUS_NOMUS[item.statusNomus];
+  return STATUS[item.status];
+}
+
 function chave(alvo: AlvoDocumento): string {
   return `${alvo.tipo}:${alvo.id}:${alvo.escopo ?? 'completo'}`;
 }
@@ -191,9 +246,25 @@ export default function MateriaisAChegarDocumentoModal({
   }, [doc]);
 
   const contagem = useMemo(() => {
+    if (doc?.tipo === 'pedido') {
+      const mapa = new Map<StatusNomusItemPedidoCompra, number>();
+      for (const item of doc.itens) {
+        if (!item.statusNomus) continue;
+        mapa.set(item.statusNomus, (mapa.get(item.statusNomus) ?? 0) + 1);
+      }
+      return ORDEM_STATUS_NOMUS.filter((s) => mapa.has(s)).map((s) => ({
+        chave: s,
+        qtde: mapa.get(s) ?? 0,
+        ...STATUS_NOMUS[s],
+      }));
+    }
     const mapa = new Map<StatusItemDocumento, number>();
     for (const item of doc?.itens ?? []) mapa.set(item.status, (mapa.get(item.status) ?? 0) + 1);
-    return ORDEM_STATUS.filter((s) => mapa.has(s)).map((s) => ({ status: s, qtde: mapa.get(s) ?? 0 }));
+    return ORDEM_STATUS.filter((s) => mapa.has(s)).map((s) => ({
+      chave: s,
+      qtde: mapa.get(s) ?? 0,
+      ...STATUS[s],
+    }));
   }, [doc]);
 
   const alertasData = useMemo(() => (doc?.itens ?? []).filter((i) => i.alertaDataEntrega).length, [doc]);
@@ -273,11 +344,11 @@ export default function MateriaisAChegarDocumentoModal({
                   </span>
                   {contagem.map((c) => (
                     <span
-                      key={c.status}
-                      className={`rounded-full border px-2 py-0.5 font-medium ${STATUS[c.status].classe}`}
-                      title={STATUS[c.status].dica}
+                      key={c.chave}
+                      className={`rounded-full border px-2 py-0.5 font-medium ${c.classe}`}
+                      title={c.dica}
                     >
-                      {c.qtde} {STATUS[c.status].rotulo.toLowerCase()}
+                      {c.qtde} {c.rotulo.toLowerCase()}
                     </span>
                   ))}
                 </span>
@@ -310,7 +381,7 @@ export default function MateriaisAChegarDocumentoModal({
                     </thead>
                     <tbody>
                       {doc.itens.map((item) => {
-                        const st = STATUS[item.status];
+                        const st = configStatusExibido(item, ehPedido);
                         const origem = alvo.idProdutoOrigem != null && item.idProduto === alvo.idProdutoOrigem;
                         return (
                           <tr
@@ -427,8 +498,10 @@ export default function MateriaisAChegarDocumentoModal({
                 </div>
               )}
               <p className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                Em caminho é o que o item soma na etapa da grade, pela mesma regra. Itens com status cinza, verde ou
-                vermelho já saíram do caminho (ou não entram nele) e aparecem aqui só para completar o documento.
+                {ehPedido
+                  ? 'Status é a situação atual do item no pedido de compra do Nomus. '
+                  : 'Status indica onde o item da pré-entrada está no caminho. '}
+                Em caminho é o que o item soma na etapa da grade, pela mesma regra.
                 {ehPedido && alertasData > 0 && !podeAlterarData
                   ? ' Para alterar a data de entrega é preciso a permissão "Materiais a chegar — alterar datas de entrega".'
                   : ''}

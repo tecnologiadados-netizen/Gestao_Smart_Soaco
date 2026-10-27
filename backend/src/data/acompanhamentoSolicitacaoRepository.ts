@@ -21,8 +21,8 @@ import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js
 /** Nomus `solicitacaocompra.status` = Liberada. */
 export const SC_STATUS_LIBERADA = 6;
 
-/** Nomus `itempedidocompra.status`: Liberado (2) ou Atendido parcialmente (3). */
-export const IPC_STATUS_ABERTO_SQL = '2, 3';
+/** Nomus `itempedidocompra.status`: Liberado (2) ou Atendido parcialmente (4). */
+export const IPC_STATUS_ABERTO_SQL = '2, 4';
 
 /**
  * No item de pedido de compra, status 1 é Atendido totalmente.
@@ -278,8 +278,8 @@ CASE
 END
 `.trim();
 
-/** Itens de pedido Liberado (2) ou Atendido parcialmente (3), com saldo. */
-export const IPC_STATUS_DATA_ENTREGA_SQL = '2, 3';
+/** Itens de pedido Liberado (2) ou Atendido parcialmente (4), com saldo. */
+export const IPC_STATUS_DATA_ENTREGA_SQL = '2, 4';
 
 /** Janela do alerta: entrega vencida, sem data ou vencendo nos próximos dias. */
 export const DATA_ENTREGA_DIAS_ALERTA = 7;
@@ -389,6 +389,7 @@ SELECT
   DATEDIFF(CAST(ipc.dataEntrega AS DATE), CURDATE()) AS diasEntrega,
   CASE WHEN ${SQL_IPC_DATA_ENTREGA_A_ATUALIZAR} THEN 1 ELSE 0 END AS alertaDataEntrega,
   ${SQL_STATUS_ITEM_PEDIDO} AS status,
+  ipc.status AS statusNomusCodigo,
   ${SQL_SUB_SC_DO_IPC} AS solicitacoes
 FROM itempedidocompra ipc
 INNER JOIN produto p ON p.id = ipc.idProduto
@@ -580,12 +581,23 @@ export type ItemDocumentoAcompanhamento = {
   /** Mesma regra da lista "Datas de entrega a atualizar". */
   alertaDataEntrega: boolean;
   status: StatusItemDocumento;
+  /** Status atual do item do pedido no Nomus; nulo para item de pré-entrada. */
+  statusNomus: StatusNomusItemPedidoCompra | null;
   /** Quantidade que este item soma na etapa da grade (0 quando fora da grade). */
   qtdeCaminho: number;
   solicitacoes: string | null;
   pedidos: RefDocumento[];
   preEntradas: RefDocumento[];
 };
+
+export type StatusNomusItemPedidoCompra =
+  | 'Atendido totalmente'
+  | 'Liberado'
+  | 'Aguardando liberação'
+  | 'Atendido parcialmente'
+  | 'Atendido com corte'
+  | 'Cancelado'
+  | 'Desconhecido';
 
 export type PedidoDataEntregaAtualizar = {
   idPedido: number;
@@ -963,6 +975,17 @@ function statusItem(v: unknown): StatusItemDocumento {
   return STATUS_ITEM_DOCUMENTO.has(s) ? s : 'recebido';
 }
 
+export function rotuloStatusNomusItemPedidoCompra(v: unknown): StatusNomusItemPedidoCompra {
+  const codigo = toInt(v);
+  if (codigo === 1) return 'Atendido totalmente';
+  if (codigo === 2) return 'Liberado';
+  if (codigo === 3) return 'Aguardando liberação';
+  if (codigo === 4) return 'Atendido parcialmente';
+  if (codigo === 5) return 'Atendido com corte';
+  if (codigo === 6) return 'Cancelado';
+  return 'Desconhecido';
+}
+
 function pushRef(lista: RefDocumento[], id: number, numero: string | null): void {
   if (id <= 0 || lista.some((r) => r.id === id)) return;
   lista.push({ id, numero: numero ?? String(id) });
@@ -1020,6 +1043,7 @@ export function montarItensPedido(
       diasEntrega: intOrNull(r.diasEntrega),
       alertaDataEntrega: toInt(r.alertaDataEntrega) === 1,
       status,
+      statusNomus: rotuloStatusNomusItemPedidoCompra(r.statusNomusCodigo),
       qtdeCaminho,
       solicitacoes: strOrNull(r.solicitacoes),
       pedidos: [],
@@ -1070,6 +1094,7 @@ export function montarItensPreEntrada(
       diasEntrega: null,
       alertaDataEntrega: false,
       status,
+      statusNomus: null,
       qtdeCaminho: status === 'pre_entrada' ? qtde : 0,
       solicitacoes: solicitacoes || null,
       pedidos,

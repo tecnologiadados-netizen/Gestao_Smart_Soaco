@@ -43,7 +43,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'documento',
     titulo: 'Pedido e pré-entrada completos',
     oQueE:
-      'No detalhe de Comprado e de Pré-entrada, o número do pedido e o do documento são links. Eles abrem o documento inteiro: todos os itens do pedido de compra (ou da pré-entrada), com o status de cada um no caminho. O produto de onde você veio fica destacado com faixa azul e a etiqueta "Pesquisado", e a lista já rola até ele. No pedido, itens com data de entrega a atualizar mostram o prazo (Sem data, Atrasada ou Vence em X dias) e o botão Alterar data.',
+      'No detalhe de Comprado e de Pré-entrada, o número do pedido e o do documento são links. Eles abrem o documento inteiro. No pedido de compra, a coluna Status mostra a situação atual do item no Nomus; na pré-entrada, mostra onde o item está no caminho. O produto de onde você veio fica destacado com faixa azul e a etiqueta "Pesquisado", e a lista já rola até ele. No pedido, itens com data de entrega a atualizar mostram o prazo (Sem data, Atrasada ou Vence em X dias) e o botão Alterar data.',
     comoLe:
       'Dentro do documento, os números de pré-entrada (no pedido) e de pedido (na pré-entrada) também abrem o documento correspondente; o botão Voltar retorna ao anterior. "Filtrar a grade por este pedido/documento" fecha os modais e preenche o filtro da grade. "Ver na grade" filtra a grade pelo código do item. A coluna Em caminho é o que o item soma na etapa da grade, pela mesma regra da grade: saldo do pedido no Comprado e quantidade do documento 173 na Pré-entrada.',
     detalhes: [
@@ -73,7 +73,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'datas-entrega',
     titulo: 'Datas de entrega a atualizar',
     oQueE:
-      'Aba que lista os pedidos de compra cuja data de entrega precisa ser atualizada. Entra o item do pedido que está Liberado ou Atendido parcialmente (com saldo a receber), ou Atendido totalmente mas com documento de entrada ainda em pré-entrada (173). Item Aguardando liberação não entra. Além disso, a data de entrega do item precisa estar atrasada, vazia ou vencer nos próximos 7 dias. Entra todo pedido de compra, com ou sem solicitação vinculada.',
+      'Aba que lista os pedidos de compra cuja data de entrega precisa ser atualizada. A regra usa o status real do item no Nomus: entra o item Liberado ou Atendido parcialmente (com saldo a receber), ou Atendido totalmente mas com documento de entrada ainda em pré-entrada (173). Item Aguardando liberação não entra. Além disso, a data de entrega do item precisa estar atrasada, vazia ou vencer nos próximos 7 dias. Entra todo pedido de compra, com ou sem solicitação vinculada.',
     comoLe:
       'Cada linha é um pedido: situação dos itens (liberados, parciais, pré-entrada), quantos itens estão a atualizar, a data de entrega mais antiga entre esses itens (ou "Sem data") e o prazo mais crítico (Sem data, Atrasada há X dias ou Vence em X dias). A lista vem com os sem data primeiro e depois os mais atrasados. Clique no pedido para abrir somente os itens com status aceito nesta aba: Liberado, Atendido parcialmente ou Atendido totalmente com pré-entrada vinculada. Os que estão na janela de prazo aparecem com destaque e o botão Alterar data, que usa a mesma alteração da tela de Integração (nova data, motivo e observação, com histórico). Depois de salvar, a lista se atualiza; se a nova data ficar a mais de 7 dias, o item sai dela.',
     detalhes: [

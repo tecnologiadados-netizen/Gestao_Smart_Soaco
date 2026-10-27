@@ -68,6 +68,15 @@ export type StatusItemDocumento =
   | 'recebido'
   | 'cancelado';
 
+export type StatusNomusItemPedidoCompra =
+  | 'Atendido totalmente'
+  | 'Liberado'
+  | 'Aguardando liberação'
+  | 'Atendido parcialmente'
+  | 'Atendido com corte'
+  | 'Cancelado'
+  | 'Desconhecido';
+
 export type ItemDocumentoAcompanhamento = {
   idItem: number;
   idProduto: number;
@@ -83,6 +92,7 @@ export type ItemDocumentoAcompanhamento = {
   diasEntrega: number | null;
   alertaDataEntrega: boolean;
   status: StatusItemDocumento;
+  statusNomus: StatusNomusItemPedidoCompra | null;
   /** Quantidade que o item soma na etapa da grade (0 quando fora da grade). */
   qtdeCaminho: number;
   solicitacoes: string | null;
