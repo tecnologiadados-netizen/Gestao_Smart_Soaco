@@ -21,13 +21,12 @@ import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js
 /** Nomus `solicitacaocompra.status` = Liberada. */
 export const SC_STATUS_LIBERADA = 6;
 
-/** Nomus `itempedidocompra.status` com saldo a receber (mesmo corte do PC pendente). */
-export const IPC_STATUS_ABERTO_SQL = '2, 3, 4';
+/** Nomus `itempedidocompra.status`: Liberado (2) ou Atendido parcialmente (3). */
+export const IPC_STATUS_ABERTO_SQL = '2, 3';
 
 /**
- * Corte e cancelado não entram como pré-entrada.
- * No item de pedido de compra, status 1 é o item atendido/encerrado (saldo zerado).
- * É esse status que a pré-entrada grava — e que some da consulta de pedidos em aberto (2, 3, 4).
+ * No item de pedido de compra, status 1 é Atendido totalmente.
+ * Aguardando liberação (4), corte (5) e cancelado (6) não entram como pré-entrada.
  */
 export const IPC_STATUS_EXCLUIDO_ENCERRADO_SQL = '5, 6';
 
@@ -68,9 +67,9 @@ AND ${SQL_EXISTS_SC_DA_EMPRESA}
 /** Pedido atendido totalmente (saldo zerado) e ainda não cancelado/cortado.
  * Não exige solicitação: no mesmo pedido, há item que chega só pela pré-entrada. */
 export const SQL_IPC_ATENDIDO = `
-ipc.qtde > 0
+ipc.status = 1
+AND ipc.qtde > 0
 AND ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2) <= 0
-AND ipc.status NOT IN (${IPC_STATUS_EXCLUIDO_ENCERRADO_SQL})
 `.trim();
 
 export const SQL_DOC_PRE_ENTRADA = `
@@ -295,6 +294,14 @@ ipc.status IN (${IPC_STATUS_DATA_ENTREGA_SQL})
 AND ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2) > 0
 `.trim();
 
+/** Status aceitos na aba: Liberado, Parcial ou Atendido totalmente com pré-entrada. */
+export const SQL_IPC_ELEGIVEL_DATAS_ENTREGA = `
+(
+  (${SQL_IPC_LIBERADO_OU_PARCIAL})
+  OR (${SQL_IPC_ATENDIDO} AND ${SQL_EXISTS_PRE_ENTRADA_DO_IPC})
+)
+`.trim();
+
 /**
  * Item cuja data de entrega precisa ser atualizada: Liberado/parcial com saldo,
  * ou atendido totalmente com pré-entrada; e entrega vencida, vazia ou na janela.
@@ -303,10 +310,7 @@ AND ROUND(ipc.qtde - IFNULL(ipc.qtdeAtendida, 0), 2) > 0
  * o histórico de itens atendidos.
  */
 export const SQL_IPC_DATA_ENTREGA_A_ATUALIZAR = `
-(
-  (${SQL_IPC_LIBERADO_OU_PARCIAL})
-  OR (${SQL_IPC_ATENDIDO} AND ${SQL_EXISTS_PRE_ENTRADA_DO_IPC})
-)
+${SQL_IPC_ELEGIVEL_DATAS_ENTREGA}
 AND ${SQL_DATA_ENTREGA_NA_JANELA}
 `.trim();
 
@@ -363,7 +367,11 @@ LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
 WHERE pc.id = ?
 `.trim();
 
-const SQL_DOC_PEDIDO_ITENS = `
+export function buildSqlDocPedidoItens(somenteElegiveisDataEntrega: boolean): string {
+  const filtroEscopo = somenteElegiveisDataEntrega
+    ? `AND ${SQL_IPC_ELEGIVEL_DATAS_ENTREGA}`
+    : '';
+  return `
 SELECT
   ipc.id AS idItem,
   ipc.idProduto AS idProduto,
@@ -386,8 +394,10 @@ FROM itempedidocompra ipc
 INNER JOIN produto p ON p.id = ipc.idProduto
 LEFT JOIN unidademedida umed ON umed.id = p.idUnidadeMedida
 WHERE ipc.idPedidoCompra = ?
+  ${filtroEscopo}
 ORDER BY p.nome, ipc.id
 `.trim();
+}
 
 /** Pré-entradas (tipo 173) ligadas aos itens do pedido. Uma linha por item de documento × item de pedido. */
 const SQL_DOC_PEDIDO_PRE_ENTRADAS = `
@@ -1117,7 +1127,8 @@ async function queryPorId(sql: string, id: number): Promise<Record<string, unkno
 
 export async function obterDocumentoAcompanhamento(
   tipo: TipoDocumentoAcompanhamento,
-  id: number
+  id: number,
+  somenteElegiveisDataEntrega = false
 ): Promise<{ documento: DocumentoAcompanhamento | null; erro?: string; naoEncontrado?: boolean }> {
   if (!Number.isFinite(id) || id <= 0) return { documento: null, erro: 'Documento inválido.' };
   const off = exigirNomus();
@@ -1126,7 +1137,7 @@ export async function obterDocumentoAcompanhamento(
     if (tipo === 'pedido') {
       const [cab, itens, pre] = await Promise.all([
         queryPorId(SQL_DOC_PEDIDO_CABECALHO, id),
-        queryPorId(SQL_DOC_PEDIDO_ITENS, id),
+        queryPorId(buildSqlDocPedidoItens(somenteElegiveisDataEntrega), id),
         queryPorId(SQL_DOC_PEDIDO_PRE_ENTRADAS, id),
       ]);
       const c = cab[0];

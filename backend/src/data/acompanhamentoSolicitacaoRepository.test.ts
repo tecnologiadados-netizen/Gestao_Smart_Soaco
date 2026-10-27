@@ -7,8 +7,11 @@ import {
   SQL_SC_LIBERADA_SEM_PEDIDO,
   SQL_STATUS_ITEM_PEDIDO,
   SQL_IPC_DATA_ENTREGA_A_ATUALIZAR,
+  SQL_IPC_ELEGIVEL_DATAS_ENTREGA,
+  IPC_STATUS_ABERTO_SQL,
   IPC_STATUS_DATA_ENTREGA_SQL,
   DATA_ENTREGA_DIAS_ALERTA,
+  buildSqlDocPedidoItens,
   ordenarPedidosDataEntrega,
   montarItensPedido,
   montarItensPreEntrada,
@@ -106,9 +109,10 @@ describe('recorte SQL do pipeline', () => {
     expect(SQL_EXISTS_SC_DA_EMPRESA).not.toContain('sc.status');
   });
 
-  it('trata status 1 do item de pedido como atendido, não como fora do pipeline', () => {
-    expect(SQL_IPC_ATENDIDO).toContain('NOT IN (5, 6)');
-    expect(SQL_IPC_ATENDIDO).not.toContain('NOT IN (1,');
+  it('separa explicitamente Liberado/Parcial, Atendido e Aguardando liberação', () => {
+    expect(IPC_STATUS_ABERTO_SQL).toBe('2, 3');
+    expect(SQL_IPC_ATENDIDO).toContain('ipc.status = 1');
+    expect(SQL_IPC_ATENDIDO).not.toContain('status = 4');
     expect(SQL_IPC_ATENDIDO).not.toContain('EXISTS');
     expect(SQL_IPC_COMPRADO).toContain('EXISTS');
   });
@@ -123,9 +127,17 @@ describe('datas de entrega a atualizar', () => {
   it('Liberado/parcial ou atendido com pré-entrada, na janela de dias', () => {
     expect(IPC_STATUS_DATA_ENTREGA_SQL).toBe('2, 3');
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`ipc.status IN (${IPC_STATUS_DATA_ENTREGA_SQL})`);
-    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(SQL_IPC_ATENDIDO);
+    expect(SQL_IPC_ELEGIVEL_DATAS_ENTREGA).toContain(SQL_IPC_ATENDIDO);
+    expect(SQL_IPC_ELEGIVEL_DATAS_ENTREGA).not.toContain('status = 4');
+    expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(SQL_IPC_ELEGIVEL_DATAS_ENTREGA);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`INTERVAL ${DATA_ENTREGA_DIAS_ALERTA} DAY`);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain('ipc.dataEntrega IS NULL');
+  });
+
+  it('no modal da aba, exclui itens fora dos status aceitos', () => {
+    const trechoWhere = (sql: string) => sql.slice(sql.lastIndexOf('WHERE ipc.idPedidoCompra = ?'));
+    expect(trechoWhere(buildSqlDocPedidoItens(true))).toContain(SQL_IPC_ELEGIVEL_DATAS_ENTREGA);
+    expect(trechoWhere(buildSqlDocPedidoItens(false))).not.toContain(SQL_IPC_ELEGIVEL_DATAS_ENTREGA);
   });
 
   it('ordena sem data primeiro, depois o mais atrasado', () => {

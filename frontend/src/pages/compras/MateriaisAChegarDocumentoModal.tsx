@@ -7,6 +7,7 @@ import {
   alterarDataEntregaMateriaisAChegar,
   obterDocumentoAcompanhamento,
   type DocumentoAcompanhamento,
+  type EscopoDocumentoAcompanhamento,
   type RefDocumento,
   type StatusItemDocumento,
   type TipoDocumentoAcompanhamento,
@@ -19,6 +20,8 @@ export type AlvoDocumento = {
   numero: string;
   /** Produto de onde o usuário veio, destacado na lista. */
   idProdutoOrigem?: number;
+  /** Na aba de datas, mostra somente os status aceitos por essa consulta. */
+  escopo?: EscopoDocumentoAcompanhamento;
 };
 
 type Props = {
@@ -105,7 +108,7 @@ const ORDEM_STATUS: StatusItemDocumento[] = [
 ];
 
 function chave(alvo: AlvoDocumento): string {
-  return `${alvo.tipo}:${alvo.id}`;
+  return `${alvo.tipo}:${alvo.id}:${alvo.escopo ?? 'completo'}`;
 }
 
 function celula(valor: string | null | undefined): string {
@@ -152,32 +155,34 @@ export default function MateriaisAChegarDocumentoModal({
   onDataEntregaAlterada,
   onClose,
 }: Props) {
-  const [documento, setDocumento] = useState<DocumentoAcompanhamento | null>(null);
+  const [resultado, setResultado] = useState<{
+    key: string;
+    documento: DocumentoAcompanhamento;
+  } | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [alterarItem, setAlterarItem] = useState<ItemAlterarDataEntregaCompra | null>(null);
   const linhaOrigemRef = useRef<HTMLTableRowElement | null>(null);
 
   useEffect(() => {
-    setDocumento(null);
     setAlterarItem(null);
-  }, [alvo?.tipo, alvo?.id]);
+  }, [alvo?.tipo, alvo?.id, alvo?.escopo]);
 
   const onLoad = useCallback(async () => {
     if (!alvo) return {};
     const key = chave(alvo);
     const cached = cacheRef.current.get(key);
     if (cached) {
-      setDocumento(cached);
+      setResultado({ key, documento: cached });
       return {};
     }
-    const r = await obterDocumentoAcompanhamento(alvo.tipo, alvo.id);
+    const r = await obterDocumentoAcompanhamento(alvo.tipo, alvo.id, alvo.escopo);
     if (r.error || !r.documento) return { error: r.error ?? 'Não foi possível carregar o documento.' };
     cacheRef.current.set(key, r.documento);
-    setDocumento(r.documento);
+    setResultado({ key, documento: r.documento });
     return {};
   }, [alvo, cacheRef]);
 
-  const doc = documento && alvo && documento.tipo === alvo.tipo && documento.id === alvo.id ? documento : null;
+  const doc = alvo && resultado?.key === chave(alvo) ? resultado.documento : null;
 
   useEffect(() => {
     if (!doc) return;
@@ -209,7 +214,9 @@ export default function MateriaisAChegarDocumentoModal({
       ]
         .filter(Boolean)
         .join(' · ')
-    : 'Todos os itens do documento e onde cada um está no caminho.';
+    : alvo?.escopo === 'datas_entrega'
+      ? 'Itens Liberados, Atendidos parcialmente ou Atendidos totalmente com pré-entrada.'
+      : 'Todos os itens do documento e onde cada um está no caminho.';
 
   return (
     <>

@@ -47,11 +47,12 @@ export async function getDatasEntregaAtualizar(_req: Request, res: Response): Pr
 export async function getDocumentoAcompanhamento(req: Request, res: Response): Promise<void> {
   const tipo = String(req.query.tipo ?? '') as TipoDocumentoAcompanhamento;
   const id = Number(req.query.id);
+  const somenteElegiveisDataEntrega = req.query.escopo === 'datas_entrega';
   if (!TIPOS_DOCUMENTO.has(tipo)) {
     res.status(400).json({ error: 'Tipo de documento inválido.' });
     return;
   }
-  const r = await obterDocumentoAcompanhamento(tipo, id);
+  const r = await obterDocumentoAcompanhamento(tipo, id, somenteElegiveisDataEntrega);
   if (!r.documento) {
     res.status(r.naoEncontrado ? 404 : r.erro === 'Documento inválido.' ? 400 : 503).json({
       error: r.erro ?? 'Documento não encontrado.',

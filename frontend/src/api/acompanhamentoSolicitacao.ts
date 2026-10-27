@@ -57,6 +57,7 @@ export type LinhaDetalhePreEntrada = {
 };
 
 export type TipoDocumentoAcompanhamento = 'pedido' | 'pre_entrada';
+export type EscopoDocumentoAcompanhamento = 'completo' | 'datas_entrega';
 
 export type StatusItemDocumento =
   | 'comprado'
@@ -157,9 +158,10 @@ export async function listarDatasEntregaAtualizar(): Promise<{
 
 export async function obterDocumentoAcompanhamento(
   tipo: TipoDocumentoAcompanhamento,
-  id: number
+  id: number,
+  escopo: EscopoDocumentoAcompanhamento = 'completo'
 ): Promise<{ documento: DocumentoAcompanhamento | null; error?: string }> {
-  const qs = new URLSearchParams({ tipo, id: String(id) });
+  const qs = new URLSearchParams({ tipo, id: String(id), escopo });
   const res = await apiFetch(`${BASE}/documento?${qs.toString()}`);
   const body = (await res.json().catch(() => ({}))) as Partial<DocumentoAcompanhamento> & { error?: string };
   if (!res.ok) return { documento: null, error: body.error ?? res.statusText };

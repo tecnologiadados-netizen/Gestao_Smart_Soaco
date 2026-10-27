@@ -379,7 +379,14 @@ export default function MateriaisAChegarPage() {
           pedidos={pedidosData}
           carregando={carregandoDatas}
           erro={erroDatas}
-          onAbrirPedido={(p) => abrirDocumento({ tipo: 'pedido', id: p.idPedido, numero: p.pedido })}
+          onAbrirPedido={(p) =>
+            abrirDocumento({
+              tipo: 'pedido',
+              id: p.idPedido,
+              numero: p.pedido,
+              escopo: 'datas_entrega',
+            })
+          }
         />
       ) : (
       <>
