@@ -2,9 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import type { PrecificacaoItemRow } from '../../api/engenharia';
 import {
   salvarPrecificacaoValores,
-  atualizarValorUnitarioItemPrecificacao,
+  atualizarValorTotalManualItemPrecificacao,
   excluirItemPrecificacao,
 } from '../../api/engenharia';
+import { useAuth } from '../../contexts/AuthContext';
+import { PERMISSOES } from '../../config/permissoes';
 import { listarTickets, obterTicketPorId, type TicketItem, type TicketDetalhe } from '../../api/integracao';
 import SelectWithSearch from '../SelectWithSearch';
 import { MensagemSemRegistrosInline } from '../MensagemSemRegistros';
@@ -158,9 +160,11 @@ export default function ModalResultadoPrecificacao({
   const [mensagemSalvar, setMensagemSalvar] = useState<'ok' | 'erro' | null>(null);
   const [itensLocal, setItensLocal] = useState<PrecificacaoItemRow[]>(() => [...itens]);
   const [editandoItemId, setEditandoItemId] = useState<number | null>(null);
-  const [valorUnitarioEdicao, setValorUnitarioEdicao] = useState('');
+  const [valorTotalEdicao, setValorTotalEdicao] = useState('');
   const [salvandoValorItem, setSalvandoValorItem] = useState(false);
   const [excluindoItemId, setExcluindoItemId] = useState<number | null>(null);
+  const { hasPermission } = useAuth();
+  const podeEditar = hasPermission(PERMISSOES.PRECIFICACAO_GERAR);
 
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [ticketId, setTicketId] = useState<string>('');
@@ -183,7 +187,7 @@ export default function ModalResultadoPrecificacao({
   useEffect(() => {
     setItensLocal([...itens]);
     setEditandoItemId(null);
-    setValorUnitarioEdicao('');
+    setValorTotalEdicao('');
   }, [idPrecificacao, itens]);
 
   useEffect(() => {
@@ -277,20 +281,20 @@ export default function ModalResultadoPrecificacao({
 
   const iniciarEdicaoItem = (item: PrecificacaoItemRow) => {
     setEditandoItemId(item.id);
-    setValorUnitarioEdicao(formatDecimalInput(item.valorUnitario));
+    setValorTotalEdicao(formatDecimalInput(item.valorTotalManual ?? item.valorTotal));
   };
 
   const cancelarEdicaoItem = () => {
     setEditandoItemId(null);
-    setValorUnitarioEdicao('');
+    setValorTotalEdicao('');
   };
 
   const salvarEdicaoItem = async (item: PrecificacaoItemRow) => {
-    const parsed = parseDecimalInput(valorUnitarioEdicao);
-    if (valorUnitarioEdicao.trim() !== '' && parsed == null) return;
+    const parsed = parseDecimalInput(valorTotalEdicao);
+    if (valorTotalEdicao.trim() !== '' && parsed == null) return;
 
     setSalvandoValorItem(true);
-    const { item: atualizado, error } = await atualizarValorUnitarioItemPrecificacao(
+    const { item: atualizado, error } = await atualizarValorTotalManualItemPrecificacao(
       idPrecificacao,
       item.id,
       parsed
@@ -301,7 +305,7 @@ export default function ModalResultadoPrecificacao({
     setItensLocal((prev) =>
       prev.map((it) =>
         it.id === item.id
-          ? { ...it, valorUnitario: atualizado.valorUnitario, valorTotal: atualizado.valorTotal }
+          ? { ...it, valorTotalManual: atualizado.valorTotalManual }
           : it
       )
     );
@@ -459,7 +463,7 @@ export default function ModalResultadoPrecificacao({
               <table className="w-full text-sm text-left min-w-[1060px]">
                 <thead className="bg-primary-600 text-white">
                   <tr>
-                    <th className="py-3 px-2 font-semibold text-center">Editar</th>
+                    <th className="py-3 px-2 font-semibold text-center">Ações</th>
                     <th className="py-3 px-4 font-semibold">#</th>
                     <th className="py-3 px-4 font-semibold">Cód. comp.</th>
                     <th className="py-3 px-4 font-semibold">Componente</th>
@@ -486,11 +490,11 @@ export default function ModalResultadoPrecificacao({
                       className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/30"
                     >
                       <td className="py-2 px-2 text-center">
-                        <div className="inline-flex items-center justify-center gap-1 flex-wrap">
+                        <div className="inline-flex items-center justify-center">
                           <button
                             type="button"
                             onClick={() => handleExcluirItem(item)}
-                            disabled={excluindoItemId === item.id || salvandoValorItem}
+                            disabled={!podeEditar || excluindoItemId === item.id || salvandoValorItem}
                             className={btnIconGradeDanger}
                             title="Remover insumo da composição"
                             aria-label={`Remover ${item.componente ?? item.codigocomponente ?? 'item'} da composição`}
@@ -501,50 +505,6 @@ export default function ModalResultadoPrecificacao({
                               iconeLixeira
                             )}
                           </button>
-                          {consumivelMarkup ? (
-                            <span
-                              className="inline-flex items-center justify-center w-7 h-7 text-slate-400 dark:text-slate-500 text-xs"
-                              title="Calculado pelo Markup (não editável)"
-                            >
-                              —
-                            </span>
-                          ) : editandoItemId === item.id ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => salvarEdicaoItem(item)}
-                                disabled={salvandoValorItem}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 shrink-0"
-                                title="Salvar preço unitário"
-                              >
-                                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                                  <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.4 7.4a1 1 0 01-1.42 0l-3.2-3.2a1 1 0 011.414-1.42l2.49 2.49 6.693-6.69a1 1 0 011.423 0z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelarEdicaoItem}
-                                disabled={salvandoValorItem}
-                                className={btnIconGrade}
-                                title="Cancelar edição"
-                              >
-                                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => iniciarEdicaoItem(item)}
-                              className={btnIconGrade}
-                              title="Editar preço unitário"
-                            >
-                              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                                <path d="M17.414 2.586a2 2 0 010 2.828l-9.193 9.193a1 1 0 01-.39.244l-3.3 1.1a1 1 0 01-1.265-1.265l1.1-3.3a1 1 0 01.244-.39l9.193-9.193a2 2 0 012.828 0zM6.121 12.465l1.414 1.414 8.486-8.486-1.414-1.414-8.486 8.486z" />
-                              </svg>
-                            </button>
-                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4 font-medium tabular-nums">{idx + 1}</td>
@@ -560,28 +520,59 @@ export default function ModalResultadoPrecificacao({
                             : item.qtd}
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums">
-                        {consumivelMarkup ? (
-                          '—'
-                        ) : editandoItemId === item.id ? (
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={valorUnitarioEdicao}
-                            onChange={(e) => setValorUnitarioEdicao(e.target.value)}
-                            className="w-28 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 text-sm text-right"
-                            placeholder="0,00"
-                            aria-label={`Editar valor unitário do item ${item.codigocomponente ?? item.id}`}
-                          />
-                        ) : item.valorUnitario != null ? (
+                        {consumivelMarkup ? '—' : item.valorUnitario != null ? (
                           item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                         ) : (
                           '—'
                         )}
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums">
-                        {item.valorTotal != null
-                          ? item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                          : '—'}
+                        <div className="flex items-center justify-end gap-1">
+                          {consumivelMarkup && editandoItemId === item.id ? (
+                            <>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={valorTotalEdicao}
+                                onChange={(e) => setValorTotalEdicao(e.target.value)}
+                                className="w-28 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 text-sm text-right"
+                                placeholder="Vazio = automático"
+                                aria-label={`Editar preço total do item ${item.codigocomponente ?? item.id}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => salvarEdicaoItem(item)}
+                                disabled={salvandoValorItem}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 shrink-0"
+                                title="Salvar preço"
+                              >
+                                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                                  <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.4 7.4a1 1 0 01-1.42 0l-3.2-3.2a1 1 0 011.414-1.42l2.49 2.49 6.693-6.69a1 1 0 011.423 0z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                              <button type="button" onClick={cancelarEdicaoItem} disabled={salvandoValorItem} className={btnIconGrade} title="Cancelar edição">
+                                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span>
+                                {item.valorTotal != null
+                                  ? item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                  : '—'}
+                              </span>
+                              {consumivelMarkup && podeEditar && (
+                                <button type="button" onClick={() => iniciarEdicaoItem(item)} className={btnIconGrade} title="Editar preço">
+                                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                                    <path d="M17.414 2.586a2 2 0 010 2.828l-9.193 9.193a1 1 0 01-.39.244l-3.3 1.1a1 1 0 01-1.265-1.265l1.1-3.3a1 1 0 01.244-.39l9.193-9.193a2 2 0 012.828 0zM6.121 12.465l1.414 1.414 8.486-8.486-1.414-1.414-8.486 8.486z" />
+                                  </svg>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     );

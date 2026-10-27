@@ -952,6 +952,7 @@ export async function iniciarPrecificacao(req: Request, res: Response): Promise<
           'Material Secundário',
         valorUnitario: i.valorUnitario ?? null,
         valorTotal: i.valorTotal ?? null,
+        valorTotalManual: i.valorTotalManual ?? null,
       })),
     });
   } catch (err) {
@@ -1147,6 +1148,7 @@ export async function getPrecificacaoResultado(req: Request, res: Response): Pro
           'Material Secundário',
         valorUnitario: i.valorUnitario ?? null,
         valorTotal: i.valorTotal ?? null,
+        valorTotalManual: i.valorTotalManual ?? null,
       })),
     });
   } catch (err) {
@@ -1218,11 +1220,11 @@ export async function salvarPrecificacaoValores(req: Request, res: Response): Pr
 }
 
 /**
- * PATCH /api/engenharia/precificacao/:id/item/:itemId/valor-unitario
- * Atualiza o valor unitário de um item da precificação e recalcula valor total.
- * Body: { valorUnitario: number | null }
+ * PATCH /api/engenharia/precificacao/:id/item/:itemId/valor-total-manual
+ * Define (ou limpa com null) o total manual de um consumível especial.
+ * Body: { valorTotalManual: number | null }
  */
-export async function atualizarValorUnitarioItemPrecificacao(req: Request, res: Response): Promise<void> {
+export async function atualizarValorTotalManualItemPrecificacao(req: Request, res: Response): Promise<void> {
   const id = parseInt(String(req.params.id), 10);
   const itemId = parseInt(String(req.params.itemId), 10);
   if (Number.isNaN(id) || id < 1 || Number.isNaN(itemId) || itemId < 1) {
@@ -1230,45 +1232,50 @@ export async function atualizarValorUnitarioItemPrecificacao(req: Request, res: 
     return;
   }
 
-  const valorRaw = (req.body as { valorUnitario?: unknown } | undefined)?.valorUnitario;
-  let valorUnitario: number | null = null;
+  const valorRaw = (req.body as { valorTotalManual?: unknown } | undefined)?.valorTotalManual;
+  let valorTotalManual: number | null = null;
   if (valorRaw !== null && valorRaw !== undefined && String(valorRaw).trim() !== '') {
     const parsed = Number(valorRaw);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      res.status(400).json({ error: 'valorUnitario inválido' });
+      res.status(400).json({ error: 'valorTotalManual inválido' });
       return;
     }
-    valorUnitario = Math.round(parsed * 100000) / 100000;
+    valorTotalManual = Math.round(parsed * 100) / 100;
   }
 
   try {
     const item = await prisma.precificacaoItem.findFirst({
       where: { id: itemId, precificacaoId: id },
-      select: { id: true, qtd: true },
+      select: { id: true, codigocomponente: true },
     });
     if (!item) {
       res.status(404).json({ error: 'Item da precificação não encontrado' });
       return;
     }
 
-    const valorTotal = valorUnitario != null ? Math.round(item.qtd * valorUnitario * 100) / 100 : null;
+    const codigo = (item.codigocomponente ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const codigosPermitidos = new Set(['MP 1309', 'MUC 4377', 'MUC 4378', 'SUB 0001']);
+    if (!codigosPermitidos.has(codigo)) {
+      res.status(400).json({ error: 'A edição de preço é permitida somente para os consumíveis especiais' });
+      return;
+    }
+
     const atualizado = await prisma.precificacaoItem.update({
       where: { id: itemId },
-      data: { valorUnitario, valorTotal },
-      select: { id: true, valorUnitario: true, valorTotal: true },
+      data: { valorTotalManual },
+      select: { id: true, valorTotalManual: true },
     });
 
     res.json({
       ok: true,
       item: {
         id: atualizado.id,
-        valorUnitario: atualizado.valorUnitario,
-        valorTotal: atualizado.valorTotal,
+        valorTotalManual: atualizado.valorTotalManual,
       },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[engenhariaController] atualizarValorUnitarioItemPrecificacao:', msg);
+    console.error('[engenhariaController] atualizarValorTotalManualItemPrecificacao:', msg);
     res.status(503).json({ error: msg });
   }
 }

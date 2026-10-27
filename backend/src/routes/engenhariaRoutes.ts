@@ -8,7 +8,7 @@ import {
   listPrecificacoes,
   getPrecificacaoResultado,
   salvarPrecificacaoValores,
-  atualizarValorUnitarioItemPrecificacao,
+  atualizarValorTotalManualItemPrecificacao,
   excluirItemPrecificacao,
 } from '../controllers/engenhariaController.js';
 
@@ -55,9 +55,9 @@ router.patch(
 );
 
 router.patch(
-  '/precificacao/:id/item/:itemId/valor-unitario',
+  '/precificacao/:id/item/:itemId/valor-total-manual',
   requirePermission(PERMISSOES.PRECIFICACAO_GERAR),
-  async503(atualizarValorUnitarioItemPrecificacao)
+  async503(atualizarValorTotalManualItemPrecificacao)
 );
 
 router.delete(

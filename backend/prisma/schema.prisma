@@ -751,6 +751,8 @@ model PrecificacaoItem {
   dataEntrada       String?
   valorUnitario     Float?  // da segunda consulta Nomus (por idcomponente)
   valorTotal        Float?  // qtd * valorUnitario
+  /// Override manual do total para os consumíveis especiais da precificação.
+  valorTotalManual  Float?
 
   precificacao Precificacao @relation(fields: [precificacaoId], references: [id], onDelete: Cascade)
 

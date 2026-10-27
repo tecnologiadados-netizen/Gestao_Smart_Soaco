@@ -47,8 +47,8 @@ function round2(n: number): number {
 }
 
 /**
- * Recalcula valor total (e zera unitário) dos itens SUB 0001, MUC 4377, MP 1309, MUC 4378
- * conforme percentuais do Markup e somatórios de Matéria Prima (exclui secundário/embalagem e os próprios códigos especiais).
+ * Recalcula o total dos consumíveis especiais pelo Markup, exceto quando há
+ * um valor total manual persistido para o item.
  */
 export function aplicarCalculoConsumiveisEspeciais(
   itens: PrecificacaoItemRow[],
@@ -80,11 +80,13 @@ export function aplicarCalculoConsumiveisEspeciais(
     const tipoEsp = tipoConsumivelEspecialPorCodigo(i.codigocomponente);
     if (!tipoEsp) return i;
 
-    let total = 0;
-    if (tipoEsp === 'sucata') total = round2(baseMpTotal * (pSucata / 100));
-    else if (tipoEsp === 'solda') total = round2(baseMpFam * (pSolda / 100));
-    else if (tipoEsp === 'gasGlp') total = round2(baseMpFam * (pGas / 100));
-    else if (tipoEsp === 'fosfatizacao') total = round2(baseMpFam * (pFosf / 100));
+    let total = i.valorTotalManual;
+    if (total == null) {
+      if (tipoEsp === 'sucata') total = round2(baseMpTotal * (pSucata / 100));
+      else if (tipoEsp === 'solda') total = round2(baseMpFam * (pSolda / 100));
+      else if (tipoEsp === 'gasGlp') total = round2(baseMpFam * (pGas / 100));
+      else total = round2(baseMpFam * (pFosf / 100));
+    }
 
     return {
       ...i,

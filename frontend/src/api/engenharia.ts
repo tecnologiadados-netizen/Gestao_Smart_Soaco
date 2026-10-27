@@ -65,6 +65,8 @@ export interface PrecificacaoItemRow {
   dataEntrada?: string | null;
   valorUnitario: number | null;
   valorTotal: number | null;
+  /** Override do total para MP 1309, MUC 4377, MUC 4378 e SUB 0001. */
+  valorTotalManual?: number | null;
 }
 
 export interface PrecificacaoIniciarResponse {
@@ -119,17 +121,17 @@ export async function salvarPrecificacaoValores(
   return {};
 }
 
-export async function atualizarValorUnitarioItemPrecificacao(
+export async function atualizarValorTotalManualItemPrecificacao(
   idPrecificacao: number,
   idItem: number,
-  valorUnitario: number | null
-): Promise<{ item?: { id: number; valorUnitario: number | null; valorTotal: number | null }; error?: string }> {
-  const res = await apiFetch(`/api/engenharia/precificacao/${idPrecificacao}/item/${idItem}/valor-unitario`, {
+  valorTotalManual: number | null
+): Promise<{ item?: { id: number; valorTotalManual: number | null }; error?: string }> {
+  const res = await apiFetch(`/api/engenharia/precificacao/${idPrecificacao}/item/${idItem}/valor-total-manual`, {
     method: 'PATCH',
-    body: { valorUnitario },
+    body: { valorTotalManual },
   });
   const body = (await res.json().catch(() => ({}))) as {
-    item?: { id: number; valorUnitario: number | null; valorTotal: number | null };
+    item?: { id: number; valorTotalManual: number | null };
     error?: string;
   };
   if (!res.ok) return { error: body.error ?? res.statusText };
