@@ -21,6 +21,8 @@ type Props = {
   variant?: GradeCelulaModalBtnVariant;
   /** Alinhamento do botão na célula (padrão: right, compatível com grades PCP). */
   align?: GradeCelulaModalBtnAlign;
+  /** Estica o botão na largura da célula e permite truncar o texto no limite dela. */
+  preencherCelula?: boolean;
 };
 
 function classesVariante(variant: GradeCelulaModalBtnVariant, align: GradeCelulaModalBtnAlign): string {
@@ -42,13 +44,19 @@ export default function GradeCelulaModalBtn({
   className,
   variant = 'primary',
   align = 'right',
+  preencherCelula = false,
 }: Props) {
+  const classes = className ?? classesVariante(variant, align);
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className={className ?? classesVariante(variant, align)}
+      className={
+        preencherCelula
+          ? `${classes} !flex w-full min-w-0 max-w-full !justify-start overflow-hidden`
+          : classes
+      }
     >
       {children}
     </button>

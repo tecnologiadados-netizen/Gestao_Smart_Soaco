@@ -91,7 +91,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Cada cabeçalho tem o ícone de olho riscado para ocultar aquela informação. As colunas ocultas ficam reunidas no botão “Colunas ocultas”, e a escolha e a largura são guardadas neste navegador.',
     comoLe:
-      'Use o ícone de olho riscado no cabeçalho para ocultar a coluna e “Colunas ocultas” para reexibi-la individualmente ou todas de uma vez. Para aumentar ou reduzir a largura, arraste a borda direita do cabeçalho.',
+      'Use o ícone de olho riscado no cabeçalho para ocultar a coluna e “Colunas ocultas” para reexibi-la individualmente ou todas de uma vez. Para aumentar ou reduzir a largura, arraste a borda direita do cabeçalho. O espaço que sobra na grade vai para a coluna Carrada (ou para a última coluna visível, se Carrada estiver oculta). O nome acompanha essa largura: aparece inteiro quando cabe e só é cortado com reticências no limite da coluna. Arrastar outra coluna cede ou toma espaço desse nome.',
   },
 ];
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, Fragment, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, Fragment, type ReactNode } from 'react';
 import { MapContainer, TileLayer, Circle, Tooltip, Popup, useMap, Polyline, CircleMarker, Pane, Marker } from 'react-leaflet';
 import { MODAL_Z_MAPA_POPUP, useRegisterModalEscape } from '../contexts/ModalStackContext';
 import L from 'leaflet';
@@ -199,7 +199,12 @@ function RecalcularMapa({ token }: { token?: string }) {
   return null;
 }
 
-/** Bolha com detalhes ao clique normal; com Ctrl+clique inclui/remove da rota (sem abrir popup). */
+/** Ctrl no Windows; ⌘ (metaKey) no Mac. Control+clique no Mac também dispara o menu de contexto. */
+function cliqueModificadorRota(ev: MouseEvent | undefined): boolean {
+  return !!(ev && (ev.ctrlKey || ev.metaKey));
+}
+
+/** Bolha com detalhes ao clique normal; com Ctrl ou ⌘ + clique inclui/remove da rota (sem abrir popup). */
 function BolhaMunicipioMapa({
   item,
   raioKm,
@@ -222,10 +227,27 @@ function BolhaMunicipioMapa({
   sequenciaParada?: number;
 }) {
   const map = useMap();
+  /** Clique e menu de contexto do mesmo gesto (Control+clique no Mac) não podem alternar duas vezes. */
+  const ultimoToggleMsRef = useRef(0);
   const ehBase = !!(roteirizadorChaveBaseFixa && chave === roteirizadorChaveBaseFixa);
   const sel = ehBase || !!(roteirizadorChaves?.has(chave));
   const seq = sequenciaParada;
   const paradaNaRota = sel && !ehBase;
+
+  const alternarRotaPorModificador = (leafletEv: L.LeafletMouseEvent) => {
+    if (!onRoteirizadorToggleChave) return;
+    const ev = leafletEv.originalEvent as MouseEvent | undefined;
+    if (!cliqueModificadorRota(ev) || !ev) return;
+    ev.preventDefault();
+    L.DomEvent.stopPropagation(leafletEv);
+    if (ehBase) return;
+    const agora = performance.now();
+    if (agora - ultimoToggleMsRef.current < 120) return;
+    ultimoToggleMsRef.current = agora;
+    onRoteirizadorToggleChave(chave);
+    window.setTimeout(() => map.closePopup(), 0);
+  };
+
   return (
     <Fragment>
     <Circle
@@ -240,13 +262,10 @@ function BolhaMunicipioMapa({
       }}
       eventHandlers={{
         click: (e) => {
-          const ev = e.originalEvent as MouseEvent | undefined;
-          if (ev?.ctrlKey && onRoteirizadorToggleChave && !ehBase) {
-            ev.preventDefault();
-            L.DomEvent.stopPropagation(e as L.LeafletMouseEvent);
-            onRoteirizadorToggleChave(chave);
-            window.setTimeout(() => map.closePopup(), 0);
-          }
+          alternarRotaPorModificador(e as L.LeafletMouseEvent);
+        },
+        contextmenu: (e) => {
+          alternarRotaPorModificador(e as L.LeafletMouseEvent);
         },
         mouseover: (e) => {
           e.target.setStyle({
@@ -267,8 +286,8 @@ function BolhaMunicipioMapa({
       <Tooltip permanent={false} direction="top" offset={[0, -8]}>
         {onRoteirizadorToggleChave
           ? ehBase
-            ? 'Base da rota (Teresina). Ctrl+clique em outra bolha para simular.'
-            : 'Ctrl+clique: incluir ou remover da rota. Clique: detalhes.'
+            ? 'Base da rota (Teresina). Ctrl+clique (⌘ no Mac) em outra bolha para simular.'
+            : 'Ctrl+clique (⌘ no Mac): incluir ou remover da rota. Clique: detalhes.'
           : 'Clique para ver detalhes'}
       </Tooltip>
       <Popup className="leaflet-popup-detalhes" minWidth={380} maxWidth={640}>
@@ -386,7 +405,7 @@ export default function MapaMunicipios({
           Roteirizador
       </h3>
       <p className="text-xs text-slate-500 dark:text-slate-400 px-4 pb-1 shrink-0">
-        Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
+        Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> (<strong>⌘+clique</strong> no Mac) em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
         {municipiosFiltroDestaque.length > 0 && (
           <>
             {' '}

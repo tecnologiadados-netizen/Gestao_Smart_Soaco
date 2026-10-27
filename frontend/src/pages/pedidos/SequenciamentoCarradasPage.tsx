@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   atualizarSequenciamentoSnapshot,
@@ -125,6 +125,9 @@ const PRIORIDADE_INPUT_CLASS =
 
 const COLUMN_PREFERENCES_STORAGE_KEY = 'sequenciamento-carradas:column-preferences:v2';
 
+const LARGURA_COLUNA_MIN = 72;
+const LARGURA_COLUNA_MAX = 720;
+
 const DEFAULT_COLUMN_WIDTHS: Record<(typeof COL_IDS)[number], number> = {
   cod: 64,
   carrada: 160,
@@ -136,6 +139,31 @@ const DEFAULT_COLUMN_WIDTHS: Record<(typeof COL_IDS)[number], number> = {
   adiantamento: 85,
   valorAVistaAte10d: 100,
 };
+
+/** Coluna que recebe o espaço livre da grade (nome da carrada, ou a última visível). */
+function colunaQueAbsorveEspaco(
+  ids: readonly (typeof COL_IDS)[number][],
+): (typeof COL_IDS)[number] | null {
+  if (ids.length === 0) return null;
+  if (ids.includes('carrada')) return 'carrada';
+  return ids[ids.length - 1];
+}
+
+/** Mantém a largura escolhida e entrega a sobra da grade à coluna flexível. */
+function largurasColunasGrade(
+  ids: readonly (typeof COL_IDS)[number][],
+  preferidas: Record<(typeof COL_IDS)[number], number>,
+  larguraUtil: number,
+): Record<(typeof COL_IDS)[number], number> {
+  const larguras = { ...preferidas };
+  if (larguraUtil <= 0 || ids.length === 0) return larguras;
+  const soma = ids.reduce((acc, id) => acc + preferidas[id], 0);
+  if (soma >= larguraUtil) return larguras;
+  const flex = colunaQueAbsorveEspaco(ids);
+  if (!flex) return larguras;
+  larguras[flex] = preferidas[flex] + (larguraUtil - soma);
+  return larguras;
+}
 
 type ColumnPreferences = {
   visible: Record<(typeof COL_IDS)[number], boolean>;
@@ -155,7 +183,7 @@ function loadColumnPreferences(): ColumnPreferences {
       if (typeof parsed.visible?.[id] === 'boolean') defaults.visible[id] = parsed.visible[id];
       const width = parsed.widths?.[id];
       if (typeof width === 'number' && Number.isFinite(width)) {
-        defaults.widths[id] = Math.min(720, Math.max(72, Math.round(width)));
+        defaults.widths[id] = Math.min(LARGURA_COLUNA_MAX, Math.max(LARGURA_COLUNA_MIN, Math.round(width)));
       }
     }
   } catch {
@@ -258,9 +286,14 @@ export default function SequenciamentoCarradasPage() {
   const [columnPreferences, setColumnPreferences] = useState<ColumnPreferences>(loadColumnPreferences);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
-  const columnResizeRef = useRef<{ id: (typeof COL_IDS)[number]; startX: number; startWidth: number } | null>(
-    null
-  );
+  const columnResizeRef = useRef<{
+    id: (typeof COL_IDS)[number];
+    startX: number;
+    startWidth: number;
+    neighborId: (typeof COL_IDS)[number] | null;
+    neighborStartWidth: number;
+  } | null>(null);
+  const [larguraUtilGrade, setLarguraUtilGrade] = useState(0);
   const [corrigirDatasSnapshot, setCorrigirDatasSnapshot] = useState<CarradaDataInvalida[]>([]);
   /** Linhas do ERP no momento de Concluir (inclui pedidos movidos após o gravar). */
   const [linhasAoVivoConfirmacao, setLinhasAoVivoConfirmacao] = useState<Record<string, unknown>[] | null>(
@@ -304,6 +337,11 @@ export default function SequenciamentoCarradasPage() {
     [columnPreferences.visible]
   );
 
+  const largurasColuna = useMemo(
+    () => largurasColunasGrade(visibleColumns, columnPreferences.widths, larguraUtilGrade),
+    [visibleColumns, columnPreferences.widths, larguraUtilGrade]
+  );
+
   useEffect(() => {
     window.localStorage.setItem(COLUMN_PREFERENCES_STORAGE_KEY, JSON.stringify(columnPreferences));
   }, [columnPreferences]);
@@ -323,7 +361,30 @@ export default function SequenciamentoCarradasPage() {
     const onMouseMove = (event: MouseEvent) => {
       const resize = columnResizeRef.current;
       if (!resize) return;
-      const width = Math.min(720, Math.max(72, resize.startWidth + event.clientX - resize.startX));
+      const delta = event.clientX - resize.startX;
+      if (resize.neighborId) {
+        let flexWidth = resize.startWidth + delta;
+        let neighborWidth = resize.neighborStartWidth - delta;
+        if (neighborWidth < LARGURA_COLUNA_MIN) {
+          flexWidth -= LARGURA_COLUNA_MIN - neighborWidth;
+          neighborWidth = LARGURA_COLUNA_MIN;
+        } else if (neighborWidth > LARGURA_COLUNA_MAX) {
+          flexWidth += neighborWidth - LARGURA_COLUNA_MAX;
+          neighborWidth = LARGURA_COLUNA_MAX;
+        }
+        flexWidth = Math.min(LARGURA_COLUNA_MAX, Math.max(LARGURA_COLUNA_MIN, flexWidth));
+        neighborWidth = Math.min(
+          LARGURA_COLUNA_MAX,
+          Math.max(LARGURA_COLUNA_MIN, resize.neighborStartWidth - (flexWidth - resize.startWidth)),
+        );
+        const neighborId = resize.neighborId;
+        setColumnPreferences((prev) => ({
+          ...prev,
+          widths: { ...prev.widths, [resize.id]: flexWidth, [neighborId]: neighborWidth },
+        }));
+        return;
+      }
+      const width = Math.min(LARGURA_COLUNA_MAX, Math.max(LARGURA_COLUNA_MIN, resize.startWidth + delta));
       setColumnPreferences((prev) => ({
         ...prev,
         widths: { ...prev.widths, [resize.id]: width },
@@ -467,6 +528,27 @@ export default function SequenciamentoCarradasPage() {
     valueForSort,
     defaultSortLevels: [{ id: 'dataProducao', dir: 'asc' }],
   });
+
+  useLayoutEffect(() => {
+    if (mostrarHistorico) return;
+    const el = grade.tableScrollRef.current;
+    if (!el) return;
+    const medir = () => {
+      const estilo = getComputedStyle(el);
+      const pl = Number.parseFloat(estilo.paddingLeft) || 0;
+      const pr = Number.parseFloat(estilo.paddingRight) || 0;
+      let fixas = 0;
+      el.querySelectorAll<HTMLElement>('[data-col-fixa]').forEach((node) => {
+        fixas += node.offsetWidth;
+      });
+      const util = Math.max(0, Math.floor(el.clientWidth - pl - pr - fixas) - 2);
+      setLarguraUtilGrade((prev) => (prev === util ? prev : util));
+    };
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mostrarHistorico, podeArrastar, editavel, detalheCarregando, detalheErro, grade.tableScrollRef]);
 
   const carradasFinais = useMemo(() => {
     const base = grade.rowsExibidas;
@@ -1527,10 +1609,18 @@ export default function SequenciamentoCarradasPage() {
   const startColumnResize = (event: React.MouseEvent<HTMLButtonElement>, id: (typeof COL_IDS)[number]) => {
     event.preventDefault();
     event.stopPropagation();
+    const flexId = colunaQueAbsorveEspaco(visibleColumns);
+    const soma = visibleColumns.reduce((acc, colId) => acc + columnPreferences.widths[colId], 0);
+    const haSobra = larguraUtilGrade > 0 && soma < larguraUtilGrade;
+    const idx = visibleColumns.indexOf(id);
+    const neighborId =
+      haSobra && id === flexId ? (visibleColumns[idx + 1] ?? visibleColumns[idx - 1] ?? null) : null;
     columnResizeRef.current = {
       id,
       startX: event.clientX,
       startWidth: columnPreferences.widths[id],
+      neighborId,
+      neighborStartWidth: neighborId ? columnPreferences.widths[neighborId] : 0,
     };
   };
 
@@ -1572,7 +1662,7 @@ export default function SequenciamentoCarradasPage() {
     return (
       <th
         key={colId}
-        style={{ width: columnPreferences.widths[colId], minWidth: columnPreferences.widths[colId] }}
+        style={{ width: largurasColuna[colId], minWidth: largurasColuna[colId] }}
         className="sticky top-0 z-20 border border-primary-500/40 bg-primary-600 px-2 py-2.5 align-middle font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)]"
       >
         <div className={`flex items-center gap-1 ${numerica ? 'justify-end' : 'justify-between'}`}>
@@ -1873,7 +1963,10 @@ export default function SequenciamentoCarradasPage() {
                 <thead className="sticky top-0 z-10">
                   <tr>
                     {podeArrastar && (
-                      <th className="sticky top-0 z-20 w-14 border border-primary-500/40 bg-primary-600 px-1 py-2.5 text-center text-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                      <th
+                        data-col-fixa=""
+                        className="sticky top-0 z-20 w-14 border border-primary-500/40 bg-primary-600 px-1 py-2.5 text-center text-white shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+                      >
                         <div className="flex flex-col items-center gap-0.5">
                           <div className="flex items-center justify-center gap-0.5">
                             <span className="text-[10px] font-semibold leading-tight">Seq.</span>
@@ -1895,13 +1988,19 @@ export default function SequenciamentoCarradasPage() {
                       </th>
                     )}
                     {podeArrastar && (
-                      <th className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]" />
+                      <th
+                        data-col-fixa=""
+                        className="sticky top-0 z-20 w-8 border border-primary-500/40 bg-primary-600 px-1 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+                      />
                     )}
                     {visibleColumns.includes('cod') && renderTh('cod')}
                     {visibleColumns.includes('carrada') && renderTh('carrada')}
                     {visibleColumns.includes('dataProducao') && renderTh('dataProducao')}
                     {editavel && (
-                      <th className="sticky top-0 z-20 w-12 border border-primary-500/40 bg-primary-600 px-0.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                      <th
+                        data-col-fixa=""
+                        className="sticky top-0 z-20 w-12 border border-primary-500/40 bg-primary-600 px-0.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+                      >
                         <div className="flex flex-col items-center gap-0.5">
                           <button
                             type="button"
@@ -2019,7 +2118,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('cod') && (
                             <td
-                              style={{ width: columnPreferences.widths.cod, minWidth: columnPreferences.widths.cod }}
+                              style={{ width: largurasColuna.cod, minWidth: largurasColuna.cod }}
                               className="py-2 px-2 font-mono text-slate-800 dark:text-slate-200"
                             >
                               <span className="inline-flex items-center gap-1">
@@ -2036,23 +2135,22 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('carrada') && (
                             <td
-                              style={{ width: columnPreferences.widths.carrada, minWidth: columnPreferences.widths.carrada }}
-                              className="py-2 px-2 text-slate-800 dark:text-slate-200"
+                              style={{ width: largurasColuna.carrada, minWidth: largurasColuna.carrada }}
+                              className="overflow-hidden py-2 px-2 text-slate-800 dark:text-slate-200"
                             >
                               <GradeCelulaModalBtn
                                 onClick={() => setCarradaDetalhe(c)}
                                 title={c.carrada}
                                 align="left"
+                                preencherCelula
                               >
-                                <span className="truncate" style={{ maxWidth: columnPreferences.widths.carrada - 20 }}>
-                                  {c.carrada}
-                                </span>
+                                <span className="min-w-0 flex-1 truncate text-left">{c.carrada}</span>
                               </GradeCelulaModalBtn>
                             </td>
                             )}
                             {visibleColumns.includes('dataProducao') && (
                             <td
-                              style={{ width: columnPreferences.widths.dataProducao, minWidth: columnPreferences.widths.dataProducao }}
+                              style={{ width: largurasColuna.dataProducao, minWidth: largurasColuna.dataProducao }}
                               className="py-2 px-2"
                             >
                               {carradaEmFormacao ? (
@@ -2115,7 +2213,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('dataEntrega') && (
                             <td
-                              style={{ width: columnPreferences.widths.dataEntrega, minWidth: columnPreferences.widths.dataEntrega }}
+                              style={{ width: largurasColuna.dataEntrega, minWidth: largurasColuna.dataEntrega }}
                               className="py-2 px-2"
                             >
                               {carradaEmFormacao ? (
@@ -2142,7 +2240,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('confiavel') && (
                             <td
-                              style={{ width: columnPreferences.widths.confiavel, minWidth: columnPreferences.widths.confiavel }}
+                              style={{ width: largurasColuna.confiavel, minWidth: largurasColuna.confiavel }}
                               className="py-2 px-2 text-center"
                             >
                               {editavel && !carradaEspecial ? (
@@ -2175,7 +2273,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('saldoAFaturar') && (
                             <td
-                              style={{ width: columnPreferences.widths.saldoAFaturar, minWidth: columnPreferences.widths.saldoAFaturar }}
+                              style={{ width: largurasColuna.saldoAFaturar, minWidth: largurasColuna.saldoAFaturar }}
                               className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.saldoAFaturar)}
@@ -2183,7 +2281,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('percentualEmDia') && (
                             <td
-                              style={{ width: columnPreferences.widths.percentualEmDia, minWidth: columnPreferences.widths.percentualEmDia }}
+                              style={{ width: largurasColuna.percentualEmDia, minWidth: largurasColuna.percentualEmDia }}
                               className="py-2 px-2 text-right tabular-nums"
                             >
                               <span
@@ -2195,7 +2293,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('adiantamento') && (
                             <td
-                              style={{ width: columnPreferences.widths.adiantamento, minWidth: columnPreferences.widths.adiantamento }}
+                              style={{ width: largurasColuna.adiantamento, minWidth: largurasColuna.adiantamento }}
                               className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.adiantamento)}
@@ -2203,7 +2301,7 @@ export default function SequenciamentoCarradasPage() {
                             )}
                             {visibleColumns.includes('valorAVistaAte10d') && (
                             <td
-                              style={{ width: columnPreferences.widths.valorAVistaAte10d, minWidth: columnPreferences.widths.valorAVistaAte10d }}
+                              style={{ width: largurasColuna.valorAVistaAte10d, minWidth: largurasColuna.valorAVistaAte10d }}
                               className="py-2 px-2 text-right tabular-nums text-slate-800 dark:text-slate-200"
                             >
                               {formatMoeda(c.valorAVistaAte10d)}
@@ -2218,7 +2316,7 @@ export default function SequenciamentoCarradasPage() {
                         {visibleColumns.map((colId, index) => (
                           <td
                             key={colId}
-                            style={{ width: columnPreferences.widths[colId], minWidth: columnPreferences.widths[colId] }}
+                            style={{ width: largurasColuna[colId], minWidth: largurasColuna[colId] }}
                             className={`py-2 px-2 ${
                               COL_NUMERICAS.has(colId)
                                 ? 'text-right tabular-nums'

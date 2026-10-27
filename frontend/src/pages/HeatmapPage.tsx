@@ -837,7 +837,7 @@ export default function HeatmapPage() {
                         onClick={handleRoteirizarClick}
                         disabled={roteiroLoading}
                         className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-md hover:bg-emerald-700 disabled:opacity-50 dark:border-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                        title="Calcular rota (Teresina → cidade → Teresina). Com cidades já selecionadas (Ctrl+clique ou filtros), calcula a rota; sem seleção, abre opções de escolha."
+                        title="Calcular rota (Teresina → cidade → Teresina). Com cidades já selecionadas (Ctrl+clique, ⌘+clique no Mac, ou filtros), calcula a rota; sem seleção, abre opções de escolha."
                       >
                         {roteiroLoading ? 'Calculando…' : 'Roteirizar'}
                       </button>
@@ -853,7 +853,7 @@ export default function HeatmapPage() {
                     </div>
                     {roteiroModo === 'ctrl' && selecionadosComChave.length === 0 && (
                       <p className="max-w-[14rem] shrink-0 rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
-                        Ctrl+clique nas cidades e clique em Roteirizar.
+                        Ctrl+clique (⌘+clique no Mac) nas cidades e clique em Roteirizar.
                       </p>
                     )}
                     {roteiroCarradasAtivas && roteiroCarradasAtivas.size > 0 && selecionadosComChave.length > 0 && (

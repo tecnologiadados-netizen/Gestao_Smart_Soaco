@@ -169,13 +169,13 @@ export default function HeatmapRoteiroWizardModal({
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Roteirização</h3>
           {step === 'escolha' && (
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-              Nenhuma cidade foi selecionada com Ctrl+clique. Como deseja escolher as cidades da rota?
+              Nenhuma cidade foi selecionada com Ctrl+clique (⌘+clique no Mac). Como deseja escolher as cidades da rota?
             </p>
           )}
           {step === 'ctrl' && (
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-              Mantenha <strong>Ctrl</strong> pressionado e clique nas bolhas no mapa. Depois use{' '}
-              <strong>Roteirizar</strong> novamente.
+              Mantenha <strong>Ctrl</strong> pressionado (<strong>⌘</strong> no Mac) e clique nas bolhas no mapa.
+              Depois use <strong>Roteirizar</strong> novamente.
             </p>
           )}
           {step === 'filtros' && (
@@ -202,7 +202,7 @@ export default function HeatmapRoteiroWizardModal({
                 onClick={onEscolherCtrl}
                 className="rounded-lg border border-primary-300 bg-primary-50 px-3 py-2.5 text-left text-sm font-medium text-primary-900 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/40 dark:text-primary-100"
               >
-                Seleção manual (Ctrl+clique)
+                Seleção manual (Ctrl ou ⌘ + clique)
                 <span className="mt-0.5 block text-xs font-normal text-primary-800/80 dark:text-primary-200/80">
                   Escolher cada cidade no mapa, uma a uma.
                 </span>

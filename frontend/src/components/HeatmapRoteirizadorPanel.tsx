@@ -192,8 +192,8 @@ export default function HeatmapRoteirizadorPanel({
 
       {!loading && selecionados.length < 1 && (
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">
-          <strong>Teresina/PI</strong> é a base fixa. Mantenha <strong>Ctrl</strong> pressionado e clique em{' '}
-          <strong>uma</strong> bolha no mapa; em seguida use o botão <strong>Roteirizar</strong>.
+          <strong>Teresina/PI</strong> é a base fixa. Mantenha <strong>Ctrl</strong> pressionado (<strong>⌘</strong> no
+          Mac) e clique em <strong>uma</strong> bolha no mapa; em seguida use o botão <strong>Roteirizar</strong>.
         </p>
       )}
 

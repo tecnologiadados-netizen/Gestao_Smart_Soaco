@@ -391,14 +391,16 @@ export default function HistoricoVendasPage() {
               }
             />
             <PainelComercialBarRanking
-              title="Top vendedores"
-              accentColor={PAINEL_PALETTE.vendedores}
-              rows={(analytics?.topVendedores ?? []) as RankingRow[]}
+              title="Top subgrupo 1"
+              accentColor={PAINEL_PALETTE.subgrupo}
+              rows={(analytics?.topSubgrupo1 ?? []) as RankingRow[]}
               loading={loading}
+              metrica={metricaSubgrupo1}
+              onMetricaChange={setMetricaSubgrupo1}
               onRowClick={(r, e) =>
-                handleRankingClick('vendedor', r, e, () =>
-                  abrirEvolucao(`Vendedor ${r.label}`, `${formatMoeda(r.valor)} · ${formatNumero(r.qtde)} un.`, {
-                    vendedor: r.key,
+                handleRankingClick('subgrupo1', r, e, () =>
+                  abrirEvolucao(`Subgrupo 1 ${r.label}`, `${formatMoeda(r.valor)} · ${formatNumero(r.qtde)} un.`, {
+                    subgrupo1: r.key,
                   })
                 )
               }
@@ -420,16 +422,14 @@ export default function HistoricoVendasPage() {
               }
             />
             <PainelComercialBarRanking
-              title="Top subgrupo 1"
-              accentColor={PAINEL_PALETTE.subgrupo}
-              rows={(analytics?.topSubgrupo1 ?? []) as RankingRow[]}
+              title="Top vendedores"
+              accentColor={PAINEL_PALETTE.vendedores}
+              rows={(analytics?.topVendedores ?? []) as RankingRow[]}
               loading={loading}
-              metrica={metricaSubgrupo1}
-              onMetricaChange={setMetricaSubgrupo1}
               onRowClick={(r, e) =>
-                handleRankingClick('subgrupo1', r, e, () =>
-                  abrirEvolucao(`Subgrupo 1 ${r.label}`, `${formatMoeda(r.valor)} · ${formatNumero(r.qtde)} un.`, {
-                    subgrupo1: r.key,
+                handleRankingClick('vendedor', r, e, () =>
+                  abrirEvolucao(`Vendedor ${r.label}`, `${formatMoeda(r.valor)} · ${formatNumero(r.qtde)} un.`, {
+                    vendedor: r.key,
                   })
                 )
               }

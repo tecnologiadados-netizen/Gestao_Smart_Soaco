@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 export type OpcaoEscolhaConsulta<T extends string> = {
@@ -56,11 +57,25 @@ export default function ModalEscolhasConsultaEstoque<
   escopoAutomatico,
   avisoEscopo,
 }: Props<TModo, TEscopo>) {
+  const [avisoEscolhaObrigatoria, setAvisoEscolhaObrigatoria] = useState(false);
+
+  useEffect(() => {
+    if (!open || modoSelecionado) setAvisoEscolhaObrigatoria(false);
+  }, [open, modoSelecionado]);
+
   if (!open) return null;
 
   const perguntarEscopo = opcoesEscopo.length > 0;
-  const podeContinuarAutomatico =
-    !perguntarEscopo && escopoAutomatico != null && !!modoSelecionado && !carregando;
+  const exibirContinuar = !carregando && !perguntarEscopo && escopoAutomatico != null;
+
+  const aoContinuar = () => {
+    if (escopoAutomatico == null) return;
+    if (!modoSelecionado) {
+      setAvisoEscolhaObrigatoria(true);
+      return;
+    }
+    onConfirmar(escopoAutomatico);
+  };
 
   return createPortal(
     <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4" style={{ zIndex }}>
@@ -83,7 +98,10 @@ export default function ModalEscolhasConsultaEstoque<
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/30'
                       : 'border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
                   }`}
-                  onClick={() => onSelecionarModo(op.valor)}
+                  onClick={() => {
+                    setAvisoEscolhaObrigatoria(false);
+                    onSelecionarModo(op.valor);
+                  }}
                 >
                   <span className="font-medium">{op.titulo}</span>
                   {op.descricao && (
@@ -130,7 +148,7 @@ export default function ModalEscolhasConsultaEstoque<
                 {avisoEscopo && (
                   <p className="mt-4 text-xs text-slate-600 dark:text-slate-300">{avisoEscopo}</p>
                 )}
-                {!modoSelecionado && (
+                {avisoEscolhaObrigatoria && !modoSelecionado && (
                   <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
                     Escolha primeiro como visualizar os produtos.
                   </p>
@@ -147,11 +165,11 @@ export default function ModalEscolhasConsultaEstoque<
           >
             Cancelar
           </button>
-          {podeContinuarAutomatico && (
+          {exibirContinuar && (
             <button
               type="button"
               className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm text-white hover:bg-primary-700"
-              onClick={() => onConfirmar(escopoAutomatico)}
+              onClick={aoContinuar}
             >
               Continuar
             </button>
