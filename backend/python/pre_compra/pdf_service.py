@@ -170,7 +170,7 @@ def _item_valor_total_com_frete(item: dict) -> Decimal:
 def _fill_item_row(row, item: dict) -> None:
     # Layout atual (formulario_cotacao.docx):
     # 0 código | 1-2 cód.fornec | 3-4 produto | 5-6 qtde | 7-8 U.M
-    # 9 V.FRETE | 10-12 V.UNIT | 13 TOTAL (item + frete)
+    # 9 V.FRETE | 10-12 V.UNIT C/IPI | 13 TOTAL (item com desconto + IPI + frete)
     values = {
         0: item.get("codigo_produto"),
         1: item.get("codigo_fornecedor"),

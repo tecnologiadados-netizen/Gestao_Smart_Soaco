@@ -119,6 +119,11 @@ SELECT
     u.abreviatura AS unidade,
     icpc.precoUnitario AS preco_unitario,
     icpc.valorTotalComDesconto AS valor_total,
+    (
+        SELECT SUM(IFNULL(t.valorIPI, 0))
+        FROM tributacao t
+        WHERE t.idItemColetaPrecosCotacao = icpc.id
+    ) AS valor_ipi,
     COALESCE(icpc.valorFrete, 0) AS valor_frete,
     COALESCE(cc.valorTotalFrete, 0) AS valor_frete_geral,
     sc.id AS solicitacao_id,
@@ -261,6 +266,8 @@ export interface PreCompraCotacaoRow {
   unidade: string | null;
   preco_unitario: number | null;
   valor_total: number | null;
+  /** IPI do item na coleta (`tributacao.valorIPI`). O preço unitário do Nomus não inclui esse valor. */
+  valor_ipi?: number | null;
   valor_frete?: number | null;
   valor_frete_geral?: number | null;
   solicitacao_id: number | string | null;
@@ -339,6 +346,7 @@ const CAMPOS_NUMERICOS = new Set([
   'qtde',
   'preco_unitario',
   'valor_total',
+  'valor_ipi',
   'valor_frete',
   'valor_frete_geral',
 ]);
@@ -616,6 +624,39 @@ function alinharTotalComQuantidade(raw: PreCompraCotacaoRow): PreCompraCotacaoRo
   return { ...raw, valor_total: pelaQtde };
 }
 
+/**
+ * A coluna "V. UNIT. C/IPI" e o total "C/DESCONTO + IPI" do anexo precisam do IPI
+ * gravado em `tributacao`. O Nomus guarda `precoUnitario` e `valorTotalComDesconto` sem ele.
+ * Se a quantidade da cotação reescalou o total, o IPI acompanha na mesma proporção.
+ */
+export function aplicarIpiNoItemPdf(raw: PreCompraCotacaoRow): PreCompraCotacaoRow {
+  const alinhado = alinharTotalComQuantidade(raw);
+  const total = toNumero2Casas(alinhado.valor_total);
+  const ipiInformado = toNumero2Casas(raw.valor_ipi) ?? 0;
+  if (ipiInformado <= 0 || total == null) return alinhado;
+
+  const totalOriginal = toNumero2Casas(raw.valor_total);
+  const ipi =
+    totalOriginal != null && totalOriginal > 0 && Math.abs(total - totalOriginal) >= 0.02
+      ? Math.round(ipiInformado * (total / totalOriginal) * 100) / 100
+      : ipiInformado;
+  if (ipi <= 0) return alinhado;
+
+  const totalComIpi = Math.round((total + ipi) * 100) / 100;
+  const qtde = Number(alinhado.qtde);
+  const unitComIpi =
+    Number.isFinite(qtde) && qtde > 0
+      ? Math.round((totalComIpi / qtde) * 100) / 100
+      : alinhado.preco_unitario;
+
+  return {
+    ...alinhado,
+    valor_ipi: ipi,
+    valor_total: totalComIpi,
+    preco_unitario: unitComIpi,
+  };
+}
+
 /** Normaliza o texto de Observações do Nomus (quebras de linha e espaços nas pontas). */
 function textoObservacoes(value: unknown): string {
   return String(value ?? '')
@@ -670,7 +711,7 @@ export async function buscarDadosPdfPreCompra(
     if (!atualSelecionado && novoSelecionado) escolhido.set(key, raw);
   }
 
-  const itens = Array.from(escolhido.values()).map(alinharTotalComQuantidade);
+  const itens = Array.from(escolhido.values()).map(aplicarIpiNoItemPdf);
   if (!itens.length) return null;
 
   const chavesMantidas = new Set(itens.map((raw) => chaveItemPdf(raw)));
