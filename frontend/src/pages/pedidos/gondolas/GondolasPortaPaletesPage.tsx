@@ -149,7 +149,7 @@ export default function GondolasPortaPaletesPage() {
   const [filtroHistorico, setFiltroHistorico] = useState({ pedido: '', cliente: '', produto: '' });
   const [pedidosAbertos, setPedidosAbertos] = useState<Set<string>>(new Set());
   const [exportandoPedido, setExportandoPedido] = useState<string | null>(null);
-  const [exportandoCarteira, setExportandoCarteira] = useState(false);
+  const [exportandoCarteira, setExportandoCarteira] = useState<{ feitas: number; total: number } | null>(null);
   const gerouOrdemRef = useRef(false);
   const detalheCacheRef = useRef(new Map<number, DetalheItemGondola>());
 
@@ -398,14 +398,30 @@ export default function GondolasPortaPaletesPage() {
   }
 
   async function exportarCarteira() {
-    setExportandoCarteira(true);
+    const comFicha = linhas.filter((item) => item.temFicha);
+    const detalhes = new Map<number, DetalheItemGondola>();
+    const faltam: ItemCarteiraGondola[] = [];
+    for (const item of comFicha) {
+      const cached = detalheCacheRef.current.get(item.idItem);
+      if (cached) detalhes.set(item.idItem, cached);
+      else faltam.push(item);
+    }
+    setExportandoCarteira({ feitas: detalhes.size, total: comFicha.length });
     setErro(null);
     try {
-      await exportarCarteiraGondolasXlsx(linhas, setor);
+      const fila = [...faltam];
+      const trabalhar = async () => {
+        for (let item = fila.shift(); item; item = fila.shift()) {
+          detalhes.set(item.idItem, await carregarFicha(item));
+          setExportandoCarteira({ feitas: detalhes.size, total: comFicha.length });
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, fila.length) }, trabalhar));
+      await exportarCarteiraGondolasXlsx(linhas, detalhes, setor);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
+      setErro(e instanceof Error ? `Excel não gerado: ${e.message}` : 'Erro ao exportar o Excel.');
     } finally {
-      setExportandoCarteira(false);
+      setExportandoCarteira(null);
     }
   }
 
@@ -891,12 +907,14 @@ export default function GondolasPortaPaletesPage() {
             <button
               type="button"
               onClick={() => void exportarCarteira()}
-              disabled={linhas.length === 0 || exportandoCarteira}
-              title="Exporta as linhas da grade com o cartão e os filtros de coluna aplicados"
+              disabled={linhas.length === 0 || exportandoCarteira != null}
+              title="Exporta as linhas da grade com o cartão e os filtros de coluna aplicados. A aba Componentes traz as peças da ficha de cada item."
               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
             >
               <Download className="h-3.5 w-3.5" />
-              {exportandoCarteira ? 'Exportando…' : 'Excel'}
+              {exportandoCarteira
+                ? `Fichas ${exportandoCarteira.feitas.toLocaleString('pt-BR')}/${exportandoCarteira.total.toLocaleString('pt-BR')}…`
+                : 'Excel'}
             </button>
           </div>
           <p className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-400">
