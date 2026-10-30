@@ -416,27 +416,27 @@ export async function buscarProdutosNomus(
     return { produtos: mapSqlRowsToProdutos(rows as Record<string, unknown>[]), source: 'erp' };
   }
 
-  const produtos = await listarProdutosAtivos(pool, idEmpresa);
+  const produtos = await listarProdutosAtivos(pool);
   return { produtos: filtrarProdutosAtivos(produtos, options, limit), source: 'erp' };
 }
 
 const CATALOGO_PRODUTOS_ATIVOS_TTL_MS = 5 * 60 * 1000;
 
 let catalogoProdutosAtivos: {
-  empresaId: number;
   carregadoEm: number;
   produtos: ProdutoErp[];
 } | null = null;
 
-/** Cadastro Nomus: todo produto ativo da empresa, de qualquer tipo. */
+/**
+ * Cadastro Nomus: todo produto ativo, de qualquer tipo e de qualquer empresa do grupo
+ * (ex.: revenda vinculada só à Só Móveis / Só Refrigeração também entra na RCC/RNC).
+ */
 async function listarProdutosAtivos(
-  pool: NonNullable<ReturnType<typeof getNomusPool>>,
-  idEmpresa: number
+  pool: NonNullable<ReturnType<typeof getNomusPool>>
 ): Promise<ProdutoErp[]> {
   const agora = Date.now();
   if (
     catalogoProdutosAtivos &&
-    catalogoProdutosAtivos.empresaId === idEmpresa &&
     agora - catalogoProdutosAtivos.carregadoEm < CATALOGO_PRODUTOS_ATIVOS_TTL_MS
   ) {
     return catalogoProdutosAtivos.produtos;
@@ -449,22 +449,19 @@ async function listarProdutosAtivos(
        COALESCE(gp.nome, '') AS grupoProduto,
        COALESCE(tp.nome, '') AS tipoProduto
      FROM produto pr
-     INNER JOIN produtoempresa pe
-       ON pe.idProduto = pr.id
-      AND pe.idEmpresa = ?
      LEFT JOIN grupoproduto gp ON gp.id = pr.idGrupoProduto
      LEFT JOIN tipoproduto tp ON tp.id = pr.idTipoProduto
      WHERE pr.ativo = 1
-     ORDER BY pr.nome ASC`,
-    [idEmpresa]
+     ORDER BY pr.nome ASC`
   );
   const produtos = mapSqlRowsToProdutos(rows as Record<string, unknown>[]);
-  catalogoProdutosAtivos = { empresaId: idEmpresa, carregadoEm: agora, produtos };
+  catalogoProdutosAtivos = { carregadoEm: agora, produtos };
   return produtos;
 }
 
+/** Código sem espaço, hífen, ponto e barra: `SM 00258`, `SM-00258` e `SM00258` são o mesmo produto. */
 function codigoProdutoNormalizado(codigo: string): string {
-  return codigo.trim().toUpperCase().replace(/\s+/g, '');
+  return codigo.trim().toUpperCase().replace(/[\s\-./]+/g, '');
 }
 
 function filtrarProdutosAtivos(
@@ -486,10 +483,14 @@ function filtrarProdutosAtivos(
   if (q.length < PRODUTOS_MIN_SEARCH_CHARS) return produtos.slice(0, limit);
 
   const combina = criarMatcherTextoLivre(q);
-  const termo = q.toUpperCase().replace(/\s+/g, '');
+  const termo = codigoProdutoNormalizado(q);
+  const comparaCodigoCompacto = !q.includes('%') && termo.length >= PRODUTOS_MIN_SEARCH_CHARS;
   const encontrados = produtos.filter(
     (produto) =>
-      combina(produto.codigo) || combina(produto.descricao) || combina(produto.grupoProduto)
+      combina(produto.codigo) ||
+      combina(produto.descricao) ||
+      combina(produto.grupoProduto) ||
+      (comparaCodigoCompacto && codigoProdutoNormalizado(produto.codigo).includes(termo))
   );
   encontrados.sort((a, b) => {
     const porCodigo = relevanciaCodigo(a.codigo, termo) - relevanciaCodigo(b.codigo, termo);
