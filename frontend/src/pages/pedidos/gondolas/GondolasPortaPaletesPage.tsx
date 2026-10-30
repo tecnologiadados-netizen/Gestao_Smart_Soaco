@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { PERMISSOES, PERMISSOES_GONDOLAS, type CodigoPermissao } from '../../../config/permissoes';
 import { ComoLerBtn } from '../../../components/AjudaTelaModal';
 import CarregandoInformacoesOverlay from '../../../components/CarregandoInformacoesOverlay';
+import CopiarTextoBtn from '../../../components/CopiarTextoBtn';
 import GradeCelulaModalBtn from '../../../components/pcp/GradeCelulaModalBtn';
 import GradeFiltroCabecalhoBtn from '../../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../../components/grade/GradeFiltroExcelPortal';
@@ -32,6 +33,7 @@ import {
 import GondolasAjudaModal from './GondolasAjudaModal';
 import ModalFichaItem from './ModalFichaItem';
 import ModalGerarOrdem from './ModalGerarOrdem';
+import { exportarCarteiraGondolasXlsx } from './exportarCarteiraGondolasXlsx';
 import { exportarPpDoPedidoXlsx } from './exportarOrdemGondolasXlsx';
 import { imprimirOrdemGondolas } from './imprimirOrdemGondolas';
 
@@ -147,6 +149,7 @@ export default function GondolasPortaPaletesPage() {
   const [filtroHistorico, setFiltroHistorico] = useState({ pedido: '', cliente: '', produto: '' });
   const [pedidosAbertos, setPedidosAbertos] = useState<Set<string>>(new Set());
   const [exportandoPedido, setExportandoPedido] = useState<string | null>(null);
+  const [exportandoCarteira, setExportandoCarteira] = useState(false);
   const gerouOrdemRef = useRef(false);
   const detalheCacheRef = useRef(new Map<number, DetalheItemGondola>());
 
@@ -391,6 +394,18 @@ export default function GondolasPortaPaletesPage() {
       setErroOrdens(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
     } finally {
       setExportandoPedido(null);
+    }
+  }
+
+  async function exportarCarteira() {
+    setExportandoCarteira(true);
+    setErro(null);
+    try {
+      await exportarCarteiraGondolasXlsx(linhas, setor);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
+    } finally {
+      setExportandoCarteira(false);
     }
   }
 
@@ -868,10 +883,22 @@ export default function GondolasPortaPaletesPage() {
 
       <div className={`${painel} tabela-pedidos-outer overflow-hidden`}>
         <div className="flex items-center justify-between gap-3 border-b border-soaco-gray/35 px-4 py-2.5">
-          <p className="text-sm text-slate-600 dark:text-slate-200">
-            {linhas.length.toLocaleString('pt-BR')} {linhas.length === 1 ? 'item' : 'itens'}
-            {setor ? ` · ${setor}` : ''}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-slate-600 dark:text-slate-200">
+              {linhas.length.toLocaleString('pt-BR')} {linhas.length === 1 ? 'item' : 'itens'}
+              {setor ? ` · ${setor}` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => void exportarCarteira()}
+              disabled={linhas.length === 0 || exportandoCarteira}
+              title="Exporta as linhas da grade com o cartão e os filtros de coluna aplicados"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exportandoCarteira ? 'Exportando…' : 'Excel'}
+            </button>
+          </div>
           <p className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-400">
             <span className="inline-flex items-center gap-1.5">
               <span className="rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
@@ -935,6 +962,7 @@ export default function GondolasPortaPaletesPage() {
                       >
                         {item.codigo}
                       </GradeCelulaModalBtn>
+                      <CopiarTextoBtn texto={item.codigo} title="Copiar código do produto" />
                       {item.origem === 'nomus' && (
                         <span className="rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                           Nomus
