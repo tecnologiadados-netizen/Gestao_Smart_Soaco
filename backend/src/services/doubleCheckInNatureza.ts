@@ -19,6 +19,8 @@ export type LinhaClassificavel = {
   entradaPorPeso?: boolean;
   qtdeNF?: number;
   qtdePC?: number;
+  /** Soma das linhas do pedido quando a NF está ligada a mais de um item. */
+  qtdePcSoma?: number | null;
   valorIpiNF?: number;
   valorIpiPC?: number;
   aliquotaIpiNF?: number;
@@ -34,6 +36,9 @@ export type LinhaClassificavel = {
 
 export const OBS_PAGAMENTO_AJUSTE_DIA_UTIL =
   'O Nomus empurrou o vencimento para o próximo dia útil (fim de semana ou feriado). A condição cadastral é a mesma.';
+
+/** Acima deste percentual, a quantidade por peso exige o número da solicitação no Otimiza. */
+export const LIMIAR_QTDE_PESO_PCT = 10;
 
 const JUSTIFICATIVAS_BENIGNAS = new Set([
   'arredondamento',
@@ -161,10 +166,39 @@ export function ehAjusteDiaUtilPagamento(linha: LinhaClassificavel): boolean {
   return algumaDiferencaAjustada;
 }
 
+function qtdePedidoReferencia(linha: LinhaClassificavel): number {
+  if (linha.qtdePcSoma != null && Number.isFinite(linha.qtdePcSoma)) {
+    return Number(linha.qtdePcSoma);
+  }
+  return numero(linha.qtdePC);
+}
+
+/** Variação absoluta da quantidade da NF em relação ao pedido, em %. */
+export function variacaoQtdePesoPct(linha: LinhaClassificavel): number {
+  const nf = numero(linha.qtdeNF);
+  const pc = qtdePedidoReferencia(linha);
+  const base = Math.abs(pc);
+  if (!(base > 0)) return nf === 0 ? 0 : Number.POSITIVE_INFINITY;
+  return (Math.abs(nf - pc) / base) * 100;
+}
+
+/** True quando a diferença de peso passa de 10% — o número no Otimiza passa a ser obrigatório. */
+export function qtdePesoUltrapassaLimiar(linha: LinhaClassificavel): boolean {
+  return variacaoQtdePesoPct(linha) > LIMIAR_QTDE_PESO_PCT;
+}
+
 export function observacaoNaturezaDivergencia(params: {
   linha: LinhaClassificavel;
   campo: DoubleCheckInCampoComparativo;
 }): string | null {
+  if (params.campo === 'qtde' && params.linha.entradaPorPeso && !qtdePesoUltrapassaLimiar(params.linha)) {
+    const pct = variacaoQtdePesoPct(params.linha);
+    const texto = pct.toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+    return `Diferença de ${texto}% do peso do pedido, dentro do limiar de 10%. O número da solicitação no Otimiza é opcional.`;
+  }
   if (params.campo !== 'condicao_pagamento') return null;
   return ehAjusteDiaUtilPagamento(params.linha) ? OBS_PAGAMENTO_AJUSTE_DIA_UTIL : null;
 }
@@ -188,8 +222,12 @@ export function classificarNaturezaDivergencia(params: {
     return centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC) ? 'benigna' : 'real';
   }
 
-  // Quantidade diferente exige avaliação, inclusive em entrega parcial.
-  if (campo === 'qtde') return 'real';
+  // Unidade, peça e demais medidas: qualquer diferença é real.
+  // Peso: até 10% o número no Otimiza é opcional; acima disso, obrigatório.
+  if (campo === 'qtde') {
+    if (linha.entradaPorPeso && !qtdePesoUltrapassaLimiar(linha)) return 'benigna';
+    return 'real';
+  }
 
   if (campo === 'ipi') {
     if (linha.conferenciaIpi === 'percentual') {
