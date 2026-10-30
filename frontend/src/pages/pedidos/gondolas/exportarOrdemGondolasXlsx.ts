@@ -10,12 +10,12 @@ function texto(valor: string): string {
 }
 
 /**
- * Uma aba com todos os PP das ordens do pedido, nas colunas do PDF.
- * A mesma peça sai numa linha só, com a quantidade somada. Devolve quantas linhas saíram.
+ * Uma aba com todos os PP das ordens do pedido, nas colunas do PDF. Peça da planilha não tem tipo e conta como PP;
+ * só o PI do Nomus fica de fora. A mesma peça sai numa linha só, com a quantidade somada. Devolve quantas linhas saíram.
  */
 export async function exportarPpDoPedidoXlsx(pedido: string, detalhes: DetalheItemGondola[]): Promise<number> {
   const soPp = detalhes
-    .map((detalhe) => ({ ...detalhe, componentes: detalhe.componentes.filter((componente) => componente.tipo === 'PP') }))
+    .map((detalhe) => ({ ...detalhe, componentes: detalhe.componentes.filter((componente) => componente.tipo !== 'PI') }))
     .filter((detalhe) => detalhe.componentes.length > 0);
   const linhas = linhasDetalhamentoPorPedido(soPp);
   if (linhas.length === 0) return 0;

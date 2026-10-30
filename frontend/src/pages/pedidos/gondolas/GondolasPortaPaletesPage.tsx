@@ -386,7 +386,7 @@ export default function GondolasPortaPaletesPage() {
     setErroOrdens(null);
     try {
       const linhas = await exportarPpDoPedidoXlsx(grupo.pedido, detalhes);
-      if (linhas === 0) setErroOrdens(`O ${grupo.pedido} ainda não tem PP em ordem.`);
+      if (linhas === 0) setErroOrdens(`As ordens do ${grupo.pedido} só têm PI. Use o PDF de cada ordem.`);
     } catch (e) {
       setErroOrdens(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
     } finally {
@@ -624,7 +624,7 @@ export default function GondolasPortaPaletesPage() {
                                 e.stopPropagation();
                                 void exportarExcel(grupo);
                               }}
-                              title="Baixa um Excel com todos os PP das ordens deste pedido, nas colunas do PDF."
+                              title="Baixa um Excel com todos os PP e as peças da planilha das ordens deste pedido, nas colunas do PDF."
                               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
                             >
                               <Download className="h-3.5 w-3.5" />
