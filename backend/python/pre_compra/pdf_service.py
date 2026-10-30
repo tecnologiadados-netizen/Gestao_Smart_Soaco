@@ -29,6 +29,7 @@ TEMPLATE_PATH = BACKEND_ROOT / "assets" / "pre-compra" / "formulario_cotacao.doc
 
 FONT_NAME = "Arial"
 FONT_SIZE = Pt(8)
+OBS_FONT_SIZE = Pt(12)
 HEADER_PAD_LEFT = Pt(6)
 
 ITEM_ROW_IDX = 8
@@ -287,14 +288,15 @@ def _preencher_paragrafo(paragraph, line: str) -> None:
     else:
         run = paragraph.add_run(line)
         run.font.name = FONT_NAME
-        run.font.size = FONT_SIZE
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    paragraph.paragraph_format.left_indent = HEADER_PAD_LEFT
+        run.font.size = OBS_FONT_SIZE
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.left_indent = Pt(0)
+    paragraph.paragraph_format.right_indent = Pt(0)
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
     for run in paragraph.runs:
         run.font.name = FONT_NAME
-        run.font.size = FONT_SIZE
+        run.font.size = OBS_FONT_SIZE
         run.font.bold = False
 
 
@@ -315,7 +317,7 @@ def _fill_observacoes(table, data: dict) -> None:
     _preencher_paragrafo(cell.paragraphs[0], linhas[0])
     for line in linhas[1:]:
         _preencher_paragrafo(cell.add_paragraph(), line)
-    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     _garantir_altura_minima(row)
 
 
