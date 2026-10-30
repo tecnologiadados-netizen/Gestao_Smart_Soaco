@@ -218,6 +218,14 @@ export type OrdemProducaoPeca = {
   materiaPrima: string;
   medidaCorte?: string;
   observacao?: string;
+  /** Quando false, a peça não entra no PDF. Ausente ou true: imprime. */
+  imprimir?: boolean;
+};
+
+export type AnotacaoPecaOrdem = {
+  medidaCorte: string;
+  observacao: string;
+  imprimir: boolean;
 };
 
 export async function listarOrdensProducao(): Promise<OrdemProducao[]> {
@@ -280,7 +288,7 @@ export async function emitirOrdemProducao(body: {
   quantidade: number;
   observacao: string;
   numero?: string;
-  pecas?: { medidaCorte: string; observacao: string }[];
+  pecas?: AnotacaoPecaOrdem[];
   alocacoes?: AlocacaoPedido[];
 }): Promise<OrdemProducao> {
   const res = await apiFetch('/api/pcp/decomposicao/ordens', { method: 'POST', body });

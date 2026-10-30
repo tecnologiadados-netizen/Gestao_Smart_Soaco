@@ -3,6 +3,7 @@ import {
   detalharDecomposicao,
   nomeGrupo,
   obterDecomposicaoPai,
+  type AnotacaoPecaOrdem,
   type DecomposicaoDetalhe,
   type DecomposicaoPaiCadastro,
   type DecomposicaoPaiGrade,
@@ -27,12 +28,12 @@ export default function ModalGerarOrdem({
   onConfirmar: (body: {
     quantidade: number;
     observacao: string;
-    pecas: { medidaCorte: string; observacao: string }[];
+    pecas: AnotacaoPecaOrdem[];
   }) => void;
 }) {
   const [cadastro, setCadastro] = useState<DecomposicaoPaiCadastro | null>(null);
   const [detalhe, setDetalhe] = useState<DecomposicaoDetalhe | null>(null);
-  const [anotacoes, setAnotacoes] = useState<{ medidaCorte: string; observacao: string }[]>([]);
+  const [anotacoes, setAnotacoes] = useState<AnotacaoPecaOrdem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
 
@@ -44,7 +45,7 @@ export default function ModalGerarOrdem({
       .then(([cad, det]) => {
         if (!ativo) return;
         setCadastro(cad);
-        setAnotacoes((cad.pecas ?? []).map(() => ({ medidaCorte: '', observacao: '' })));
+        setAnotacoes((cad.pecas ?? []).map(() => ({ medidaCorte: '', observacao: '', imprimir: true })));
         setDetalhe(det.pai);
         if (!det.carteiraDisponivel) {
           setErroCarga(det.carteiraErro || 'A carteira não pôde ser lida. A quantidade sugerida pode ficar incompleta.');
@@ -76,6 +77,14 @@ export default function ModalGerarOrdem({
   const alterarAnotacao = (index: number, campo: 'medidaCorte' | 'observacao', valor: string) => {
     setAnotacoes((atual) => atual.map((item, i) => (i === index ? { ...item, [campo]: valor } : item)));
   };
+
+  const alterarImpressao = (index: number, imprimir: boolean) => {
+    setAnotacoes((atual) => atual.map((item, i) => (i === index ? { ...item, imprimir } : item)));
+  };
+
+  const todasMarcadas = anotacoes.length > 0 && anotacoes.every((item) => item.imprimir);
+  const algumaMarcada = anotacoes.some((item) => item.imprimir);
+  const qtdImpressao = anotacoes.filter((item) => item.imprimir).length;
 
   const confirmar = () => {
     onConfirmar({ quantidade: qtd, observacao: '', pecas: anotacoes });
@@ -114,9 +123,27 @@ export default function ModalGerarOrdem({
             <>
               {(cadastro?.pecas.length ?? 0) > 0 && (
                 <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                  <table className="w-full min-w-[1080px] text-left text-sm">
+                  <table className="w-full min-w-[1120px] text-left text-sm">
                     <thead className="bg-primary-600 text-white">
                       <tr>
+                        <th className="w-16 px-2 py-3 text-center text-xs font-semibold">
+                          <label className="inline-flex flex-col items-center gap-1">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-amber-400"
+                              checked={todasMarcadas}
+                              ref={(el) => {
+                                if (el) el.indeterminate = algumaMarcada && !todasMarcadas;
+                              }}
+                              aria-label="Marcar todas as peças para o PDF"
+                              onChange={(e) => {
+                                const marcada = e.target.checked;
+                                setAnotacoes((atual) => atual.map((item) => ({ ...item, imprimir: marcada })));
+                              }}
+                            />
+                            PDF
+                          </label>
+                        </th>
                         <th className="px-4 py-3 font-semibold">Componente / peça</th>
                         <th className="px-4 py-3 font-semibold">Qtd</th>
                         <th className="px-4 py-3 font-semibold">Qtd total</th>
@@ -128,8 +155,26 @@ export default function ModalGerarOrdem({
                       </tr>
                     </thead>
                     <tbody>
-                      {cadastro?.pecas.map((peca, index) => (
-                        <tr key={`${index}-${peca.descricao}`} className="border-t border-slate-100 dark:border-slate-700">
+                      {cadastro?.pecas.map((peca, index) => {
+                        const imprimir = anotacoes[index]?.imprimir !== false;
+                        return (
+                        <tr
+                          key={`${index}-${peca.descricao}`}
+                          className={
+                            imprimir
+                              ? 'border-t border-slate-100 dark:border-slate-700'
+                              : 'border-t border-slate-100 opacity-45 dark:border-slate-700'
+                          }
+                        >
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary-600"
+                              checked={imprimir}
+                              aria-label={`Incluir ${peca.descricao} no PDF`}
+                              onChange={(e) => alterarImpressao(index, e.target.checked)}
+                            />
+                          </td>
                           <td className="px-4 py-2 font-medium">{peca.descricao}</td>
                           <td className="px-4 py-2">{peca.quantidade}</td>
                           <td className="px-4 py-2 font-semibold">
@@ -155,9 +200,17 @@ export default function ModalGerarOrdem({
                             />
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
+                  <p className="border-t border-slate-200 px-4 py-2 text-xs text-slate-500 dark:border-slate-700">
+                    {qtdImpressao === anotacoes.length
+                      ? 'Todas as peças entram no PDF. Desmarque a que não deve aparecer.'
+                      : qtdImpressao === 0
+                        ? 'Nenhuma peça entra no PDF. Marque ao menos uma para o detalhamento sair na impressão.'
+                        : `${qtdImpressao} de ${anotacoes.length} peças entram no PDF.`}
+                  </p>
                 </div>
               )}
 

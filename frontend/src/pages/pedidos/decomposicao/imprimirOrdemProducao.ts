@@ -82,7 +82,7 @@ function corpoDetalhado(ordem: OrdemProducao, pecas: OrdemProducaoPeca[]): strin
               ${num(totalPecas)} peças
             </td>
             <td colspan="5" style="padding: 8px 10px; border: 1.5px solid #000; color: #64748b; font-size: 10px;">
-              ${pecas.length} componentes distintos cadastrados
+              ${pecas.length} componentes nesta ordem
             </td>
           </tr>
         </tfoot>
@@ -126,7 +126,7 @@ async function logoParaImpressao(): Promise<string | null> {
 
 export async function imprimirOrdemProducao(ordem: OrdemProducao): Promise<void> {
   const logo = await logoParaImpressao();
-  const pecas = ordem.pecas ?? [];
+  const pecas = (ordem.pecas ?? []).filter((peca) => peca.imprimir !== false);
   const corpo = pecas.length > 0 ? corpoDetalhado(ordem, pecas) : corpoSimples(ordem);
   const emissao = new Date(ordem.createdAt).toLocaleDateString('pt-BR');
 

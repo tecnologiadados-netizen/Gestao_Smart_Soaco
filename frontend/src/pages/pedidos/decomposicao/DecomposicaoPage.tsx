@@ -20,6 +20,7 @@ import {
   obterDecomposicaoPai,
   salvarDecomposicaoPai,
   type AlocacaoPedido,
+  type AnotacaoPecaOrdem,
   type DecomposicaoCadastroResumo,
   type DecomposicaoDetalhe,
   type DecomposicaoFilhoCadastro,
@@ -236,7 +237,7 @@ export default function DecomposicaoPage() {
   const confirmarOrdem = (body: {
     quantidade: number;
     observacao: string;
-    pecas: { medidaCorte: string; observacao: string }[];
+    pecas: AnotacaoPecaOrdem[];
   }) => {
     if (!paiOrdem) return;
     setErroGerar(null);
@@ -256,7 +257,7 @@ export default function DecomposicaoPage() {
     quantidade: number;
     observacao: string;
     numero: string;
-    pecas: { medidaCorte: string; observacao: string }[];
+    pecas: AnotacaoPecaOrdem[];
     alocacoes: AlocacaoPedido[];
   }) => {
     setGerando(true);
