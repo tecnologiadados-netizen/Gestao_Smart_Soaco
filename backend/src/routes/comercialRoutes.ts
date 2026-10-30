@@ -6,6 +6,7 @@ import {
   PERMISSOES_ACESSO_COMERCIAL_HISTORICO_VENDAS,
   PERMISSOES_ACESSO_COMERCIAL_RFV,
   PERMISSOES_ACESSO_COMERCIAL_COMISSIONAMENTO,
+  PERMISSOES_ACESSO_COMERCIAL_PORTA_PALLETS,
 } from '../utils/comercialPermissoes.js';
 import {
   getPainelComercialVendasAnalytics,
@@ -26,6 +27,11 @@ import {
   putComissionamentoInativosWhatsapp,
   postComissionamentoInativosWhatsapp,
 } from '../controllers/comercialController.js';
+import {
+  getPortaPalletsDadosAbertos,
+  getPortaPalletsDetalhe,
+  getPortaPalletsMensal,
+} from '../controllers/portaPalletsComercialController.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -34,6 +40,7 @@ const verPainelComercial = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_PAIN
 const verHistoricoVendas = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_HISTORICO_VENDAS);
 const verRfvClientes = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_RFV);
 const verComissionamento = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_COMISSIONAMENTO);
+const verPortaPallets = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_PORTA_PALLETS);
 
 router.get('/painel-vendas/analytics', verPainelComercial, getPainelComercialVendasAnalytics);
 router.get('/painel-vendas/drill', verPainelComercial, getPainelComercialVendasDrill);
@@ -44,6 +51,10 @@ router.get('/historico-vendas/drill', verHistoricoVendas, getHistoricoVendasDril
 router.get('/historico-vendas/serie-fatia', verHistoricoVendas, getHistoricoVendasSerieFatia);
 
 router.get('/rfv/analytics', verRfvClientes, getRfvClientesAnalytics);
+
+router.get('/porta-pallets/mensal', verPortaPallets, getPortaPalletsMensal);
+router.get('/porta-pallets/detalhe', verPortaPallets, getPortaPalletsDetalhe);
+router.get('/porta-pallets/dados-abertos', verPortaPallets, getPortaPalletsDadosAbertos);
 
 router.get('/comissionamento/analytics', verComissionamento, getComissionamentoAnalytics);
 router.get('/comissionamento/drill', verComissionamento, getComissionamentoDrill);

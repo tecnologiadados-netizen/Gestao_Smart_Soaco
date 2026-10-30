@@ -298,6 +298,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/comercial/painel': 'Painel Comercial',
   '/comercial/historico-vendas': 'Histórico de Vendas',
   '/comercial/classificacao-rfv': 'Classificação RFV',
+  '/comercial/porta-pallets': 'Indicadores de porta-pallets',
   '/loja/estoque-kits': 'Controle de estoque de kits',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
   '/financeiro/crm': 'CRM Financeiro',

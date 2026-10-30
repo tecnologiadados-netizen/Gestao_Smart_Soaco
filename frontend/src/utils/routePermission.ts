@@ -39,6 +39,7 @@ import {
   PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   PERMISSOES_ACESSO_PAINEL_RFV,
   PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
+  PERMISSOES_ACESSO_PAINEL_PORTA_PALLETS,
   PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
 } from '../config/kpisCatalog';
 
@@ -156,6 +157,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/comercial/historico-vendas': PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS,
   '/comercial/classificacao-rfv': PERMISSOES_ACESSO_PAINEL_RFV,
   '/comercial/comissionamento': PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO,
+  '/comercial/porta-pallets': PERMISSOES_ACESSO_PAINEL_PORTA_PALLETS,
   '/loja/estoque-kits': [
     PERMISSOES.LOJA_KITS_VER,
     PERMISSOES.LOJA_KITS_MOVIMENTAR,
@@ -242,6 +244,7 @@ export const ROTAS_ORDEM = [
   '/comercial/historico-vendas',
   '/comercial/classificacao-rfv',
   '/comercial/comissionamento',
+  '/comercial/porta-pallets',
   '/loja/estoque-kits',
   '/logistica/cubagem/veiculos',
   '/logistica/cubagem/produtos',
