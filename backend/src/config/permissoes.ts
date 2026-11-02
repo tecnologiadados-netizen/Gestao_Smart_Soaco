@@ -423,7 +423,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER]: 'Histórico de Vendas',
   [PERMISSOES.COMERCIAL_RFV_VER]: 'Classificação RFV',
   [PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER]: 'Análise de Comissionamento',
-  [PERMISSOES.COMERCIAL_PORTA_PALLETS_VER]: 'Indicadores de porta-pallets',
+  [PERMISSOES.COMERCIAL_PORTA_PALLETS_VER]: 'Indicadores de porta-pallets — visualizar (exclusiva)',
   [PERMISSOES.QUALIDADE_VER]: 'Permissão total',
   [PERMISSOES.QUALIDADE_DOCUMENTOS]: 'Documentos',
   [PERMISSOES.QUALIDADE_DOCUMENTOS_INATIVAR]: 'Inativar documentos',

@@ -5,6 +5,8 @@ import { formatMoeda, formatNumero } from '../../components/painel-comercial/pai
 import { formatTaxa, labelMes } from './portaPalletsComercialFormat';
 
 export type MetricaEvolucao = 'valor' | 'qtde';
+/** Valor mostrado no rótulo acima da barra: o que virou pedido (padrão) ou o proposto. */
+export type RotuloEvolucao = 'pedido' | 'proposto';
 
 type Ponto = {
   mes: string;
@@ -18,16 +20,13 @@ type Ponto = {
 const COR_FUNDO = 'rgba(148,163,184,0.32)';
 const COR_PREENCHIDO = '#5C92D6';
 const COR_PREENCHIDO_TEXTO = '#7FB0EE';
-const COR_ACIMA = '#34D399';
-const COR_ABAIXO = '#FB7185';
-/** Acima deste número de meses os rótulos sobre as barras ficam ilegíveis. */
-const MAX_MESES_COM_ROTULO = 18;
+/** Largura mínima por mês; acima disso o painel rola na horizontal e os rótulos continuam legíveis. */
+export const LARGURA_MES_FECHAMENTO = 64;
 
 type Props = {
   meses: MesPortaPallets[];
   metrica: MetricaEvolucao;
-  /** Percentual do recorte inteiro; o rótulo do mês fica verde acima dele e vermelho abaixo. */
-  pctReferencia: number | null;
+  rotulo: RotuloEvolucao;
   onMes: (mes: MesPortaPallets) => void;
 };
 
@@ -35,7 +34,21 @@ function compacto(v: number, metrica: MetricaEvolucao): string {
   return metrica === 'valor' ? formatMoeda(v, true) : formatNumero(v);
 }
 
-export default function PortaPalletsEvolucaoBarras({ meses, metrica, pctReferencia, onMes }: Props) {
+/**
+ * O eixo usa raiz quadrada: o fechado costuma ser bem menor que o proposto e sumiria na escala linear.
+ * A ordem entre os meses e os valores do eixo continuam corretos; a altura não é proporcional.
+ */
+export function alturaRelativa(v: number, max: number): number {
+  if (max <= 0 || v <= 0) return 0;
+  return Math.sqrt(v) / Math.sqrt(max);
+}
+
+export function ticksEixo(max: number): number[] {
+  const n = 4;
+  return Array.from({ length: n + 1 }, (_, i) => max * (i / n) ** 2);
+}
+
+export default function PortaPalletsEvolucaoBarras({ meses, metrica, rotulo, onMes }: Props) {
   const pontos = useMemo<Ponto[]>(
     () =>
       [...meses]
@@ -55,18 +68,20 @@ export default function PortaPalletsEvolucaoBarras({ meses, metrica, pctReferenc
     [meses, metrica]
   );
   const porMes = useMemo(() => new Map(meses.map((m) => [m.mes, m])), [meses]);
-  const maior = Math.max(...pontos.map((p) => p.topo), 1);
-  const comRotulo = pontos.length <= MAX_MESES_COM_ROTULO;
+  const maior = Math.max(...pontos.map((p) => p.topo), 1) * 1.05;
+  const comRotulo = true;
 
   if (pontos.length === 0) return <p className="py-16 text-center text-sm text-slate-400">Sem movimento no recorte.</p>;
 
   return (
     <ResponsiveContainer>
-      <BarChart data={pontos} margin={{ top: comRotulo ? 36 : 12, right: 8, left: 8, bottom: 0 }} barCategoryGap="22%">
+      <BarChart data={pontos} margin={{ top: comRotulo ? 22 : 12, right: 8, left: 8, bottom: 0 }} barCategoryGap="22%">
         <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.16)" />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} interval={0} axisLine={false} tickLine={false} />
         <YAxis
-          domain={[0, maior * 1.05]}
+          scale="sqrt"
+          domain={[0, maior]}
+          ticks={ticksEixo(maior)}
           tick={{ fontSize: 11, fill: '#94a3b8' }}
           width={metrica === 'valor' ? 72 : 36}
           tickFormatter={(v: number) => compacto(v, metrica)}
@@ -82,7 +97,7 @@ export default function PortaPalletsEvolucaoBarras({ meses, metrica, pctReferenc
               {...(props as BarraProps)}
               comRotulo={comRotulo}
               metrica={metrica}
-              pctReferencia={pctReferencia}
+              rotulo={rotulo}
               onClick={(p) => {
                 const m = porMes.get(p.mes);
                 if (m) onMes(m);
@@ -105,23 +120,20 @@ function BarraSobreposta({
   payload,
   comRotulo,
   metrica,
-  pctReferencia,
+  rotulo,
   onClick,
 }: BarraProps & {
   comRotulo: boolean;
   metrica: MetricaEvolucao;
-  pctReferencia: number | null;
+  rotulo: RotuloEvolucao;
   onClick: (p: Ponto) => void;
 }) {
   if (!payload || width <= 0) return null;
   const base = y + height;
-  const porUnidade = payload.topo > 0 ? height / payload.topo : 0;
-  const hExterno = payload.externo * porUnidade;
-  const hInterno = payload.interno * porUnidade;
+  const hExterno = height * alturaRelativa(payload.externo, payload.topo);
+  const hInterno = height * alturaRelativa(payload.interno, payload.topo);
   const largInterno = Math.max(4, width * 0.55);
   const xInterno = x + (width - largInterno) / 2;
-  const corPct =
-    payload.pct == null || pctReferencia == null ? '#94a3b8' : payload.pct >= pctReferencia ? COR_ACIMA : COR_ABAIXO;
   const cx = x + width / 2;
   const topoExterno = base - hExterno;
   const topoInterno = base - hInterno;
@@ -140,14 +152,15 @@ function BarraSobreposta({
         style={{ filter: 'drop-shadow(0 0 4px rgba(92,146,214,0.55))' }}
       />
       {comRotulo && payload.topo > 0 ? (
-        <>
-          <text x={cx} y={yTopo - 18} textAnchor="middle" fill={corPct} className="text-[12px] font-bold">
-            {formatTaxa(payload.pct)}
-          </text>
-          <text x={cx} y={yTopo - 6} textAnchor="middle" fill={COR_PREENCHIDO_TEXTO} className="text-[10px] font-medium">
-            {compacto(payload.interno, metrica)}
-          </text>
-        </>
+        <text
+          x={cx}
+          y={yTopo - 6}
+          textAnchor="middle"
+          fill={rotulo === 'pedido' ? COR_PREENCHIDO_TEXTO : '#CBD5E1'}
+          className="text-[10px] font-semibold"
+        >
+          {compacto(rotulo === 'pedido' ? payload.interno : payload.externo, metrica)}
+        </text>
       ) : null}
     </g>
   );

@@ -1,31 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Percent, Receipt, Wallet } from 'lucide-react';
+import { Download, Percent, Receipt, Wallet } from 'lucide-react';
 import {
-  obterPortaPalletsDadosAbertos,
+  obterPortaPalletsAuditoriaMensal,
   obterPortaPalletsDetalhe,
   obterPortaPalletsMensal,
   type DetalhePortaPallets,
   type IndicadorPortaPallets,
-  type LinhaPedidoItem,
-  type LinhaPropostaItem,
   type MesPortaPallets,
-  type PortaPalletsDadosAbertos,
   type PortaPalletsMensal,
 } from '../../api/portaPalletsComercial';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
-import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
-import { exportarPortaPalletsXlsx } from './exportPortaPalletsXlsx';
+import { exportarAuditoriaMensalXlsx } from './exportAuditoriaMensalXlsx';
 import ModalPortaPalletsDetalhe from './ModalPortaPalletsDetalhe';
 import PortaPalletsComercialAjudaModal, { ComoLerBtn } from './PortaPalletsComercialAjudaModal';
 import PortaPalletsFunil from './PortaPalletsFunil';
-import PortaPalletsEvolucaoBarras, { type MetricaEvolucao } from './PortaPalletsEvolucaoBarras';
+import PortaPalletsEvolucaoBarras, {
+  LARGURA_MES_FECHAMENTO,
+  type MetricaEvolucao,
+  type RotuloEvolucao,
+} from './PortaPalletsEvolucaoBarras';
+import PortaPalletsAnoAnoBarras, { LARGURA_MES_ANO_ANO } from './PortaPalletsAnoAnoBarras';
 import AjudaPedidosCardFunil from './AjudaPedidosCardFunil';
-import { formatDias, formatTaxa, labelMes } from './portaPalletsComercialFormat';
-import GradePortaPallets from './GradePortaPallets';
-import { COLUNAS_PEDIDOS, COLUNAS_PROPOSTAS } from './portaPalletsColunasGrade';
-const MES_MIN = '2018-01';
+import { formatData, formatDias, formatTaxa, labelMes } from './portaPalletsComercialFormat';
+import SeletorPeriodoDias from './SeletorPeriodoDias';
+const DATA_MIN = '2018-01-01';
 
 const panelSurface =
   'rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur-sm dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(22,26,40,0.96),rgba(12,14,22,0.96))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_rgba(0,0,0,0.28)]';
@@ -50,19 +50,10 @@ const TONE: Record<Tone, { card: string; icon: string }> = {
   },
 };
 
-const inputClass =
-  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
-const labelClass = 'mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400';
 const btnPrimary =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50';
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
-const TH =
-  'sticky top-0 z-10 bg-slate-100 px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-[#12141c] dark:text-slate-300';
-
-type Aba = 'painel' | 'abertos';
-type Origem = 'propostas' | 'pedidos';
-
 type ModalAlvo = {
   mes?: string;
   desde?: string;
@@ -72,26 +63,29 @@ type ModalAlvo = {
   subtitulo: string;
 };
 
-function mesAtual(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function mesHa(n: number): string {
+function hoje(): string {
+  return iso(new Date());
+}
+
+/** Dia 1º do mês de n meses atrás (contando o atual). */
+function inicioMesHa(n: number): string {
   const d = new Date();
   d.setDate(1);
   d.setMonth(d.getMonth() - (n - 1));
-  const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  return ym < MES_MIN ? MES_MIN : ym;
+  const v = iso(d);
+  return v < DATA_MIN ? DATA_MIN : v;
 }
 
 function recortePadrao(): { desde: string; ate: string } {
-  return { desde: mesHa(12), ate: mesAtual() };
+  return { desde: inicioMesHa(12), ate: hoje() };
 }
 
 export default function PortaPalletsComercialPage() {
   const padrao = recortePadrao();
-  const [aba, setAba] = useState<Aba>('painel');
   const [ajuda, setAjuda] = useState(false);
   const [draftDesde, setDraftDesde] = useState(padrao.desde);
   const [draftAte, setDraftAte] = useState(padrao.ate);
@@ -101,6 +95,13 @@ export default function PortaPalletsComercialPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [metrica, setMetrica] = useState<MetricaEvolucao>('valor');
+  const [rotulo, setRotulo] = useState<RotuloEvolucao>('pedido');
+  const [visaoGrafico, setVisaoGrafico] = useState<'funil' | 'anoAno'>('funil');
+  const graficoScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = graficoScrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [dados, visaoGrafico]);
   const [modal, setModal] = useState<ModalAlvo | null>(null);
   const [detalhe, setDetalhe] = useState<DetalhePortaPallets | null>(null);
   const [detalheLoading, setDetalheLoading] = useState(false);
@@ -108,12 +109,8 @@ export default function PortaPalletsComercialPage() {
   const detalheCacheRef = useRef(new Map<string, DetalhePortaPallets>());
   const detalheReqRef = useRef(0);
 
-  const [abertos, setAbertos] = useState<PortaPalletsDadosAbertos | null>(null);
-  const [abertosLoading, setAbertosLoading] = useState(false);
-  const [abertosErro, setAbertosErro] = useState<string | null>(null);
-  const [origem, setOrigem] = useState<Origem>('propostas');
-  const [busca, setBusca] = useState('');
-  const [exportando, setExportando] = useState(false);
+  const [exportandoAuditoria, setExportandoAuditoria] = useState(false);
+  const [erroAuditoria, setErroAuditoria] = useState<string | null>(null);
 
   const carregar = useCallback(async (ini: string, fim: string, refresh = false) => {
     setLoading(true);
@@ -128,27 +125,9 @@ export default function PortaPalletsComercialPage() {
     }
   }, []);
 
-  const carregarAbertos = useCallback(async (refresh = false) => {
-    setAbertosLoading(true);
-    setAbertosErro(null);
-    try {
-      setAbertos(await obterPortaPalletsDadosAbertos({ refresh }));
-    } catch (e) {
-      setAbertos(null);
-      setAbertosErro(e instanceof Error ? e.message : 'Erro ao carregar os dados abertos.');
-    } finally {
-      setAbertosLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void carregar(desde, ate, false);
   }, [carregar, desde, ate]);
-
-  useEffect(() => {
-    if (aba !== 'abertos' || abertos || abertosLoading) return;
-    void carregarAbertos(false);
-  }, [aba, abertos, abertosLoading, carregarAbertos]);
 
   const aplicar = useCallback(
     (ini: string, fim: string) => {
@@ -164,8 +143,7 @@ export default function PortaPalletsComercialPage() {
   const atualizar = useCallback(() => {
     detalheCacheRef.current.clear();
     void carregar(desde, ate, true);
-    if (aba === 'abertos') void carregarAbertos(true);
-  }, [aba, ate, carregar, carregarAbertos, desde]);
+  }, [ate, carregar, desde]);
 
   const abrir = useCallback((alvo: ModalAlvo) => {
     setModal(alvo);
@@ -182,8 +160,8 @@ export default function PortaPalletsComercialPage() {
     const req = ++detalheReqRef.current;
     void obterPortaPalletsDetalhe(alvo.indicador, {
       mes: alvo.mes,
-      desde: alvo.mes ? undefined : alvo.desde ?? desde,
-      ate: alvo.mes ? undefined : alvo.ate ?? ate,
+      desde: alvo.desde ?? desde,
+      ate: alvo.ate ?? ate,
     })
       .then((data) => {
         detalheCacheRef.current.set(chave, data);
@@ -201,53 +179,21 @@ export default function PortaPalletsComercialPage() {
 
   const totais = dados?.totais;
   const mesesTabela = useMemo(() => [...(dados?.meses ?? [])].sort((a, b) => b.mes.localeCompare(a.mes)), [dados]);
-  const pctReferenciaEvolucao = useMemo(() => {
-    const t = dados?.totais;
-    if (!t) return null;
-    if (metrica === 'qtde') return t.taxaConversao;
-    return t.valorPropostas > 0 ? t.valorPedidosGerados / t.valorPropostas : null;
-  }, [dados, metrica]);
-  const propostasRecorte = useMemo(
-    () => (abertos?.propostas ?? []).filter((l) => l.mes >= desde && l.mes <= ate),
-    [abertos, ate, desde]
-  );
-  const pedidosRecorte = useMemo(
-    () => (abertos?.pedidos ?? []).filter((l) => l.mes >= desde && l.mes <= ate),
-    [abertos, ate, desde]
-  );
-  const propostasBusca = useMemo(() => {
-    const match = criarMatcherTextoLivre(busca);
-    return propostasRecorte.filter((l) => match(textoLinha(l, 'propostas')));
-  }, [busca, propostasRecorte]);
-  const pedidosBusca = useMemo(() => {
-    const match = criarMatcherTextoLivre(busca);
-    return pedidosRecorte.filter((l) => match(textoLinha(l, 'pedidos')));
-  }, [busca, pedidosRecorte]);
 
-  const propostasGradeRef = useRef<LinhaPropostaItem[] | null>(null);
-  const pedidosGradeRef = useRef<LinhaPedidoItem[] | null>(null);
-  const onPropostasGrade = useCallback((rows: LinhaPropostaItem[]) => {
-    propostasGradeRef.current = rows;
-  }, []);
-  const onPedidosGrade = useCallback((rows: LinhaPedidoItem[]) => {
-    pedidosGradeRef.current = rows;
-  }, []);
-
-  const exportar = useCallback(async () => {
-    if (!abertos) return;
-    setExportando(true);
+  const exportarAuditoria = useCallback(async () => {
+    setExportandoAuditoria(true);
+    setErroAuditoria(null);
     try {
-      await exportarPortaPalletsXlsx(
-        origem === 'propostas' ? (propostasGradeRef.current ?? propostasBusca) : propostasRecorte,
-        origem === 'pedidos' ? (pedidosGradeRef.current ?? pedidosBusca) : pedidosRecorte
-      );
+      await exportarAuditoriaMensalXlsx(await obterPortaPalletsAuditoriaMensal({ desde, ate }));
+    } catch (e) {
+      setErroAuditoria(e instanceof Error ? e.message : 'Erro ao exportar a auditoria mensal.');
     } finally {
-      setExportando(false);
+      setExportandoAuditoria(false);
     }
-  }, [abertos, origem, pedidosBusca, pedidosRecorte, propostasBusca, propostasRecorte]);
+  }, [ate, desde]);
 
   const abrirPeriodo = (indicador: IndicadorPortaPallets, titulo: string, subtitulo: string) => {
-    abrir({ indicador, desde, ate, titulo: `${titulo} · ${labelMes(desde)} a ${labelMes(ate)}`, subtitulo });
+    abrir({ indicador, desde, ate, titulo: `${titulo} · ${formatData(desde)} a ${formatData(ate)}`, subtitulo });
   };
 
   const k = totais;
@@ -280,45 +226,20 @@ export default function PortaPalletsComercialPage() {
         </header>
 
         <div className={`flex flex-wrap items-end gap-3 px-4 py-3 ${panelSurface}`}>
-          <div>
-            <label className={labelClass} htmlFor="pp-inicio">
-              Mês início
-            </label>
-            <input
-              id="pp-inicio"
-              type="month"
-              min={MES_MIN}
-              max={mesAtual()}
-              className={inputClass}
-              value={draftDesde}
-              onChange={(e) => setDraftDesde(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelClass} htmlFor="pp-fim">
-              Mês fim
-            </label>
-            <input
-              id="pp-fim"
-              type="month"
-              min={MES_MIN}
-              max={mesAtual()}
-              className={inputClass}
-              value={draftAte}
-              onChange={(e) => setDraftAte(e.target.value)}
-            />
-          </div>
-          <button type="button" className={btnSecondary} onClick={() => aplicar(mesHa(12), mesAtual())}>
+          <SeletorPeriodoDias
+            desde={draftDesde}
+            ate={draftAte}
+            min={DATA_MIN}
+            max={hoje()}
+            onChange={(ini, fim) => {
+              setDraftDesde(ini);
+              setDraftAte(fim);
+            }}
+          />
+          <button type="button" className={btnSecondary} onClick={() => aplicar(inicioMesHa(12), hoje())}>
             12 meses
           </button>
-          <button
-            type="button"
-            className={btnSecondary}
-            onClick={() => aplicar(`${new Date().getFullYear()}-01`, mesAtual())}
-          >
-            Ano atual
-          </button>
-          <button type="button" className={btnSecondary} onClick={() => aplicar(MES_MIN, mesAtual())}>
+          <button type="button" className={btnSecondary} onClick={() => aplicar(DATA_MIN, hoje())}>
             Desde 2018
           </button>
           <button
@@ -329,17 +250,6 @@ export default function PortaPalletsComercialPage() {
           >
             Filtrar
           </button>
-          <div className="ml-auto">
-            <span className={labelClass}>Visão</span>
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
-              <SegBtn ativo={aba === 'painel'} onClick={() => setAba('painel')}>
-                Painel
-              </SegBtn>
-              <SegBtn ativo={aba === 'abertos'} onClick={() => setAba('abertos')}>
-                Dados abertos
-              </SegBtn>
-            </div>
-          </div>
         </div>
 
         {erro && (
@@ -348,7 +258,7 @@ export default function PortaPalletsComercialPage() {
           </p>
         )}
 
-        {aba === 'painel' && k && (
+        {k && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <KpiCard
@@ -356,8 +266,7 @@ export default function PortaPalletsComercialPage() {
                 titulo="Valor vendido"
                 valor={formatMoeda(k.valorVendido, true)}
                 detalhe={`${formatNumero(k.qtdPedidos)} pedidos emitidos no recorte`}
-                icone={<Wallet className="h-4 w-4" strokeWidth={2.2} />}
-                ajuda={dados?.funil ? <AjudaPedidosCardFunil conciliacao={dados.funil.conciliacao} /> : undefined}
+                icone={<Wallet className="h-4 w-4" strokeWidth={2.2} />}                ajuda={dados?.funil ? <AjudaPedidosCardFunil conciliacao={dados.funil.conciliacao} /> : undefined}
                 onClick={() => abrirPeriodo('pedidos', 'Valor vendido', formatMoeda(k.valorVendido))}
               />
               <KpiCard
@@ -365,8 +274,7 @@ export default function PortaPalletsComercialPage() {
                 titulo="Ticket médio"
                 valor={k.ticketMedio == null ? '—' : formatMoeda(k.ticketMedio)}
                 detalhe={`${formatMoeda(k.valorVendido, true)} ÷ ${formatNumero(k.qtdPedidos)} pedidos`}
-                icone={<Receipt className="h-4 w-4" strokeWidth={2.2} />}
-                onClick={() =>
+                icone={<Receipt className="h-4 w-4" strokeWidth={2.2} />}                onClick={() =>
                   abrirPeriodo('pedidos', 'Ticket médio', k.ticketMedio == null ? '—' : formatMoeda(k.ticketMedio))
                 }
               />
@@ -374,9 +282,8 @@ export default function PortaPalletsComercialPage() {
                 tone="cyan"
                 titulo="Conversão"
                 valor={formatTaxa(k.taxaConversao)}
-                detalhe={`${formatNumero(k.qtdConvertidas)} de ${formatNumero(k.qtdPropostas)} propostas · lead time ${formatDias(k.tempoMedioDias)}`}
-                icone={<Percent className="h-4 w-4" strokeWidth={2.2} />}
-                onClick={() => abrirPeriodo('conversao', 'Conversão', formatTaxa(k.taxaConversao))}
+                detalhe={`${formatNumero(k.qtdConvertidas)} de ${formatNumero(k.qtdPropostas)} propostas viraram pedido`}
+                icone={<Percent className="h-4 w-4" strokeWidth={2.2} />}                onClick={() => abrirPeriodo('conversao', 'Conversão', formatTaxa(k.taxaConversao))}
               />
             </div>
 
@@ -387,130 +294,173 @@ export default function PortaPalletsComercialPage() {
             ) : null}
 
             <div className={`flex flex-col p-4 ${panelSurface}`}>
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Evolução mensal — propostas x fechamento</h2>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1.5">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-[16rem] flex-1">
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {visaoGrafico === 'anoAno' ? 'Evolução mensal — YoY (ano x ano)' : 'Evolução mensal — propostas x fechamento'}
+                  </h2>
+                  {visaoGrafico === 'anoAno' ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap text-xs text-slate-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-3.5 rounded-sm bg-slate-400/30" />
+                        Proposto
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2.5 w-2 rounded-sm bg-[#94A3B8]" />
+                        Virou pedido · ano anterior
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-[#7FB0EE]">
+                        <span className="h-2.5 w-2 rounded-sm bg-[#5C92D6] shadow-[0_0_8px_#5C92D6]" />
+                        Virou pedido · período atual
+                      </span>
+                      <span>
+                        <span className="text-emerald-400">▲</span> melhora · <span className="text-rose-400">▼</span> piora
+                      </span>
+                    </div>
+                  ) : (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setRotulo('proposto')}
+                      aria-pressed={rotulo === 'proposto'}
+                      title="Mostrar no rótulo o valor proposto"
+                      className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition ${
+                        rotulo === 'proposto'
+                          ? 'bg-white/10 font-semibold text-slate-100 ring-1 ring-slate-400/40'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
                       <span className="h-2.5 w-3.5 rounded-sm bg-slate-400/40" />
                       Proposto
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRotulo('pedido')}
+                      aria-pressed={rotulo === 'pedido'}
+                      title="Mostrar no rótulo o valor que virou pedido"
+                      className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition ${
+                        rotulo === 'pedido'
+                          ? 'bg-[#5C92D6]/15 font-semibold text-[#7FB0EE] ring-1 ring-[#5C92D6]/40'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
                       <span className="h-2.5 w-2 rounded-sm bg-[#5C92D6] shadow-[0_0_8px_#5C92D6]" />
                       Virou pedido
-                    </span>
-                    <span>
-                      <span className="font-semibold text-emerald-400">%</span> acima /{' '}
-                      <span className="font-semibold text-rose-400">%</span> abaixo da média ({formatTaxa(pctReferenciaEvolucao)})
-                    </span>
+                    </button>
                   </div>
+                  )}
                 </div>
-                <div className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
-                  <SegBtn ativo={metrica === 'valor'} onClick={() => setMetrica('valor')}>
-                    Valor
-                  </SegBtn>
-                  <SegBtn ativo={metrica === 'qtde'} onClick={() => setMetrica('qtde')}>
-                    Quantidade
-                  </SegBtn>
+                <div className="flex shrink-0 items-center gap-2 text-[11px]">
+                  <MiniToggle
+                    opcoes={[
+                      { id: 'funil', label: 'Fechamento' },
+                      { id: 'anoAno', label: 'YoY' },
+                    ]}
+                    ativo={visaoGrafico}
+                    onChange={setVisaoGrafico}
+                  />
+                  <span className="h-3 w-px bg-slate-300 dark:bg-white/10" />
+                  <MiniToggle
+                    opcoes={[
+                      { id: 'valor', label: 'R$' },
+                      { id: 'qtde', label: 'Qtd' },
+                    ]}
+                    ativo={metrica}
+                    onChange={setMetrica}
+                  />
                 </div>
               </div>
-              <div className="h-80 w-full">
-                <PortaPalletsEvolucaoBarras
-                  meses={dados?.meses ?? []}
-                  metrica={metrica}
-                  pctReferencia={pctReferenciaEvolucao}
-                  onMes={(m) =>
-                    abrir(
-                      metrica === 'valor'
-                        ? {
-                            mes: m.mes,
-                            indicador: 'pedidos_gerados',
-                            titulo: `Pedidos gerados pelas propostas de ${labelMes(m.mes)}`,
-                            subtitulo: `${formatMoeda(m.valorPedidosGerados)} de ${formatMoeda(m.valorPropostas)} em propostas`,
-                          }
-                        : {
-                            mes: m.mes,
-                            indicador: 'conversao',
-                            titulo: `Propostas de ${labelMes(m.mes)}`,
-                            subtitulo: `${formatNumero(m.qtdConvertidas)} de ${formatNumero(m.qtdPropostas)} viraram pedido`,
-                          }
-                    )
-                  }
-                />
+              <div ref={graficoScrollRef} className="w-full overflow-x-auto overflow-y-hidden pb-1">
+                <div
+                  className="h-80"
+                  style={{
+                    minWidth:
+                      (dados?.meses.length ?? 0) *
+                      (visaoGrafico === 'anoAno' ? LARGURA_MES_ANO_ANO : LARGURA_MES_FECHAMENTO),
+                  }}
+                >
+                {visaoGrafico === 'anoAno' ? (
+                  <PortaPalletsAnoAnoBarras
+                    meses={dados?.meses ?? []}
+                    mesesAnoAnterior={dados?.anoAnterior?.meses ?? null}
+                    metrica={metrica}
+                    onBarra={(m, anterior) => {
+                      const ant = dados?.anoAnterior;
+                      const recorte = anterior && ant ? { desde: ant.desde, ate: ant.ate } : {};
+                      abrir(
+                        metrica === 'valor'
+                          ? {
+                              mes: m.mes,
+                              ...recorte,
+                              indicador: 'pedidos_gerados',
+                              titulo: `Pedidos gerados pelas propostas de ${labelMes(m.mes)}`,
+                              subtitulo: `${formatMoeda(m.valorPedidosGerados)} de ${formatMoeda(m.valorPropostas)} em propostas`,
+                            }
+                          : {
+                              mes: m.mes,
+                              ...recorte,
+                              indicador: 'conversao',
+                              titulo: `Propostas de ${labelMes(m.mes)}`,
+                              subtitulo: `${formatNumero(m.qtdConvertidas)} de ${formatNumero(m.qtdPropostas)} viraram pedido`,
+                            }
+                      );
+                    }}
+                  />
+                ) : (
+                  <PortaPalletsEvolucaoBarras
+                    meses={dados?.meses ?? []}
+                    metrica={metrica}
+                    rotulo={rotulo}
+                    onMes={(m) =>
+                      abrir(
+                        metrica === 'valor'
+                          ? {
+                              mes: m.mes,
+                              indicador: 'pedidos_gerados',
+                              titulo: `Pedidos gerados pelas propostas de ${labelMes(m.mes)}`,
+                              subtitulo: `${formatMoeda(m.valorPedidosGerados)} de ${formatMoeda(m.valorPropostas)} em propostas`,
+                            }
+                          : {
+                              mes: m.mes,
+                              indicador: 'conversao',
+                              titulo: `Propostas de ${labelMes(m.mes)}`,
+                              subtitulo: `${formatNumero(m.qtdConvertidas)} de ${formatNumero(m.qtdPropostas)} viraram pedido`,
+                            }
+                      )
+                    }
+                  />
+                )}
+                </div>
               </div>
             </div>
 
             <div className={`overflow-hidden ${panelSurface}`}>
-              <div className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Série mensal</h2>
-                  <p className="text-xs text-slate-500">A soma de cada coluna do recorte é o número do card. Clique na célula para auditar.</p>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Auditoria mensal</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-xs text-slate-500">Clique em qualquer número para auditar a origem.</p>
+                  <button
+                    type="button"
+                    disabled={exportandoAuditoria || mesesTabela.length === 0}
+                    onClick={() => void exportarAuditoria()}
+                    title="Uma linha por proposta, pedido gerado e cliente de cada mês do período filtrado"
+                    className={btnSecondary}
+                  >
+                    <Download className="h-4 w-4" />
+                    {exportandoAuditoria ? 'Exportando…' : 'Exportar Excel'}
+                  </button>
                 </div>
               </div>
-              <div className="max-h-[28rem] overflow-auto">
+              {erroAuditoria && (
+                <p className="px-4 pb-2 text-xs text-rose-700 dark:text-rose-300">{erroAuditoria}</p>
+              )}
+              <div className="max-h-[30rem] overflow-auto border-t border-slate-200 dark:border-white/[0.06]">
                 <TabelaMensal meses={mesesTabela} totais={k} onAbrir={abrir} />
               </div>
             </div>
           </div>
         )}
 
-        {aba === 'abertos' && (
-          <section className={`p-4 ${panelSurface}`}>
-            <div className="mb-3 flex flex-wrap items-end gap-2">
-              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
-                <SegBtn ativo={origem === 'propostas'} onClick={() => setOrigem('propostas')}>
-                  Propostas
-                </SegBtn>
-                <SegBtn ativo={origem === 'pedidos'} onClick={() => setOrigem('pedidos')}>
-                  Pedidos
-                </SegBtn>
-              </div>
-              <label className="ml-auto flex min-w-[220px] flex-1 flex-col text-xs text-slate-500">
-                Busca
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Texto livre, use % para refinar"
-                  className={`${inputClass} mt-1`}
-                />
-              </label>
-              <button type="button" disabled={!abertos || exportando} onClick={() => void exportar()} className={btnPrimary}>
-                {exportando ? 'Exportando…' : 'Exportar Excel'}
-              </button>
-            </div>
-            {abertosLoading && <p className="text-sm text-slate-500">Carregando dados abertos…</p>}
-            {abertosErro && <p className="text-sm text-rose-700 dark:text-rose-300">{abertosErro}</p>}
-            {!abertosLoading && !abertosErro && (
-              <>
-                <p className="mb-2 text-xs text-slate-500">
-                  Linhas do recorte{busca.trim() ? ' que passam na busca' : ''}. A exportação leva a aba aberta com a busca e os
-                  filtros da grade; a outra aba vai com o recorte inteiro.
-                </p>
-                {origem === 'propostas' ? (
-                  <GradePortaPallets
-                    key="propostas"
-                    rows={propostasBusca}
-                    colunas={COLUNAS_PROPOSTAS}
-                    rowKey={(r) => r.idItem}
-                    defaultSortLevels={[{ id: 'abertura', dir: 'desc' }]}
-                    onLinhasExibidas={onPropostasGrade}
-                    maxHeightClass="max-h-[calc(100vh-22rem)]"
-                  />
-                ) : (
-                  <GradePortaPallets
-                    key="pedidos"
-                    rows={pedidosBusca}
-                    colunas={COLUNAS_PEDIDOS}
-                    rowKey={(r) => r.idItem}
-                    defaultSortLevels={[{ id: 'emissao', dir: 'desc' }]}
-                    onLinhasExibidas={onPedidosGrade}
-                    maxHeightClass="max-h-[calc(100vh-22rem)]"
-                  />
-                )}
-              </>
-            )}
-          </section>
-        )}
       </div>
 
       <ModalPortaPalletsDetalhe
@@ -573,8 +523,7 @@ function KpiCard({
           <p className="mt-1 text-xl font-semibold leading-tight tracking-tight tabular-nums text-slate-900 dark:text-white">
             {valor}
           </p>
-          {detalhe ? <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{detalhe}</p> : null}
-        </div>
+          {detalhe ? <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{detalhe}</p> : null}        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {ajuda}
           <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ring-1 ${tom.icon}`}>{icone}</span>
@@ -584,17 +533,33 @@ function KpiCard({
   );
 }
 
-function SegBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: string }) {
+function MiniToggle<T extends string>({
+  opcoes,
+  ativo,
+  onChange,
+}: {
+  opcoes: Array<{ id: T; label: string }>;
+  ativo: T;
+  onChange: (id: T) => void;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-        ativo ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white' : 'text-slate-500'
-      }`}
-    >
-      {children}
-    </button>
+    <div className="inline-flex items-center gap-0.5">
+      {opcoes.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          aria-pressed={ativo === o.id}
+          className={`rounded-full px-2 py-0.5 font-medium transition ${
+            ativo === o.id
+              ? 'bg-slate-900/5 text-slate-900 dark:bg-white/10 dark:text-white'
+              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -607,55 +572,124 @@ function TabelaMensal({
   totais: MesPortaPallets;
   onAbrir: (alvo: ModalAlvo) => void;
 }) {
+  const grupos: Array<{ titulo: string; colunas: number; cor: string }> = [
+    { titulo: 'Propostas', colunas: 2, cor: 'border-slate-400/60 text-slate-300' },
+    { titulo: 'Pedidos gerados', colunas: 3, cor: 'border-[#5C92D6] text-[#7FB0EE]' },
+    { titulo: 'Clientes', colunas: 2, cor: 'border-emerald-400/70 text-emerald-300' },
+    { titulo: 'Conversão', colunas: 2, cor: 'border-amber-400/70 text-amber-300' },
+  ];
+  const sub = 'px-3 pb-2 pt-1 text-right text-[11px] font-medium text-slate-500 dark:text-slate-400';
+  const inicioGrupo = 'border-l border-slate-200 dark:border-white/[0.06]';
+
   return (
-    <table className="w-full min-w-[1100px] border-collapse text-sm">
-      <thead>
+    <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-sm">
+      <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur dark:bg-[#12141c]/95">
         <tr>
-          <th className={`${TH} left-0 z-20 text-left`}>Mês</th>
-          <th className={TH}>Propostas</th>
-          <th className={TH}>Valor das propostas</th>
-          <th className={TH}>Pedidos</th>
-          <th className={TH}>Valor vendido</th>
-          <th className={TH}>Ticket médio</th>
-          <th className={TH}>Clientes</th>
-          <th className={TH}>Primeira compra</th>
-          <th className={TH}>Conversão</th>
-          <th className={TH}>Tempo médio</th>
+          <th rowSpan={2} className="sticky left-0 z-20 bg-white/95 px-4 py-2 text-left align-bottom text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:bg-[#12141c]/95 dark:text-slate-400">
+            Mês
+          </th>
+          {grupos.map((g) => (
+            <th
+              key={g.titulo}
+              colSpan={g.colunas}
+              className={`${inicioGrupo} px-3 pt-2 text-left text-[10px] font-semibold uppercase tracking-[0.16em]`}
+            >
+              <span className={`inline-block border-b-2 pb-1 ${g.cor}`}>{g.titulo}</span>
+            </th>
+          ))}
+        </tr>
+        <tr className="shadow-[0_1px_0_rgba(148,163,184,0.18)]">
+          <th className={`${sub} ${inicioGrupo}`}>Qtd.</th>
+          <th className={sub}>Valor</th>
+          <th className={`${sub} ${inicioGrupo}`}>Qtd.</th>
+          <th className={sub}>Valor vendido</th>
+          <th className={sub}>Ticket médio</th>
+          <th className={`${sub} ${inicioGrupo}`}>Com pedido</th>
+          <th className={sub}>1ª compra</th>
+          <th className={`${sub} ${inicioGrupo}`}>Taxa</th>
+          <th className={sub}>Tempo médio</th>
         </tr>
       </thead>
       <tbody>
-        {meses.map((mes) => (
-          <tr key={mes.mes} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/70 dark:border-white/5 dark:odd:bg-transparent dark:even:bg-white/[0.02]">
-            <th className="sticky left-0 bg-inherit px-2 py-1.5 text-left font-medium text-slate-800 dark:text-slate-100">
-              {labelMes(mes.mes)}
-            </th>
-            <Num mes={mes} indicador="propostas" texto={formatNumero(mes.qtdPropostas)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="propostas" texto={formatMoeda(mes.valorPropostas)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="pedidos" texto={formatNumero(mes.qtdPedidos)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="pedidos" texto={formatMoeda(mes.valorVendido)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="pedidos" texto={mes.ticketMedio == null ? '—' : formatMoeda(mes.ticketMedio)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="clientes" texto={formatNumero(mes.qtdClientes)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="primeira" texto={formatNumero(mes.qtdPrimeiraCompra)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="conversao" texto={formatTaxa(mes.taxaConversao)} onAbrir={onAbrir} />
-            <Num mes={mes} indicador="tempo" texto={formatDias(mes.tempoMedioDias)} onAbrir={onAbrir} />
-          </tr>
-        ))}
+        {meses.map((mes) => {
+          const vazio = mes.qtdPropostas === 0 && mes.qtdPedidosGerados === 0;
+          const [nomeMes, ano] = labelMes(mes.mes).split('/');
+          return (
+            <tr
+              key={mes.mes}
+              className={`group transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.03] ${vazio ? 'opacity-40' : ''}`}
+            >
+              <th className="sticky left-0 border-b border-slate-100 bg-white px-4 py-2 text-left font-normal group-hover:bg-slate-50 dark:border-white/[0.04] dark:bg-[#141724] dark:group-hover:bg-[#191c29]">
+                <span className="font-semibold capitalize text-slate-900 dark:text-white">{nomeMes}</span>
+                <span className="text-slate-400">/{ano}</span>
+              </th>
+              <Num mes={mes} indicador="propostas" texto={formatNumero(mes.qtdPropostas)} onAbrir={onAbrir} inicio />
+              <Num
+                mes={mes}
+                indicador="propostas"
+                texto={formatMoeda(mes.valorPropostas)}
+                onAbrir={onAbrir}
+                tom="suave"
+                clicavel={false}
+              />
+              <Num mes={mes} indicador="pedidos_gerados" texto={formatNumero(mes.qtdPedidosGerados)} onAbrir={onAbrir} inicio />
+              <Num
+                mes={mes}
+                indicador="pedidos_gerados"
+                texto={formatMoeda(mes.valorPedidosGerados)}
+                onAbrir={onAbrir}
+                tom="destaque"
+                clicavel={false}
+              />
+              <Num
+                mes={mes}
+                indicador="pedidos_gerados"
+                texto={ticketGerado(mes.valorPedidosGerados, mes.qtdPedidosGerados)}
+                onAbrir={onAbrir}
+                tom="suave"
+                clicavel={false}
+              />
+              <Num mes={mes} indicador="clientes" texto={formatNumero(mes.qtdClientes)} onAbrir={onAbrir} inicio />
+              <Num mes={mes} indicador="primeira" texto={formatNumero(mes.qtdPrimeiraCompra)} onAbrir={onAbrir} />
+              <Num mes={mes} indicador="conversao" texto={formatTaxa(mes.taxaConversao)} onAbrir={onAbrir} inicio barra={mes.taxaConversao} />
+              <Num mes={mes} indicador="tempo" texto={formatDias(mes.tempoMedioDias)} onAbrir={onAbrir} tom="suave" />
+            </tr>
+          );
+        })}
       </tbody>
-      <tfoot>
-        <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold dark:border-white/10 dark:bg-[#12141c]">
-          <th className="sticky left-0 bg-slate-100 px-2 py-2 text-left dark:bg-[#12141c]">Total</th>
-          <td className="px-2 py-2 text-right tabular-nums">{formatNumero(totais.qtdPropostas)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatMoeda(totais.valorPropostas)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatNumero(totais.qtdPedidos)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatMoeda(totais.valorVendido)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{totais.ticketMedio == null ? '—' : formatMoeda(totais.ticketMedio)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatNumero(totais.qtdClientes)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatNumero(totais.qtdPrimeiraCompra)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatTaxa(totais.taxaConversao)}</td>
-          <td className="px-2 py-2 text-right tabular-nums">{formatDias(totais.tempoMedioDias)}</td>
+      <tfoot className="sticky bottom-0 z-10">
+        <tr className="bg-slate-100 font-semibold text-slate-900 dark:bg-[#1a1e2e] dark:text-white">
+          <th className="sticky left-0 border-t border-slate-300 bg-slate-100 px-4 py-2.5 text-left text-[11px] uppercase tracking-[0.14em] dark:border-white/10 dark:bg-[#1a1e2e]">
+            Total do recorte
+          </th>
+          <TotalCel valor={formatNumero(totais.qtdPropostas)} inicio />
+          <TotalCel valor={formatMoeda(totais.valorPropostas)} />
+          <TotalCel valor={formatNumero(totais.qtdPedidosGerados)} inicio />
+          <TotalCel valor={formatMoeda(totais.valorPedidosGerados)} destaque />
+          <TotalCel valor={ticketGerado(totais.valorPedidosGerados, totais.qtdPedidosGerados)} />
+          <TotalCel valor={formatNumero(totais.qtdClientes)} inicio />
+          <TotalCel valor={formatNumero(totais.qtdPrimeiraCompra)} />
+          <TotalCel valor={formatTaxa(totais.taxaConversao)} inicio />
+          <TotalCel valor={formatDias(totais.tempoMedioDias)} />
         </tr>
       </tfoot>
     </table>
+  );
+}
+
+function ticketGerado(valor: number, qtd: number): string {
+  return qtd > 0 ? formatMoeda(valor / qtd) : '—';
+}
+
+function TotalCel({ valor, inicio, destaque }: { valor: string; inicio?: boolean; destaque?: boolean }) {
+  return (
+    <td
+      className={`border-t border-slate-300 px-3 py-2.5 text-right tabular-nums dark:border-white/10 ${
+        inicio ? 'border-l border-l-slate-200 dark:border-l-white/[0.06]' : ''
+      } ${destaque ? 'text-[#7FB0EE]' : ''}`}
+    >
+      {valor}
+    </td>
   );
 }
 
@@ -664,11 +698,21 @@ function Num({
   indicador,
   texto,
   onAbrir,
+  inicio,
+  tom = 'normal',
+  barra,
+  clicavel = true,
 }: {
   mes: MesPortaPallets;
   indicador: IndicadorPortaPallets;
   texto: string;
   onAbrir: (alvo: ModalAlvo) => void;
+  clicavel?: boolean;
+  /** Primeira coluna de um grupo: ganha a divisória à esquerda. */
+  inicio?: boolean;
+  tom?: 'normal' | 'suave' | 'destaque';
+  /** Taxa de 0 a 1 para a barrinha de progresso abaixo do valor. */
+  barra?: number | null;
 }) {
   const titulos: Record<IndicadorPortaPallets, string> = {
     propostas: 'Propostas',
@@ -683,11 +727,27 @@ function Num({
     clientes_novos: 'Clientes novos',
     novos_com_pedido: 'Novos que fecharam',
   };
+  const vazio = texto === '—' || texto === '0' || texto === 'R$ 0,00';
+  const cor = vazio
+    ? 'text-slate-400 dark:text-slate-600'
+    : tom === 'destaque'
+      ? 'font-semibold text-slate-900 dark:text-[#9CC3F5]'
+      : tom === 'suave'
+        ? 'text-slate-500 dark:text-slate-400'
+        : 'text-slate-800 dark:text-slate-100';
   return (
-    <td className="px-1 py-1 text-right">
+    <td
+      className={`border-b border-slate-100 px-1.5 py-1 text-right dark:border-white/[0.04] ${
+        inicio ? 'border-l border-l-slate-200 dark:border-l-white/[0.06]' : ''
+      }`}
+    >
+      {!clicavel ? (
+        <span className={`block w-full px-2 py-1 text-right tabular-nums ${cor}`}>{texto}</span>
+      ) : (
       <button
         type="button"
-        className="w-full rounded px-1 py-0.5 text-right tabular-nums text-sky-800 hover:bg-sky-50 hover:underline dark:text-sky-300 dark:hover:bg-sky-950/40"
+        title="Clique para auditar a origem"
+        className={`w-full rounded-md px-2 py-1 text-right tabular-nums transition hover:bg-[#5C92D6]/10 hover:text-[#5C92D6] dark:hover:text-[#9CC3F5] ${cor}`}
         onClick={() =>
           onAbrir({
             mes: mes.mes,
@@ -698,16 +758,16 @@ function Num({
         }
       >
         {texto}
+        {barra != null && !vazio ? (
+          <span className="mt-1 ml-auto block h-1 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-white/[0.07]">
+            <span
+              className="block h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400"
+              style={{ width: `${Math.max(4, Math.min(100, barra * 100))}%` }}
+            />
+          </span>
+        ) : null}
       </button>
+      )}
     </td>
   );
-}
-
-function textoLinha(linha: LinhaPropostaItem | LinhaPedidoItem, origem: Origem): string {
-  if (origem === 'propostas') {
-    const p = linha as LinhaPropostaItem;
-    return [p.codigoProposta, p.cliente, p.codigoProduto, p.descricaoProduto, p.statusLabel, p.codigosPedido, p.motivoRejeicao].join(' ');
-  }
-  const p = linha as LinhaPedidoItem;
-  return [p.codigoPedido, p.cliente, p.codigoProduto, p.descricaoProduto].join(' ');
 }

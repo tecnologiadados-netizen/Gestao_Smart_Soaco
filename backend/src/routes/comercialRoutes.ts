@@ -28,6 +28,7 @@ import {
   postComissionamentoInativosWhatsapp,
 } from '../controllers/comercialController.js';
 import {
+  getPortaPalletsAuditoriaMensal,
   getPortaPalletsDadosAbertos,
   getPortaPalletsDetalhe,
   getPortaPalletsMensal,
@@ -55,6 +56,7 @@ router.get('/rfv/analytics', verRfvClientes, getRfvClientesAnalytics);
 router.get('/porta-pallets/mensal', verPortaPallets, getPortaPalletsMensal);
 router.get('/porta-pallets/detalhe', verPortaPallets, getPortaPalletsDetalhe);
 router.get('/porta-pallets/dados-abertos', verPortaPallets, getPortaPalletsDadosAbertos);
+router.get('/porta-pallets/auditoria-mensal', verPortaPallets, getPortaPalletsAuditoriaMensal);
 
 router.get('/comissionamento/analytics', verComissionamento, getComissionamentoAnalytics);
 router.get('/comissionamento/drill', verComissionamento, getComissionamentoDrill);

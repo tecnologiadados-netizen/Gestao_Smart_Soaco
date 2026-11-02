@@ -3,6 +3,7 @@ import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalho
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
 import { useGradeFiltrosExcel, type SortLevel } from '../../hooks/useGradeFiltrosExcel';
+import { exportarGradeXlsx } from './exportGradePortaPalletsXlsx';
 
 export type TipoColuna = 'texto' | 'numero' | 'moeda' | 'data';
 
@@ -30,6 +31,8 @@ type Props<T> = {
   /** Recebe as linhas depois de filtros e ordenação da grade (ex.: exportar). */
   onLinhasExibidas?: (rows: T[]) => void;
   maxHeightClass?: string;
+  /** Mostra o botão Exportar Excel com o espelho da grade; o texto vira título e nome do arquivo. */
+  tituloExportacao?: string;
 };
 
 const NUMERICOS: TipoColuna[] = ['numero', 'moeda'];
@@ -71,6 +74,7 @@ export default function GradePortaPallets<T>({
   vazio = 'Nenhum registro.',
   onLinhasExibidas,
   maxHeightClass = 'max-h-[min(62vh,560px)]',
+  tituloExportacao,
 }: Props<T>) {
   const porId = useMemo(() => new Map(colunas.map((c) => [c.id, c])), [colunas]);
   const dateColumnIds = useMemo(() => colunas.filter((c) => c.tipo === 'data').map((c) => c.id), [colunas]);
@@ -90,8 +94,11 @@ export default function GradePortaPallets<T>({
   });
 
   const [pagina, setPagina] = useState(1);
+  const [todas, setTodas] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const total = grade.rowsExibidas.length;
-  const totalPaginas = Math.max(1, Math.ceil(total / pageSize));
+  const tamanhoPagina = todas ? Math.max(total, 1) : pageSize;
+  const totalPaginas = Math.max(1, Math.ceil(total / tamanhoPagina));
 
   useEffect(() => {
     setPagina(1);
@@ -102,8 +109,8 @@ export default function GradePortaPallets<T>({
   }, [grade.rowsExibidas, onLinhasExibidas]);
 
   const linhas = useMemo(
-    () => grade.rowsExibidas.slice((pagina - 1) * pageSize, pagina * pageSize),
-    [grade.rowsExibidas, pagina, pageSize]
+    () => grade.rowsExibidas.slice((pagina - 1) * tamanhoPagina, pagina * tamanhoPagina),
+    [grade.rowsExibidas, pagina, tamanhoPagina]
   );
 
   const totais = useMemo(() => {
@@ -138,6 +145,42 @@ export default function GradePortaPallets<T>({
               className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               Limpar filtros da grade
+            </button>
+          ) : null}
+          {total > pageSize ? (
+            <button
+              type="button"
+              onClick={() => {
+                setTodas((v) => !v);
+                setPagina(1);
+              }}
+              className={`rounded-md border px-2 py-1 font-semibold ${
+                todas
+                  ? 'border-primary-500 bg-primary-600 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+              }`}
+              aria-pressed={todas}
+              title={todas ? 'Voltar a paginar' : `Exibir as ${formatNumero(total)} linhas sem paginação`}
+            >
+              {todas ? 'Paginar' : 'Mostrar todas'}
+            </button>
+          ) : null}
+          {tituloExportacao ? (
+            <button
+              type="button"
+              disabled={exportando || total === 0}
+              onClick={async () => {
+                setExportando(true);
+                try {
+                  await exportarGradeXlsx(tituloExportacao, colunas, grade.rowsExibidas, totais);
+                } finally {
+                  setExportando(false);
+                }
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-600/40 bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              title="Exporta exatamente o que está na grade: mesmos filtros, ordem e total"
+            >
+              {exportando ? 'Exportando…' : 'Exportar Excel'}
             </button>
           ) : null}
           {totalPaginas > 1 ? (

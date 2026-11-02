@@ -76,7 +76,9 @@ export default function ModalPortaPalletsDetalhe({
           {!loading && !erro && detalhe && detalhe.rows.length === 0 && (
             <p className="py-8 text-sm text-slate-500">Nenhum registro neste recorte.</p>
           )}
-          {!loading && !erro && detalhe && detalhe.rows.length > 0 && <Tabela detalhe={detalhe} />}
+          {!loading && !erro && detalhe && detalhe.rows.length > 0 && (
+            <Tabela detalhe={detalhe} tituloExportacao={`Porta-pallets - ${titulo}`} />
+          )}
         </div>
       </div>
     </div>,
@@ -84,7 +86,7 @@ export default function ModalPortaPalletsDetalhe({
   );
 }
 
-function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
+function Tabela({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; tituloExportacao: string }) {
   switch (detalhe.indicador) {
     case 'propostas':
       return (
@@ -93,6 +95,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_PROPOSTAS}
           rowKey={(r) => r.idItem}
           defaultSortLevels={[{ id: 'abertura', dir: 'asc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     case 'pedidos':
@@ -102,6 +105,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_PEDIDOS}
           rowKey={(r) => r.idItem}
           defaultSortLevels={[{ id: 'emissao', dir: 'asc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     case 'pedidos_gerados':
@@ -111,6 +115,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_PEDIDOS_GERADOS}
           rowKey={(r) => r.idPedido}
           defaultSortLevels={[{ id: 'emissao', dir: 'asc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     case 'clientes_total':
@@ -123,6 +128,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_CLIENTES_FUNIL}
           rowKey={(r) => r.idCliente}
           defaultSortLevels={[{ id: 'valor', dir: 'desc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     case 'clientes':
@@ -133,6 +139,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_CLIENTES_MES}
           rowKey={(r) => r.idCliente}
           defaultSortLevels={[{ id: 'valor', dir: 'desc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     case 'conversao':
@@ -143,6 +150,7 @@ function Tabela({ detalhe }: { detalhe: DetalhePortaPallets }) {
           colunas={COLUNAS_CONVERSAO}
           rowKey={(r) => r.idProposta}
           defaultSortLevels={[{ id: 'abertura', dir: 'asc' }]}
+          tituloExportacao={tituloExportacao}
         />
       );
     default:

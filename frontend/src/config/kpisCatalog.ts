@@ -97,7 +97,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Indicadores de porta-pallets',
     capaTitulo: 'PORTA-PALLETS',
     to: '/comercial/porta-pallets',
-    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_PORTA_PALLETS_VER],
+    permissoes: [PERMISSOES.COMERCIAL_PORTA_PALLETS_VER],
   },
   {
     id: 'cobertura-estoque',
@@ -208,7 +208,4 @@ export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =
 
 /** Permissões da rota Indicadores de porta-pallets. */
 export const PERMISSOES_ACESSO_PAINEL_PORTA_PALLETS: CodigoPermissao[] =
-  getKpiPainel('porta-pallets-comercial')?.permissoes ?? [
-    PERMISSOES.COMERCIAL_VER,
-    PERMISSOES.COMERCIAL_PORTA_PALLETS_VER,
-  ];
+  getKpiPainel('porta-pallets-comercial')?.permissoes ?? [PERMISSOES.COMERCIAL_PORTA_PALLETS_VER];

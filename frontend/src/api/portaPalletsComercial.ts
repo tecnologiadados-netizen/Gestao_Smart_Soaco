@@ -18,6 +18,7 @@ export interface LinhaPedidoGerado {
   codigoPedido: string;
   dataEmissao: string;
   cliente: string;
+  codigoCliente: string;
   propostasOrigem: string;
   valorVendido: number;
   contaNaVenda: boolean;
@@ -49,9 +50,10 @@ export interface FunilPortaPallets {
 export interface LinhaClienteFunil {
   idCliente: number;
   cliente: string;
+  codigoCliente: string;
   dataCadastro: string;
   primeiroContato: string;
-  diasCadastroAteContato: number | null;
+  primeiroPedidoEmpresa: string;
   novo: boolean;
   qtdPropostas: number;
   qtdPedidos: number;
@@ -81,6 +83,7 @@ export interface PortaPalletsMensal {
   meses: MesPortaPallets[];
   totais: MesPortaPallets;
   funil: FunilPortaPallets;
+  anoAnterior: { desde: string; ate: string; meses: MesPortaPallets[] } | null;
 }
 
 export interface LinhaPropostaItem {
@@ -91,6 +94,7 @@ export interface LinhaPropostaItem {
   mes: string;
   idCliente: number;
   cliente: string;
+  codigoCliente: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
@@ -112,17 +116,26 @@ export interface LinhaPedidoItem {
   mes: string;
   idCliente: number;
   cliente: string;
+  codigoCliente: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
   valorVendido: number;
   primeiraCompra: boolean;
   pedidoDeProposta: boolean;
+  propostasVinculadas: string;
 }
 
 export interface LinhaClienteMes {
   idCliente: number;
   cliente: string;
+  codigoCliente: string;
+  dataCadastroCliente: string;
+  codigosPedido: string;
+  datasPedido: string;
+  codigosProposta: string;
+  datasProposta: string;
+  novo: boolean;
   qtdPedidos: number;
   valor: number;
 }
@@ -131,7 +144,9 @@ export interface LinhaConversaoMes {
   idProposta: number;
   codigoProposta: string;
   dataAbertura: string;
+  idCliente: number;
   cliente: string;
+  codigoCliente: string;
   valor: number;
   convertida: boolean;
   codigosPedido: string;
@@ -153,6 +168,16 @@ export type DetalhePortaPallets =
 export interface PortaPalletsDadosAbertos {
   propostas: LinhaPropostaItem[];
   pedidos: LinhaPedidoItem[];
+}
+
+export interface AuditoriaMensalPortaPallets {
+  desde: string;
+  ate: string;
+  meses: MesPortaPallets[];
+  totais: MesPortaPallets;
+  propostas: Array<LinhaConversaoMes & { mes: string; clienteNovo: boolean; dataCadastroCliente: string }>;
+  pedidosGerados: Array<LinhaPedidoGerado & { mes: string }>;
+  clientes: Array<LinhaClienteMes & { mes: string; primeiraCompra: boolean }>;
 }
 
 export type RecortePortaPallets = {
@@ -186,6 +211,10 @@ export function obterPortaPalletsDetalhe(
   return apiJson<DetalhePortaPallets>(
     `/api/comercial/porta-pallets/detalhe${qs({ indicador, ...recorte })}`
   );
+}
+
+export function obterPortaPalletsAuditoriaMensal(recorte: RecortePortaPallets = {}): Promise<AuditoriaMensalPortaPallets> {
+  return apiJson<AuditoriaMensalPortaPallets>(`/api/comercial/porta-pallets/auditoria-mensal${qs(recorte)}`);
 }
 
 export function obterPortaPalletsDadosAbertos(recorte: RecortePortaPallets = {}): Promise<PortaPalletsDadosAbertos> {

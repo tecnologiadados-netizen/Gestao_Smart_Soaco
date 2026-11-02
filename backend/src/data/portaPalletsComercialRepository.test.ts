@@ -14,6 +14,7 @@ function proposta(parcial: Partial<LinhaPropostaItem> & Pick<LinhaPropostaItem, 
     dataAbertura: `${parcial.mes}-01`,
     idCliente: 1,
     cliente: 'Cliente',
+    codigoCliente: '1',
     dataCadastroCliente: '',
     codigoProduto: 'P1',
     descricaoProduto: 'Longarina',
@@ -34,11 +35,13 @@ function pedido(parcial: Partial<LinhaPedidoItem> & Pick<LinhaPedidoItem, 'idPed
     codigoPedido: `PD-${parcial.idPedido}`,
     dataEmissao: `${parcial.mes}-10`,
     cliente: `Cliente ${parcial.idCliente}`,
+    codigoCliente: String(parcial.idCliente),
     dataCadastroCliente: '',
     codigoProduto: 'P1',
     descricaoProduto: 'Longarina',
     primeiraCompra: false,
     pedidoDeProposta: false,
+    propostasVinculadas: '',
     ...parcial,
   };
 }
@@ -105,13 +108,13 @@ describe('agregarMeses porta-pallets', () => {
     expect(totais.qtdPrimeiraCompra).toBe(0);
   });
 
-  it('cliente novo depende da criação do cadastro perto do primeiro contato', () => {
-    expect(clienteNovo('2024-01-10', '2024-01-10', '2024-01', '2024-01').novo).toBe(true);
-    expect(clienteNovo('2024-01-03', '2024-01-10', '2024-01', '2024-01').novo).toBe(true);
-    expect(clienteNovo('2024-01-12', '2024-01-10', '2024-01', '2024-01').novo).toBe(true);
-    expect(clienteNovo('2024-01-02', '2024-01-10', '2024-01', '2024-01').novo).toBe(false);
-    expect(clienteNovo('', '2024-01-10', '2024-01', '2024-01')).toEqual({ novo: false, dias: null });
-    expect(clienteNovo('2023-12-20', '2023-12-20', '2024-01', '2024-01').novo).toBe(false);
+  it('cliente novo: nenhum pedido na empresa antes do contato', () => {
+    expect(clienteNovo(1, '2024-01-10', '')).toBe(true);
+    expect(clienteNovo(1, '2024-01-10', '2024-01-10')).toBe(true);
+    expect(clienteNovo(1, '2024-01-10', '2024-02-01')).toBe(true);
+    expect(clienteNovo(1, '2024-01-10', '2024-01-09')).toBe(false);
+    expect(clienteNovo(1, '', '')).toBe(false);
+    expect(clienteNovo(-5, '2024-01-10', '')).toBe(false);
   });
 
   it('monta o funil só com as propostas do recorte e os pedidos gerados por elas', () => {
@@ -134,7 +137,12 @@ describe('agregarMeses porta-pallets', () => {
       { idProposta: 4, idPedido: 13, codigoPedido: 'PD-13', dataEmissao: '2024-02-05' },
     ];
     const { totais } = agregarMeses(propostas, pedidos, '2024-01', '2024-01');
-    const funil = montarFunil(propostas, pedidos, vinculos, totais, '2024-01', '2024-01');
+    const primeiroPedidoEmpresa = new Map([
+      [1, '2023-12-20'],
+      [2, '2019-01-01'],
+      [3, '2024-01-10'],
+    ]);
+    const funil = montarFunil(propostas, pedidos, vinculos, totais, '2024-01', '2024-01', primeiroPedidoEmpresa);
     expect(funil.propostas).toBe(4);
     expect(funil.convertidas).toBe(2);
     expect(funil.pedidosGerados).toBe(3);

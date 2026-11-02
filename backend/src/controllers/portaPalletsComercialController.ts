@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import {
+  obterPortaPalletsAuditoriaMensal,
   obterPortaPalletsDadosAbertos,
   obterPortaPalletsDetalhe,
   obterPortaPalletsMensal,
@@ -70,6 +71,20 @@ export async function getPortaPalletsDetalhe(req: Request, res: Response): Promi
     res.json(data);
   } catch (err) {
     console.error('getPortaPalletsDetalhe', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
+export async function getPortaPalletsAuditoriaMensal(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterPortaPalletsAuditoriaMensal(flagRefresh(req), recorteQuery(req));
+    if (data.erro) {
+      res.status(503).json({ error: data.erro });
+      return;
+    }
+    res.json(data);
+  } catch (err) {
+    console.error('getPortaPalletsAuditoriaMensal', err);
     res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
   }
 }
