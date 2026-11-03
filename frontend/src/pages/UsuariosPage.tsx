@@ -47,6 +47,7 @@ const atualizarUsuarioSchema = z.object({
 
 const SECOES_PERMISSOES: Record<string, string> = {
   kpis: 'KPIs',
+  comercial: 'KPIs',
   producao: 'Produção',
   pcp: 'PCP',
   usuarios: 'Usuários',
@@ -1151,7 +1152,7 @@ export default function UsuariosPage() {
                   ) : secao === 'KPIs' ? (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Cada checkbox libera exclusivamente o painel correspondente no hub KPIs. Permissões PCP/Produção não substituem estas permissões.
+                        Cada checkbox libera exclusivamente o painel correspondente no hub KPIs, exceto &quot;KPIs — Comercial (todos os painéis comerciais)&quot;, que libera Painel Comercial, Histórico de Vendas, Classificação RFV e Comissionamento. Porta-pallets exige a permissão própria. Permissões PCP/Produção não substituem estas permissões.
                       </p>
                       <div className="flex flex-wrap gap-x-4 gap-y-2">
                         {itens.map((p) => (
