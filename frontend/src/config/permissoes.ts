@@ -27,7 +27,6 @@ export const PERMISSOES = {
   COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
-  COMERCIAL_VER: 'comercial.ver',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   COMERCIAL_RFV_VER: 'comercial.rfv.ver',

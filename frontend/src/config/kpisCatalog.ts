@@ -65,7 +65,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Painel Comercial',
     capaTitulo: 'PAINEL COMERCIAL',
     to: '/comercial/painel',
-    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_PAINEL_VER],
+    permissoes: [PERMISSOES.COMERCIAL_PAINEL_VER],
   },
   {
     id: 'historico-vendas',
@@ -73,7 +73,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Histórico de Vendas',
     capaTitulo: 'HISTÓRICO DE VENDAS',
     to: '/comercial/historico-vendas',
-    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER],
+    permissoes: [PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER],
   },
   {
     id: 'classificacao-rfv',
@@ -81,7 +81,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Classificação RFV',
     capaTitulo: 'CLASSIFICAÇÃO RFV',
     to: '/comercial/classificacao-rfv',
-    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_RFV_VER],
+    permissoes: [PERMISSOES.COMERCIAL_RFV_VER],
   },
   {
     id: 'analise-comissionamento',
@@ -89,7 +89,7 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     label: 'Análise de Comissionamento',
     capaTitulo: 'COMISSIONAMENTO',
     to: '/comercial/comissionamento',
-    permissoes: [PERMISSOES.COMERCIAL_VER, PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER],
+    permissoes: [PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER],
   },
   {
     id: 'porta-pallets-comercial',
@@ -176,24 +176,15 @@ export const PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE: CodigoPermissao[] =
 
 /** Permissões da rota do Painel Comercial. */
 export const PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI: CodigoPermissao[] =
-  getKpiPainel('painel-comercial')?.permissoes ?? [
-    PERMISSOES.COMERCIAL_VER,
-    PERMISSOES.COMERCIAL_PAINEL_VER,
-  ];
+  getKpiPainel('painel-comercial')?.permissoes ?? [PERMISSOES.COMERCIAL_PAINEL_VER];
 
 /** Permissões da rota do Histórico de Vendas. */
 export const PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS: CodigoPermissao[] =
-  getKpiPainel('historico-vendas')?.permissoes ?? [
-    PERMISSOES.COMERCIAL_VER,
-    PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER,
-  ];
+  getKpiPainel('historico-vendas')?.permissoes ?? [PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER];
 
 /** Permissões da rota Classificação RFV. */
 export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
-  getKpiPainel('classificacao-rfv')?.permissoes ?? [
-    PERMISSOES.COMERCIAL_VER,
-    PERMISSOES.COMERCIAL_RFV_VER,
-  ];
+  getKpiPainel('classificacao-rfv')?.permissoes ?? [PERMISSOES.COMERCIAL_RFV_VER];
 
 /** Permissões da rota do painel Gestão entradas. */
 export const PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS: CodigoPermissao[] =
@@ -201,10 +192,7 @@ export const PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS: CodigoPermissao[] =
 
 /** Permissões da rota Análise de Comissionamento. */
 export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =
-  getKpiPainel('analise-comissionamento')?.permissoes ?? [
-    PERMISSOES.COMERCIAL_VER,
-    PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER,
-  ];
+  getKpiPainel('analise-comissionamento')?.permissoes ?? [PERMISSOES.COMERCIAL_COMISSIONAMENTO_VER];
 
 /** Permissões da rota Indicadores de porta-pallets. */
 export const PERMISSOES_ACESSO_PAINEL_PORTA_PALLETS: CodigoPermissao[] =
