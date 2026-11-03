@@ -10,10 +10,11 @@ function texto(valor: string): string {
 }
 
 /**
- * Uma aba com todos os PP das ordens do pedido, nas colunas do PDF. Peça da planilha não tem tipo e conta como PP;
- * só o PI do Nomus fica de fora. A mesma peça sai numa linha só, com a quantidade somada. Devolve quantas linhas saíram.
+ * Uma aba com todos os PP da ordem, nas colunas do PDF. Peça da planilha não tem tipo e conta como PP;
+ * só o PI do Nomus fica de fora. No mesmo pedido, a mesma peça sai numa linha só, com a quantidade somada.
+ * Devolve quantas linhas saíram.
  */
-export async function exportarPpDoPedidoXlsx(pedido: string, detalhes: DetalheItemGondola[]): Promise<number> {
+export async function exportarPpDaOrdemXlsx(numero: string, detalhes: DetalheItemGondola[]): Promise<number> {
   const soPp = detalhes
     .map((detalhe) => ({ ...detalhe, componentes: detalhe.componentes.filter((componente) => componente.tipo !== 'PI') }))
     .filter((detalhe) => detalhe.componentes.length > 0);
@@ -54,7 +55,7 @@ export async function exportarPpDoPedidoXlsx(pedido: string, detalhes: DetalheIt
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `PP-${pedido.replace(/[^\w-]+/g, '_')}.xlsx`;
+  link.download = `PP-${numero.replace(/[^\w-]+/g, '_')}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

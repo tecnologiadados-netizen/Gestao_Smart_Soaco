@@ -34,7 +34,7 @@ import GondolasAjudaModal from './GondolasAjudaModal';
 import ModalFichaItem from './ModalFichaItem';
 import ModalGerarOrdem from './ModalGerarOrdem';
 import { exportarCarteiraGondolasXlsx } from './exportarCarteiraGondolasXlsx';
-import { exportarPpDoPedidoXlsx } from './exportarOrdemGondolasXlsx';
+import { exportarPpDaOrdemXlsx } from './exportarOrdemGondolasXlsx';
 import { imprimirOrdemGondolas } from './imprimirOrdemGondolas';
 
 function fmt(valor: number): string {
@@ -102,13 +102,40 @@ function valorOrdenacao(item: ItemCarteiraGondola, coluna: string): string | num
   return textoCelula(item, coluna);
 }
 
-type HistoricoPedido = {
+type PedidoNaOrdem = {
   pedido: string;
   cliente: string;
-  ordens: { ordem: OrdemGondola; pecas: number; produtos: [string, string][] }[];
-  produtos: Map<string, string>;
+  produtos: [string, string][];
   pecas: number;
 };
+
+type HistoricoOrdem = {
+  ordem: OrdemGondola;
+  pedidos: PedidoNaOrdem[];
+  pecas: number;
+};
+
+function pecasDoDetalhe(detalhe: DetalheItemGondola): number {
+  return detalhe.componentes.reduce((soma, componente) => soma + componente.quantidadeTotal, 0);
+}
+
+function montarHistoricoOrdem(ordem: OrdemGondola): HistoricoOrdem {
+  const porPedido = new Map<string, DetalheItemGondola[]>();
+  for (const detalhe of ordem.detalhes) {
+    const lista = porPedido.get(detalhe.item.pedido) ?? [];
+    lista.push(detalhe);
+    porPedido.set(detalhe.item.pedido, lista);
+  }
+  const pedidos = [...porPedido.entries()]
+    .map(([pedido, detalhes]) => ({
+      pedido,
+      cliente: detalhes[0]?.item.cliente ?? '',
+      produtos: [...new Map(detalhes.map((d) => [d.item.codigo, d.item.descricao])).entries()],
+      pecas: detalhes.reduce((soma, detalhe) => soma + pecasDoDetalhe(detalhe), 0),
+    }))
+    .sort((a, b) => a.pedido.localeCompare(b.pedido, 'pt-BR'));
+  return { ordem, pedidos, pecas: pedidos.reduce((soma, pedido) => soma + pedido.pecas, 0) };
+}
 
 function podeVerTela(hasPermission: (codigo: CodigoPermissao) => boolean): boolean {
   return hasPermission(PERMISSOES.PCP_TOTAL) || PERMISSOES_GONDOLAS.some((codigo) => hasPermission(codigo));
@@ -146,56 +173,38 @@ export default function GondolasPortaPaletesPage() {
   const [carregandoOrdens, setCarregandoOrdens] = useState(false);
   const [erroOrdens, setErroOrdens] = useState<string | null>(null);
   const [excluindoOrdemId, setExcluindoOrdemId] = useState<number | null>(null);
-  const [filtroHistorico, setFiltroHistorico] = useState({ pedido: '', cliente: '', produto: '' });
-  const [pedidosAbertos, setPedidosAbertos] = useState<Set<string>>(new Set());
-  const [exportandoPedido, setExportandoPedido] = useState<string | null>(null);
+  const [filtroHistorico, setFiltroHistorico] = useState({ ordem: '', pedido: '', cliente: '', produto: '' });
+  const [ordensAbertas, setOrdensAbertas] = useState<Set<number>>(new Set());
+  const [exportandoOrdemId, setExportandoOrdemId] = useState<number | null>(null);
   const [exportandoCarteira, setExportandoCarteira] = useState<{ feitas: number; total: number } | null>(null);
   const gerouOrdemRef = useRef(false);
   const detalheCacheRef = useRef(new Map<number, DetalheItemGondola>());
 
-  const historicoPorPedido = useMemo(() => {
-    const porPedido = new Map<string, HistoricoPedido>();
-    for (const ordem of ordens) {
-      const doPedidoNaOrdem = new Map<string, DetalheItemGondola[]>();
-      for (const detalhe of ordem.detalhes) {
-        const lista = doPedidoNaOrdem.get(detalhe.item.pedido) ?? [];
-        lista.push(detalhe);
-        doPedidoNaOrdem.set(detalhe.item.pedido, lista);
-      }
-      for (const [pedido, detalhes] of doPedidoNaOrdem) {
-        let grupo = porPedido.get(pedido);
-        if (!grupo) {
-          grupo = { pedido, cliente: detalhes[0]?.item.cliente ?? '', ordens: [], produtos: new Map(), pecas: 0 };
-          porPedido.set(pedido, grupo);
-        }
-        const pecas = detalhes.reduce(
-          (soma, detalhe) => soma + detalhe.componentes.reduce((s, componente) => s + componente.quantidadeTotal, 0),
-          0
-        );
-        const produtos = [...new Map(detalhes.map((d) => [d.item.codigo, d.item.descricao])).entries()];
-        for (const [codigo, descricao] of produtos) grupo.produtos.set(codigo, descricao);
-        grupo.pecas += pecas;
-        grupo.ordens.push({ ordem, pecas, produtos });
-      }
-    }
+  const historicoOrdens = useMemo(() => {
+    const matchOrdem = criarMatcherTextoLivre(filtroHistorico.ordem);
     const matchPedido = criarMatcherTextoLivre(filtroHistorico.pedido);
     const matchCliente = criarMatcherTextoLivre(filtroHistorico.cliente);
     const matchProduto = criarMatcherTextoLivre(filtroHistorico.produto);
-    return [...porPedido.values()]
+    return ordens
+      .map(montarHistoricoOrdem)
       .filter(
         (grupo) =>
-          matchPedido(grupo.pedido) &&
-          matchCliente(grupo.cliente) &&
-          [...grupo.produtos.entries()].some(([codigo, descricao]) => matchProduto(codigo) || matchProduto(descricao))
+          matchOrdem(grupo.ordem.numero) &&
+          grupo.pedidos.some(
+            (pedido) =>
+              matchPedido(pedido.pedido) &&
+              matchCliente(pedido.cliente) &&
+              pedido.produtos.some(([codigo, descricao]) => matchProduto(codigo) || matchProduto(descricao))
+          )
       )
-      .sort((a, b) => (b.ordens[0]?.ordem.createdAt ?? '').localeCompare(a.ordens[0]?.ordem.createdAt ?? ''));
+      .sort((a, b) => b.ordem.createdAt.localeCompare(a.ordem.createdAt) || b.ordem.id - a.ordem.id);
   }, [ordens, filtroHistorico]);
 
-  function alternarPedidoHistorico(pedido: string) {
-    setPedidosAbertos((atual) => {
+  function alternarOrdemHistorico(id: number) {
+    setOrdensAbertas((atual) => {
       const proximo = new Set(atual);
-      if (proximo.has(pedido)) proximo.delete(pedido);
-      else proximo.add(pedido);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
       return proximo;
     });
   }
@@ -381,19 +390,16 @@ export default function GondolasPortaPaletesPage() {
     }
   }
 
-  async function exportarExcel(grupo: HistoricoPedido) {
-    const detalhes = grupo.ordens.flatMap(({ ordem }) =>
-      ordem.detalhes.filter((detalhe) => detalhe.item.pedido === grupo.pedido)
-    );
-    setExportandoPedido(grupo.pedido);
+  async function exportarExcel(ordem: OrdemGondola) {
+    setExportandoOrdemId(ordem.id);
     setErroOrdens(null);
     try {
-      const linhas = await exportarPpDoPedidoXlsx(grupo.pedido, detalhes);
-      if (linhas === 0) setErroOrdens(`As ordens do ${grupo.pedido} só têm PI. Use o PDF de cada ordem.`);
+      const linhas = await exportarPpDaOrdemXlsx(ordem.numero, ordem.detalhes);
+      if (linhas === 0) setErroOrdens(`A ordem ${ordem.numero} só tem PI. Use o PDF da ordem.`);
     } catch (e) {
       setErroOrdens(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
     } finally {
-      setExportandoPedido(null);
+      setExportandoOrdemId(null);
     }
   }
 
@@ -549,7 +555,7 @@ export default function GondolasPortaPaletesPage() {
         <section className={`${painel} tabela-pedidos-outer overflow-hidden`}>
           <div className="flex items-center justify-between gap-3 border-b border-soaco-gray/35 px-4 py-2.5">
             <p className="text-sm text-slate-600 dark:text-slate-200">
-              {historicoPorPedido.length.toLocaleString('pt-BR')} {historicoPorPedido.length === 1 ? 'pedido' : 'pedidos'} ·{' '}
+              {historicoOrdens.length !== ordens.length && `${historicoOrdens.length.toLocaleString('pt-BR')} de `}
               {ordens.length.toLocaleString('pt-BR')} {ordens.length === 1 ? 'ordem gerada' : 'ordens geradas'}
             </p>
             <button
@@ -561,9 +567,10 @@ export default function GondolasPortaPaletesPage() {
               Atualizar
             </button>
           </div>
-          <div className="grid gap-2 border-b border-soaco-gray/25 px-4 py-3 sm:grid-cols-3">
+          <div className="grid gap-2 border-b border-soaco-gray/25 px-4 py-3 sm:grid-cols-4">
             {(
               [
+                ['ordem', 'Ordem'],
                 ['pedido', 'Pedido'],
                 ['cliente', 'Cliente'],
                 ['produto', 'Produto'],
@@ -586,30 +593,33 @@ export default function GondolasPortaPaletesPage() {
             <p className="px-4 py-8 text-center text-sm text-slate-500">Carregando o histórico…</p>
           ) : ordens.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">Nenhuma ordem gerada ainda.</p>
-          ) : historicoPorPedido.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-500">Nenhum pedido neste filtro.</p>
+          ) : historicoOrdens.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-slate-500">Nenhuma ordem neste filtro.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="tabela-pedidos-grade w-full min-w-[960px] text-left text-sm">
+              <table className="tabela-pedidos-grade w-full min-w-[1100px] text-left text-sm">
                 <thead>
                   <tr>
-                    <th className={thGrade}>Pedido</th>
+                    <th className={thGrade}>Ordem</th>
+                    <th className={thGrade}>Data</th>
+                    <th className={thGrade}>Usuário</th>
+                    <th className={thGrade}>Setor</th>
+                    <th className={thGrade}>Tipo</th>
+                    <th className={thGrade}>Pedidos</th>
                     <th className={thGrade}>Cliente</th>
-                    <th className={thGrade}>Produtos</th>
-                    <th className={`${thGrade} text-right`}>Ordens</th>
                     <th className={`${thGrade} text-right`}>Peças</th>
-                    <th className={thGrade}>Última ordem</th>
                     <th className={thGrade} />
                   </tr>
                 </thead>
                 <tbody>
-                  {historicoPorPedido.map((grupo) => {
-                    const aberto = pedidosAbertos.has(grupo.pedido);
-                    const codigos = [...grupo.produtos.keys()];
+                  {historicoOrdens.map(({ ordem, pedidos, pecas }) => {
+                    const aberto = ordensAbertas.has(ordem.id);
+                    const numerosPedidos = pedidos.map((pedido) => pedido.pedido).join(', ');
+                    const clientes = [...new Set(pedidos.map((pedido) => pedido.cliente).filter(Boolean))].join(', ');
                     return (
-                      <Fragment key={grupo.pedido}>
-                        <tr className="cursor-pointer" onClick={() => alternarPedidoHistorico(grupo.pedido)}>
-                          <td className="px-3 py-2.5 font-semibold text-slate-800 dark:text-white">
+                      <Fragment key={ordem.id}>
+                        <tr className="cursor-pointer" onClick={() => alternarOrdemHistorico(ordem.id)}>
+                          <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-800 dark:text-white">
                             <span className="inline-flex items-center gap-1.5">
                               {aberto ? (
                                 <ChevronDown className="h-4 w-4 text-slate-400" />
@@ -621,119 +631,96 @@ export default function GondolasPortaPaletesPage() {
                                 aria-expanded={aberto}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  alternarPedidoHistorico(grupo.pedido);
+                                  alternarOrdemHistorico(ordem.id);
                                 }}
                                 className="hover:underline"
                               >
-                                {grupo.pedido}
+                                {ordem.numero}
                               </button>
                             </span>
                           </td>
-                          <td className="max-w-[240px] truncate px-3 py-2.5 text-slate-700 dark:text-slate-200" title={grupo.cliente}>
-                            {grupo.cliente || '—'}
+                          <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-700 dark:text-slate-200">
+                            {new Date(ordem.createdAt).toLocaleString('pt-BR')}
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200">{ordem.criadoPorLogin || '—'}</td>
+                          <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200">
+                            {ordem.setor === 'Porta Paletes' ? 'Porta-paletes' : ordem.setor}
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200">
+                            {ordem.tipo === 'PLANILHA' ? 'Planilha' : ordem.tipo}
                           </td>
                           <td
-                            className="max-w-[260px] truncate px-3 py-2.5 text-slate-700 dark:text-slate-200"
-                            title={codigos.join(', ')}
+                            className="max-w-[220px] truncate px-3 py-2.5 text-slate-700 dark:text-slate-200"
+                            title={numerosPedidos}
                           >
-                            {codigos.join(', ')}
+                            {numerosPedidos || '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                            {grupo.ordens.length.toLocaleString('pt-BR')}
+                          <td className="max-w-[240px] truncate px-3 py-2.5 text-slate-700 dark:text-slate-200" title={clientes}>
+                            {clientes || '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-slate-800 dark:text-white">
-                            {fmt(grupo.pecas)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-700 dark:text-slate-200">
-                            {grupo.ordens[0] ? new Date(grupo.ordens[0].ordem.createdAt).toLocaleString('pt-BR') : '—'}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                          <td className="px-3 py-2.5 text-right tabular-nums text-slate-800 dark:text-white">{fmt(pecas)}</td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
-                              disabled={exportandoPedido === grupo.pedido}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void exportarExcel(grupo);
-                              }}
-                              title="Baixa um Excel com todos os PP e as peças da planilha das ordens deste pedido, nas colunas do PDF."
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+                              onClick={() => reimprimir(ordem)}
+                              title="Reimprime o mesmo PDF gerado na hora da ordem."
+                              className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-primary-500/50 px-2.5 py-1 text-xs font-medium text-primary-600 hover:bg-primary-500/10 dark:text-primary-300"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                              PDF
+                            </button>
+                            <button
+                              type="button"
+                              disabled={exportandoOrdemId === ordem.id}
+                              onClick={() => void exportarExcel(ordem)}
+                              title="Baixa um Excel com todos os PP e as peças da planilha desta ordem, nas colunas do PDF."
+                              className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
                             >
                               <Download className="h-3.5 w-3.5" />
-                              {exportandoPedido === grupo.pedido ? 'Exportando…' : 'Excel PP'}
+                              {exportandoOrdemId === ordem.id ? 'Exportando…' : 'Excel PP'}
                             </button>
+                            {podeExcluirOrdem && (
+                              <button
+                                type="button"
+                                disabled={excluindoOrdemId === ordem.id}
+                                onClick={() => void excluirOrdem(ordem)}
+                                className="text-xs font-medium text-red-500 hover:underline disabled:opacity-50 dark:text-red-400"
+                              >
+                                {excluindoOrdemId === ordem.id ? 'Excluindo…' : 'Excluir'}
+                              </button>
+                            )}
                           </td>
                         </tr>
                         {aberto && (
                           <tr>
-                            <td colSpan={7} className="bg-black/30 px-3 py-3">
+                            <td colSpan={9} className="bg-black/30 px-3 py-3">
                               <table className="w-full text-left text-xs">
                                 <thead>
                                   <tr className="text-slate-400">
-                                    <th className="px-2 py-1.5 font-semibold">Data</th>
-                                    <th className="px-2 py-1.5 font-semibold">Usuário</th>
-                                    <th className="px-2 py-1.5 font-semibold">Ordem</th>
-                                    <th className="px-2 py-1.5 font-semibold">Setor</th>
-                                    <th className="px-2 py-1.5 font-semibold">Tipo</th>
-                                    <th className="px-2 py-1.5 font-semibold">Produtos do pedido</th>
+                                    <th className="px-2 py-1.5 font-semibold">Pedido</th>
+                                    <th className="px-2 py-1.5 font-semibold">Cliente</th>
+                                    <th className="px-2 py-1.5 font-semibold">Produtos do pedido nesta ordem</th>
                                     <th className="px-2 py-1.5 text-right font-semibold">Peças</th>
-                                    <th className="px-2 py-1.5" />
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {grupo.ordens.map(({ ordem, pecas, produtos }) => {
-                                    const outrosPedidos =
-                                      new Set(ordem.detalhes.map((detalhe) => detalhe.item.pedido)).size - 1;
-                                    return (
-                                      <tr key={ordem.id} className="border-t border-soaco-gray/20">
-                                        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-slate-200">
-                                          {new Date(ordem.createdAt).toLocaleString('pt-BR')}
-                                        </td>
-                                        <td className="px-2 py-2 text-slate-200">{ordem.criadoPorLogin || '—'}</td>
-                                        <td className="px-2 py-2 font-semibold text-white">
-                                          {ordem.numero}
-                                          {outrosPedidos > 0 && (
-                                            <span className="ml-1.5 font-normal text-slate-400">
-                                              (+{outrosPedidos} {outrosPedidos === 1 ? 'pedido' : 'pedidos'})
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td className="px-2 py-2 text-slate-200">
-                                          {ordem.setor === 'Porta Paletes' ? 'Porta-paletes' : ordem.setor}
-                                        </td>
-                                        <td className="px-2 py-2 text-slate-200">
-                                          {ordem.tipo === 'PLANILHA' ? 'Planilha' : ordem.tipo}
-                                        </td>
-                                        <td className="px-2 py-2 text-slate-200">
-                                          {produtos.map(([codigo, descricao]) => (
-                                            <div key={codigo} className="truncate" title={descricao}>
-                                              <span className="font-medium text-white">{codigo}</span>
-                                              {descricao ? <span className="text-slate-400"> · {descricao}</span> : null}
-                                            </div>
-                                          ))}
-                                        </td>
-                                        <td className="px-2 py-2 text-right tabular-nums text-white">{fmt(pecas)}</td>
-                                        <td className="whitespace-nowrap px-2 py-2 text-right">
-                                          <button
-                                            type="button"
-                                            onClick={() => reimprimir(ordem)}
-                                            className="mr-3 font-medium text-primary-300 hover:underline"
-                                          >
-                                            PDF
-                                          </button>
-                                          {podeExcluirOrdem && (
-                                            <button
-                                              type="button"
-                                              disabled={excluindoOrdemId === ordem.id}
-                                              onClick={() => void excluirOrdem(ordem)}
-                                              className="font-medium text-red-400 hover:underline disabled:opacity-50"
-                                            >
-                                              {excluindoOrdemId === ordem.id ? 'Excluindo…' : 'Excluir'}
-                                            </button>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
+                                  {pedidos.map((pedido) => (
+                                    <tr key={pedido.pedido} className="border-t border-soaco-gray/20">
+                                      <td className="whitespace-nowrap px-2 py-2 font-semibold text-white">{pedido.pedido}</td>
+                                      <td className="max-w-[240px] truncate px-2 py-2 text-slate-200" title={pedido.cliente}>
+                                        {pedido.cliente || '—'}
+                                      </td>
+                                      <td className="px-2 py-2 text-slate-200">
+                                        {pedido.produtos.map(([codigo, descricao]) => (
+                                          <div key={codigo} className="truncate" title={descricao}>
+                                            <span className="font-medium text-white">{codigo}</span>
+                                            {descricao ? <span className="text-slate-400"> · {descricao}</span> : null}
+                                          </div>
+                                        ))}
+                                      </td>
+                                      <td className="px-2 py-2 text-right tabular-nums text-white">{fmt(pedido.pecas)}</td>
+                                    </tr>
+                                  ))}
                                 </tbody>
                               </table>
                             </td>
