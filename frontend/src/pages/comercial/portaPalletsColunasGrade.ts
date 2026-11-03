@@ -30,6 +30,13 @@ export const COLUNAS_PROPOSTAS: ColunaGrade<LinhaPropostaItem>[] = [
   { id: 'valor', label: 'Valor', tipo: 'moeda', texto: (r) => formatMoeda(r.valor), valor: (r) => r.valor, total: true },
   { id: 'status', label: 'Status', texto: (r) => r.statusLabel },
   { id: 'motivo', label: 'Motivo da rejeição', texto: (r) => r.motivoRejeicao || '—' },
+  {
+    id: 'observacao',
+    label: 'Observação da proposta',
+    texto: (r) => r.observacaoProposta || '—',
+    render: (r) =>
+      createElement('span', { title: r.observacaoProposta || undefined, className: 'block max-w-[280px] truncate' }, r.observacaoProposta || '—'),
+  },
   { id: 'convertida', label: 'Convertida', texto: (r) => simNao(r.propostaConvertida) },
   { id: 'pedido', label: 'Pedido', texto: (r) => r.codigosPedido || '—' },
   { id: 'dias', label: 'Dias para criar pedido', tipo: 'numero', texto: (r) => formatDias(r.dias), valor: (r) => diasValor(r.dias) },

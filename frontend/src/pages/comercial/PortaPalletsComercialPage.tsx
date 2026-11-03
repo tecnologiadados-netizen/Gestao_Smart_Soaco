@@ -14,6 +14,7 @@ import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
 import { exportarAuditoriaMensalXlsx } from './exportAuditoriaMensalXlsx';
 import ModalPortaPalletsDetalhe from './ModalPortaPalletsDetalhe';
+import ModalPortaPalletsEvolucaoMes from './ModalPortaPalletsEvolucaoMes';
 import PortaPalletsComercialAjudaModal, { ComoLerBtn } from './PortaPalletsComercialAjudaModal';
 import PortaPalletsFunil from './PortaPalletsFunil';
 import PortaPalletsEvolucaoBarras, {
@@ -62,6 +63,8 @@ type ModalAlvo = {
   titulo: string;
   subtitulo: string;
 };
+
+type ModalMesAlvo = { mes: MesPortaPallets; desde: string; ate: string; titulo: string };
 
 function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -145,6 +148,19 @@ export default function PortaPalletsComercialPage() {
     void carregar(desde, ate, true);
   }, [ate, carregar, desde]);
 
+  const buscarDetalhe = useCallback(
+    (indicador: IndicadorPortaPallets, recorte: { mes?: string; desde: string; ate: string }) => {
+      const chave = `${indicador}|${recorte.mes ?? ''}|${recorte.desde}|${recorte.ate}`;
+      const cached = detalheCacheRef.current.get(chave);
+      if (cached) return Promise.resolve(cached);
+      return obterPortaPalletsDetalhe(indicador, recorte).then((data) => {
+        detalheCacheRef.current.set(chave, data);
+        return data;
+      });
+    },
+    []
+  );
+
   const abrir = useCallback((alvo: ModalAlvo) => {
     setModal(alvo);
     setDetalheErro(null);
@@ -158,13 +174,12 @@ export default function PortaPalletsComercialPage() {
     setDetalhe(null);
     setDetalheLoading(true);
     const req = ++detalheReqRef.current;
-    void obterPortaPalletsDetalhe(alvo.indicador, {
+    void buscarDetalhe(alvo.indicador, {
       mes: alvo.mes,
       desde: alvo.desde ?? desde,
       ate: alvo.ate ?? ate,
     })
       .then((data) => {
-        detalheCacheRef.current.set(chave, data);
         if (detalheReqRef.current !== req) return;
         setDetalhe(data);
       })
@@ -175,7 +190,28 @@ export default function PortaPalletsComercialPage() {
       .finally(() => {
         if (detalheReqRef.current === req) setDetalheLoading(false);
       });
-  }, [ate, desde]);
+  }, [ate, buscarDetalhe, desde]);
+
+  const [modalMes, setModalMes] = useState<ModalMesAlvo | null>(null);
+  const abrirMes = useCallback(
+    (m: MesPortaPallets, recorte?: { desde: string; ate: string }, sufixo = '') => {
+      setModalMes({
+        mes: m,
+        desde: recorte?.desde ?? desde,
+        ate: recorte?.ate ?? ate,
+        titulo: `Propostas x fechamento · ${labelMes(m.mes)}${sufixo}`,
+      });
+    },
+    [ate, desde]
+  );
+  const buscarMes = useCallback(
+    (indicador: IndicadorPortaPallets) =>
+      modalMes
+        ? buscarDetalhe(indicador, { mes: modalMes.mes.mes, desde: modalMes.desde, ate: modalMes.ate })
+        : Promise.reject(new Error('Nenhum mês selecionado.')),
+    [buscarDetalhe, modalMes]
+  );
+  const fecharMes = useCallback(() => setModalMes(null), []);
 
   const totais = dados?.totais;
   const mesesTabela = useMemo(() => [...(dados?.meses ?? [])].sort((a, b) => b.mes.localeCompare(a.mes)), [dados]);
@@ -384,24 +420,8 @@ export default function PortaPalletsComercialPage() {
                     metrica={metrica}
                     onBarra={(m, anterior) => {
                       const ant = dados?.anoAnterior;
-                      const recorte = anterior && ant ? { desde: ant.desde, ate: ant.ate } : {};
-                      abrir(
-                        metrica === 'valor'
-                          ? {
-                              mes: m.mes,
-                              ...recorte,
-                              indicador: 'pedidos_gerados',
-                              titulo: `Pedidos gerados pelas propostas de ${labelMes(m.mes)}`,
-                              subtitulo: `${formatMoeda(m.valorPedidosGerados)} de ${formatMoeda(m.valorPropostas)} em propostas`,
-                            }
-                          : {
-                              mes: m.mes,
-                              ...recorte,
-                              indicador: 'conversao',
-                              titulo: `Propostas de ${labelMes(m.mes)}`,
-                              subtitulo: `${formatNumero(m.qtdConvertidas)} de ${formatNumero(m.qtdPropostas)} viraram pedido`,
-                            }
-                      );
+                      if (anterior && ant) abrirMes(m, { desde: ant.desde, ate: ant.ate }, ' (ano anterior)');
+                      else abrirMes(m);
                     }}
                   />
                 ) : (
@@ -409,23 +429,7 @@ export default function PortaPalletsComercialPage() {
                     meses={dados?.meses ?? []}
                     metrica={metrica}
                     rotulo={rotulo}
-                    onMes={(m) =>
-                      abrir(
-                        metrica === 'valor'
-                          ? {
-                              mes: m.mes,
-                              indicador: 'pedidos_gerados',
-                              titulo: `Pedidos gerados pelas propostas de ${labelMes(m.mes)}`,
-                              subtitulo: `${formatMoeda(m.valorPedidosGerados)} de ${formatMoeda(m.valorPropostas)} em propostas`,
-                            }
-                          : {
-                              mes: m.mes,
-                              indicador: 'conversao',
-                              titulo: `Propostas de ${labelMes(m.mes)}`,
-                              subtitulo: `${formatNumero(m.qtdConvertidas)} de ${formatNumero(m.qtdPropostas)} viraram pedido`,
-                            }
-                      )
-                    }
+                    onMes={(m) => abrirMes(m)}
                   />
                 )}
                 </div>
@@ -470,6 +474,16 @@ export default function PortaPalletsComercialPage() {
         detalhe={detalhe}
         onClose={() => setModal(null)}
       />
+      {modalMes ? (
+        <ModalPortaPalletsEvolucaoMes
+          key={`${modalMes.mes.mes}|${modalMes.desde}|${modalMes.ate}`}
+          mes={modalMes.mes}
+          titulo={modalMes.titulo}
+          abaInicial={rotulo === 'proposto' ? 'propostas' : 'pedidos'}
+          buscar={buscarMes}
+          onClose={fecharMes}
+        />
+      ) : null}
       <PortaPalletsComercialAjudaModal aberto={ajuda} onClose={() => setAjuda(false)} />
     </div>
   );

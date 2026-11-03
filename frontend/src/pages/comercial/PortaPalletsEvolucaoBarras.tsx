@@ -5,7 +5,7 @@ import { formatMoeda, formatNumero } from '../../components/painel-comercial/pai
 import { formatTaxa, labelMes } from './portaPalletsComercialFormat';
 
 export type MetricaEvolucao = 'valor' | 'qtde';
-/** Valor mostrado no rótulo acima da barra: o que virou pedido (padrão) ou o proposto. */
+/** Rótulo sobre a barra escolhida na legenda: a azul (virou pedido, padrão) ou a cinza (proposto). */
 export type RotuloEvolucao = 'pedido' | 'proposto';
 
 type Ponto = {
@@ -137,7 +137,7 @@ function BarraSobreposta({
   const cx = x + width / 2;
   const topoExterno = base - hExterno;
   const topoInterno = base - hInterno;
-  const yTopo = Math.min(topoExterno, topoInterno);
+  const yRotulo = rotulo === 'pedido' ? topoInterno : topoExterno;
 
   return (
     <g className="cursor-pointer" onClick={() => onClick(payload)}>
@@ -154,7 +154,7 @@ function BarraSobreposta({
       {comRotulo && payload.topo > 0 ? (
         <text
           x={cx}
-          y={yTopo - 6}
+          y={yRotulo - 6}
           textAnchor="middle"
           fill={rotulo === 'pedido' ? COR_PREENCHIDO_TEXTO : '#CBD5E1'}
           className="text-[10px] font-semibold"
@@ -187,7 +187,7 @@ function TooltipBarras({
       <p className="text-slate-800 dark:text-slate-100">
         {metrica === 'valor' ? 'Vendido nos pedidos gerados' : 'Viraram pedido'}: {fmt(p.interno)} ({formatTaxa(p.pct)})
       </p>
-      <p className="mt-1 text-[11px] text-slate-400">Clique para abrir a origem do mês</p>
+      <p className="mt-1 text-[11px] text-slate-400">Clique para auditar as propostas e os pedidos do mês</p>
     </div>
   );
 }

@@ -102,6 +102,7 @@ export interface LinhaPropostaItem {
   statusItem: number;
   statusLabel: string;
   motivoRejeicao: string;
+  observacaoProposta: string;
   codigosPedido: string;
   dataPrimeiroPedido: string;
   propostaConvertida: boolean;

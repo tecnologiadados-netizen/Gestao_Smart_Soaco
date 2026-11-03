@@ -142,6 +142,7 @@ proposta_item AS (
     ROUND(COALESCE(ip.valorTotalComDesconto, 0), 2) AS valor,
     ip.status AS statusItem,
     COALESCE(mr.nome, '') AS motivoRejeicao,
+    LEFT(TRIM(COALESCE(prp.observacao, '')), 400) AS observacaoProposta,
     COALESCE(pd.codigosPedido, '') AS codigosPedido,
     pd.dataPrimeiroPedido AS dataPrimeiroPedido
   FROM itemproposta ip
@@ -185,6 +186,8 @@ export interface LinhaPropostaItem {
   statusItem: number;
   statusLabel: string;
   motivoRejeicao: string;
+  /** Observação da proposta no Nomus (até 400 caracteres); identifica opções alternativas do mesmo projeto. */
+  observacaoProposta: string;
   codigosPedido: string;
   dataPrimeiroPedido: string;
   propostaConvertida: boolean;
@@ -471,6 +474,7 @@ function mapProposta(row: Record<string, unknown>, diasPorProposta: Map<number, 
     statusItem: num(row.statusItem),
     statusLabel: rotuloStatusProposta(num(row.statusItem)),
     motivoRejeicao: str(row.motivoRejeicao),
+    observacaoProposta: str(row.observacaoProposta).replace(/\s+/g, ' ').trim(),
     codigosPedido: str(row.codigosPedido),
     dataPrimeiroPedido: str(row.dataPrimeiroPedido),
     propostaConvertida: convertidas.has(idProposta),
@@ -590,7 +594,7 @@ async function carregarBase(refresh: boolean): Promise<CacheBase> {
     `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_PROPOSTA}
      SELECT idItem, idProposta, codigoProposta, dataAbertura, mes, idCliente, cliente, codigoCliente, dataCadastroCliente,
             codigoProduto, descricaoProduto,
-            valor, statusItem, motivoRejeicao, codigosPedido, dataPrimeiroPedido
+            valor, statusItem, motivoRejeicao, observacaoProposta, codigosPedido, dataPrimeiroPedido
      FROM proposta_item`
   );
   const [pedidosRaw] = await queryNomus<Record<string, unknown>[]>(
