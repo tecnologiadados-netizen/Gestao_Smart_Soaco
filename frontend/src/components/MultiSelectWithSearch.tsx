@@ -29,6 +29,8 @@ export interface MultiSelectWithSearchProps {
   valueSeparator?: string;
   /** Largura máxima do painel dropdown (padrão: 100% do campo). */
   dropdownMaxWidth?: string;
+  /** Largura mínima do painel em portal, em pixels. Útil quando o rótulo é mais largo que o campo. */
+  dropdownMinWidthPx?: number;
   /** Altura máxima do painel dropdown (padrão: 280px). */
   dropdownMaxHeight?: string;
   /** Altura máxima da lista rolável (padrão: 220px). */
@@ -61,6 +63,7 @@ export default function MultiSelectWithSearch({
   dropdownZIndex = 100,
   valueSeparator = DEFAULT_VALUE_SEPARATOR,
   dropdownMaxWidth,
+  dropdownMinWidthPx = 220,
   dropdownMaxHeight = '280px',
   dropdownListMaxHeight = '220px',
   fillContainer = false,
@@ -158,14 +161,15 @@ export default function MultiSelectWithSearch({
     const espacoAcima = rect.top - margem;
     const abrirAcima = espacoAbaixo < Math.min(alturaDesejada, 200) && espacoAcima > espacoAbaixo;
     const maxHeight = Math.max(160, Math.min(alturaDesejada, abrirAcima ? espacoAcima : espacoAbaixo));
-    const largura = Math.max(rect.width, 220);
+    const larguraMax = Math.max(160, window.innerWidth - margem * 2);
+    const largura = Math.min(larguraMax, Math.max(rect.width, dropdownMinWidthPx));
     setPortalPos({
       top: abrirAcima ? rect.top - maxHeight - 4 : rect.bottom + 4,
       left: Math.max(margem, Math.min(rect.left, window.innerWidth - largura - margem)),
       width: largura,
       maxHeight,
     });
-  }, [dropdownPortal, dropdownMaxHeight]);
+  }, [dropdownPortal, dropdownMaxHeight, dropdownMinWidthPx]);
 
   useEffect(() => {
     if (!dropdownPortal || !open) {

@@ -2,7 +2,7 @@ import { apiFetch } from './client';
 
 const BASE = '/api/compras/materiais-a-chegar';
 
-export type EtapaAcompanhamento = 'solicitado' | 'comprado' | 'pre_entrada';
+export type EtapaAcompanhamento = 'solicitado' | 'pre_compra' | 'comprado' | 'pre_entrada';
 
 export type LinhaAcompanhamento = {
   idProduto: number;
@@ -10,14 +10,17 @@ export type LinhaAcompanhamento = {
   descricao: string;
   unidadeMedida: string;
   qtdeSolicitado: number;
+  qtdePreCompra: number;
   qtdeComprado: number;
   qtdePreEntrada: number;
   emissaoSolicitacao: string | null;
   necessidadeSolicitacao: string | null;
+  emissaoPreCompra: string | null;
   emissaoPedido: string | null;
   emissaoPreEntrada: string | null;
   /** Um número por linha. Vazios quando a etapa não tem o documento. */
   solicitacoes?: string;
+  preCompras?: string;
   pedidos?: string;
   documentos?: string;
 };
@@ -27,6 +30,15 @@ export type LinhaDetalheSolicitado = {
   usuario: string | null;
   dataEmissao: string | null;
   dataNecessidade: string | null;
+  qtde: number;
+};
+
+export type LinhaDetalhePreCompra = {
+  idSolicitacao: number;
+  idCotacao: number;
+  cotacao: string;
+  situacao: string;
+  dataEmissao: string | null;
   qtde: number;
 };
 
@@ -113,6 +125,7 @@ export type DocumentoAcompanhamento = {
 
 export type DetalheAcompanhamento =
   | { etapa: 'solicitado'; linhas: LinhaDetalheSolicitado[] }
+  | { etapa: 'pre_compra'; linhas: LinhaDetalhePreCompra[] }
   | { etapa: 'comprado'; linhas: LinhaDetalheComprado[] }
   | { etapa: 'pre_entrada'; linhas: LinhaDetalhePreEntrada[] };
 
@@ -134,7 +147,12 @@ export async function obterDetalheAcompanhamento(
   const res = await apiFetch(`${BASE}/detalhe?${qs.toString()}`);
   const body = (await res.json().catch(() => ({}))) as DetalheAcompanhamento & { error?: string };
   if (!res.ok) return { detalhe: null, error: body.error ?? res.statusText };
-  if (body.etapa === 'solicitado' || body.etapa === 'comprado' || body.etapa === 'pre_entrada') {
+  if (
+    body.etapa === 'solicitado' ||
+    body.etapa === 'pre_compra' ||
+    body.etapa === 'comprado' ||
+    body.etapa === 'pre_entrada'
+  ) {
     return { detalhe: { etapa: body.etapa, linhas: body.linhas ?? [] } as DetalheAcompanhamento };
   }
   return { detalhe: null, error: 'Resposta inválida do detalhe.' };

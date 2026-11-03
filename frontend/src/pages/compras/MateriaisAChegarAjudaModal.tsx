@@ -10,14 +10,19 @@ const SECOES: SecaoAjuda[] = [
     id: 'corte',
     titulo: 'O que entra no pipeline',
     oQueE:
-      'A tela mostra só o material que ainda está a caminho da empresa. Cada produto é uma linha, e as três etapas são colunas do processo: Solicitado, Comprado e Pré-entrada.',
+      'A tela mostra só o material que ainda está a caminho da empresa. Cada produto é uma linha, e as quatro etapas são colunas do processo: Solicitado, Pré-compra, Comprado e Pré-entrada.',
     comoLe:
-      'Se o produto não está em nenhuma das três etapas, ele não aparece. Entrada cujo documento já saiu do tipo pré-entrada (173) também não aparece: o material já entrou de fato.',
+      'Se o produto não está em nenhuma das quatro etapas, ele não aparece. Entrada cujo documento já saiu do tipo pré-entrada (173) também não aparece: o material já entrou de fato.',
     detalhes: [
       {
         titulo: 'Solicitado',
         texto:
-          'Solicitação de compra no status Liberada, ainda sem pedido de compra vinculado. A quantidade é a da solicitação.',
+          'Solicitação de compra no status Liberada, ainda sem pedido de compra vinculado, na parte que ainda não entrou em pré-compra. A quantidade é o que sobrou da solicitação.',
+      },
+      {
+        titulo: 'Pré-compra',
+        texto:
+          'Cotação aberta vinculada à solicitação Liberada, antes do pedido ser emitido. Entram os status Preparação, Coleta de preços e Decisão de compra. A quantidade é a da solicitação coberta pela cotação, no máximo a quantidade solicitada. Se a cotação for menor, o restante continua em Solicitado. Cotação encerrada não conta nesta etapa.',
       },
       {
         titulo: 'Comprado',
@@ -37,7 +42,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'O mesmo produto pode ter quantidade em mais de uma etapa ao mesmo tempo. A linha continua única: cada quantidade fica na etapa correspondente.',
     comoLe:
-      'Uma etapa vazia aparece tracejada. Clique na etapa preenchida para abrir o detalhe, com a cadeia do vínculo: solicitação, pedido e documento de pré-entrada, conforme a etapa. A soma das linhas do modal é a quantidade da etapa na linha. A data do cartão é a mais antiga ainda naquela etapa. Na pré-entrada, essa data é a emissão da NF.',
+      'Uma etapa vazia aparece tracejada. Clique na etapa preenchida para abrir o detalhe, com a cadeia do vínculo: solicitação, pré-compra, pedido e documento de pré-entrada, conforme a etapa. A soma das linhas do modal é a quantidade da etapa na linha. A data do cartão é a mais antiga ainda naquela etapa. Na pré-compra, essa data é a emissão da cotação. Na pré-entrada, é a emissão da NF.',
   },
   {
     id: 'documento',
@@ -93,9 +98,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'filtro',
     titulo: 'Filtros e datas',
     oQueE:
-      'A lista abre com todos os produtos que estão em alguma etapa. Há um campo para código ou descrição, outro para o número da solicitação, outro para o pedido de compra e outro para o documento de entrada. Abaixo ficam os filtros de data: emissão da solicitação, necessidade da solicitação, emissão do pedido e emissão da NF.',
+      'A lista abre com todos os produtos que estão em alguma etapa. Código ou descrição, solicitação, pré-compra, pedido de compra e documento são listas: abre, pesquisa e marca um ou mais. Abaixo ficam os filtros de data: emissão da solicitação, necessidade da solicitação, emissão da pré-compra, emissão do pedido e emissão da NF.',
     comoLe:
-      'Os campos preenchidos se combinam: o produto precisa passar em todos. Código ou descrição aceita qualquer um dos dois. Sem %, o filtro contém o texto. Com %, vale o curinga: CHAPA% começa com CHAPA, %MM termina com MM. A solicitação vale nas três etapas; o pedido, em Comprado e Pré-entrada; o documento, só na Pré-entrada. Cada data abre um modal, com o período e a ordem. Crescente lista da data mais antiga para a mais recente. Decrescente faz o inverso. Produto sem data naquela etapa fica de fora do período.',
+      'Lista sem marca significa todos. O que estiver marcado se combina: o produto precisa passar em todos os campos. No mesmo campo, basta um dos itens marcados. Na pesquisa da lista, o texto ignora acento e maiúsculas; % continua como curinga (CHAPA% começa com CHAPA). Código ou descrição pesquisa os dois. A solicitação vale nas quatro etapas; a pré-compra, só na Pré-compra; o pedido, em Comprado e Pré-entrada; o documento, só na Pré-entrada. Cada data abre um modal, com o período e a ordem. Crescente lista da data mais antiga para a mais recente. Decrescente faz o inverso. Produto sem data naquela etapa fica de fora do período.',
   },
 ];
 
