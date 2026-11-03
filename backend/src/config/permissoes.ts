@@ -100,6 +100,8 @@ export const PERMISSOES = {
   RECEBIMENTO_TOTAL: 'recebimento.total',
   /** Histórico das conferências já enviadas à Mesa. Por enquanto, só o master. */
   RECEBIMENTO_HISTORICO: 'recebimento.historico',
+  /** Classifica o usuário como conferente: aparece na lista de conferentes da Mesa. */
+  RECEBIMENTO_USUARIO_CONFERENTE: 'recebimento.usuario_conferente',
 
   // Fluxos Decisórios (mapas mentais)
   FLUXOS_VER: 'fluxos.ver',
@@ -292,6 +294,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.RECEBIMENTO_CONFERENTE,
   PERMISSOES.RECEBIMENTO_TOTAL,
   PERMISSOES.RECEBIMENTO_HISTORICO,
+  PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE,
   PERMISSOES.FLUXOS_VER,
   PERMISSOES.FLUXOS_EDITAR,
 
@@ -480,6 +483,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.RECEBIMENTO_CONFERENTE]: 'Recebimento',
   [PERMISSOES.RECEBIMENTO_TOTAL]: 'Permissão total',
   [PERMISSOES.RECEBIMENTO_HISTORICO]: 'Histórico de conferências enviadas',
+  [PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE]: 'Usuário conferente',
   [PERMISSOES.FLUXOS_VER]: 'Ver Fluxos Decisórios (mapas mentais)',
   [PERMISSOES.FLUXOS_EDITAR]: 'Editar e excluir mapas mentais',
 

@@ -387,7 +387,8 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
   const permitidos = await listarConferentesRecebimento();
   if (!permitidos.some((c) => c.id === conferente.id)) {
     res.status(400).json({
-      error: 'Este usuário não tem permissão de conferente. Atribua a permissão no grupo.',
+      error:
+        'Este usuário não está classificado como conferente. Marque "Usuário conferente" no grupo dele.',
     });
     return;
   }

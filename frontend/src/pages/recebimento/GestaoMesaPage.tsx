@@ -1182,7 +1182,7 @@ export default function GestaoMesaPage() {
                     modalDoc.status !== 'CONFERIDO' &&
                     modalDoc.status !== 'FINALIZADO' && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Nenhum usuário com permissão de conferente. Marque o módulo “Recebimento” no grupo.
+                      Nenhum usuário classificado como conferente. Marque “Usuário conferente” no grupo, na seção Recebimento.
                     </p>
                   )}
                   {deliberarErro && (
