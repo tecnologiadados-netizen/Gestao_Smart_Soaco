@@ -273,7 +273,6 @@ export default function PortaPalletsComercialPage() {
                 tone="violet"
                 titulo="Ticket médio"
                 valor={k.ticketMedio == null ? '—' : formatMoeda(k.ticketMedio)}
-                detalhe={`${formatMoeda(k.valorVendido, true)} ÷ ${formatNumero(k.qtdPedidos)} pedidos`}
                 icone={<Receipt className="h-4 w-4" strokeWidth={2.2} />}                onClick={() =>
                   abrirPeriodo('pedidos', 'Ticket médio', k.ticketMedio == null ? '—' : formatMoeda(k.ticketMedio))
                 }
@@ -282,7 +281,6 @@ export default function PortaPalletsComercialPage() {
                 tone="cyan"
                 titulo="Conversão"
                 valor={formatTaxa(k.taxaConversao)}
-                detalhe={`${formatNumero(k.qtdConvertidas)} de ${formatNumero(k.qtdPropostas)} propostas viraram pedido`}
                 icone={<Percent className="h-4 w-4" strokeWidth={2.2} />}                onClick={() => abrirPeriodo('conversao', 'Conversão', formatTaxa(k.taxaConversao))}
               />
             </div>
