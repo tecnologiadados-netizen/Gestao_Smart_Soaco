@@ -8,7 +8,8 @@ import type {
   MesPortaPallets,
 } from '../../api/portaPalletsComercial';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
-import { Tabela } from './ModalPortaPalletsDetalhe';
+import GradePortaPallets, { type ColunaGrade } from './GradePortaPallets';
+import { formatData } from './portaPalletsComercialFormat';
 
 export type AbaEvolucaoMes = 'propostas' | 'pedidos';
 
@@ -73,16 +74,8 @@ export default function ModalPortaPalletsEvolucaoMes({ mes, titulo, abaInicial, 
 
   const atual = estado[aba];
   const abas: Array<{ id: AbaEvolucaoMes; label: string; resumo: string }> = [
-    {
-      id: 'propostas',
-      label: 'Propostas',
-      resumo: `${formatNumero(mes.qtdPropostas)} · ${formatMoeda(mes.valorPropostas, true)}`,
-    },
-    {
-      id: 'pedidos',
-      label: 'Pedidos gerados',
-      resumo: `${formatNumero(mes.qtdPedidosGerados)} · ${formatMoeda(mes.valorPedidosGerados, true)}`,
-    },
+    { id: 'propostas', label: 'Propostas', resumo: formatNumero(mes.qtdPropostas) },
+    { id: 'pedidos', label: 'Pedidos gerados', resumo: formatNumero(mes.qtdPedidosGerados) },
   ];
 
   return createPortal(
@@ -145,7 +138,7 @@ export default function ModalPortaPalletsEvolucaoMes({ mes, titulo, abaInicial, 
               {atual.detalhe.rows.length === 0 ? (
                 <p className="py-8 text-sm text-slate-500">Nenhum registro neste mês.</p>
               ) : (
-                <Tabela detalhe={atual.detalhe} tituloExportacao={`Porta-pallets - ${titulo} - ${abas.find((a) => a.id === aba)?.label}`} />
+                <TabelaMes detalhe={atual.detalhe} tituloExportacao={`Porta-pallets - ${titulo} - ${abas.find((a) => a.id === aba)?.label}`} />
               )}
             </>
           )}
@@ -170,51 +163,22 @@ function Conferencia({ ok, esperado }: { ok: boolean; esperado: string }) {
 
 function ResumoPropostas({ rows, mes }: { rows: LinhaPropostaItem[]; mes: MesPortaPallets }) {
   const r = useMemo(() => {
-    const propostas = new Map<number, { cliente: string; convertida: boolean }>();
-    const porCliente = new Map<string, { propostas: Set<number>; valor: number }>();
+    const propostas = new Set<number>();
     let valor = 0;
     for (const row of rows) {
       valor += row.valor;
-      propostas.set(row.idProposta, { cliente: row.cliente, convertida: row.propostaConvertida });
-      const c = porCliente.get(row.cliente) ?? { propostas: new Set<number>(), valor: 0 };
-      c.propostas.add(row.idProposta);
-      c.valor += row.valor;
-      porCliente.set(row.cliente, c);
+      propostas.add(row.idProposta);
     }
-    const convertidas = [...propostas.values()].filter((p) => p.convertida).length;
-    const repetidos = [...porCliente.entries()]
-      .filter(([, c]) => c.propostas.size > 1)
-      .sort((a, b) => b[1].valor - a[1].valor)
-      .slice(0, 3);
-    return { qtd: propostas.size, valor: Math.round(valor * 100) / 100, convertidas, repetidos };
+    return { qtd: propostas.size, valor: Math.round(valor * 100) / 100 };
   }, [rows]);
   const ok = r.qtd === mes.qtdPropostas && Math.abs(r.valor - mes.valorPropostas) < 0.01;
-  const maior = r.repetidos[0];
-
   return (
-    <div className="mb-3 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="tabular-nums">
-          <b>{formatNumero(r.qtd)}</b> propostas · {formatNumero(rows.length)} itens · <b>{formatMoeda(r.valor)}</b> ·{' '}
-          {formatNumero(r.convertidas)} viraram pedido
-        </span>
-        <Conferencia ok={ok} esperado={`${formatNumero(mes.qtdPropostas)} · ${formatMoeda(mes.valorPropostas)}`} />
-      </p>
-      {maior && r.valor > 0 ? (
-        <p className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-200">
-          Cliente com mais de uma proposta no mês:{' '}
-          {r.repetidos
-            .map(
-              ([cliente, c]) =>
-                `${cliente} (${formatNumero(c.propostas.size)} propostas, ${formatMoeda(c.valor, true)} = ${Math.round(
-                  (c.valor / r.valor) * 100
-                )}% do mês)`
-            )
-            .join('; ')}
-          . Opções alternativas do mesmo projeto somam como propostas separadas — confira a coluna Observação.
-        </p>
-      ) : null}
-    </div>
+    <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+      <span className="tabular-nums">
+        <b>{formatNumero(r.qtd)}</b> propostas · <b>{formatMoeda(r.valor)}</b>
+      </span>
+      <Conferencia ok={ok} esperado={`${formatNumero(mes.qtdPropostas)} · ${formatMoeda(mes.valorPropostas)}`} />
+    </p>
   );
 }
 
@@ -222,12 +186,85 @@ function ResumoPedidos({ rows, mes }: { rows: LinhaPedidoGerado[]; mes: MesPorta
   const valor = Math.round(rows.reduce((s, r) => s + r.valorVendido, 0) * 100) / 100;
   const ok = rows.length === mes.qtdPedidosGerados && Math.abs(valor - mes.valorPedidosGerados) < 0.01;
   return (
-    <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+    <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
       <span className="tabular-nums">
-        <b>{formatNumero(rows.length)}</b> pedidos gerados pelas propostas do mês · <b>{formatMoeda(valor)}</b> vendido ·{' '}
-        {formatNumero(mes.qtdConvertidas)} de {formatNumero(mes.qtdPropostas)} propostas viraram pedido
+        <b>{formatNumero(rows.length)}</b> pedidos · <b>{formatMoeda(valor)}</b>
       </span>
       <Conferencia ok={ok} esperado={`${formatNumero(mes.qtdPedidosGerados)} · ${formatMoeda(mes.valorPedidosGerados)}`} />
     </p>
   );
 }
+
+function TabelaMes({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; tituloExportacao: string }) {
+  if (detalhe.indicador === 'propostas') {
+    return (
+      <GradePortaPallets
+        rows={detalhe.rows}
+        colunas={COLUNAS_PROPOSTAS_MES}
+        rowKey={(r) => r.idItem}
+        defaultSortLevels={[{ id: 'valor', dir: 'desc' }]}
+        tituloExportacao={tituloExportacao}
+        compacta
+      />
+    );
+  }
+  if (detalhe.indicador === 'pedidos_gerados') {
+    return (
+      <GradePortaPallets
+        rows={detalhe.rows}
+        colunas={COLUNAS_PEDIDOS_MES}
+        rowKey={(r) => r.idPedido}
+        defaultSortLevels={[{ id: 'emissao', dir: 'asc' }]}
+        tituloExportacao={tituloExportacao}
+        compacta
+      />
+    );
+  }
+  return null;
+}
+
+function cortado(texto: string, largura: string) {
+  return (
+    <span title={texto} className={`block truncate ${largura}`}>
+      {texto}
+    </span>
+  );
+}
+
+const dataTexto = (iso: string) => (iso ? formatData(iso) : '—');
+
+const COLUNAS_PROPOSTAS_MES: ColunaGrade<LinhaPropostaItem>[] = [
+  { id: 'proposta', label: 'Proposta', texto: (r) => r.codigoProposta },
+  { id: 'abertura', label: 'Abertura', tipo: 'data', texto: (r) => dataTexto(r.dataAbertura), valor: (r) => r.dataAbertura },
+  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente, render: (r) => cortado(r.cliente, 'max-w-[220px]') },
+  {
+    id: 'produto',
+    label: 'Produto',
+    texto: (r) => `${r.codigoProduto} - ${r.descricaoProduto}`,
+    render: (r) => cortado(`${r.codigoProduto} - ${r.descricaoProduto}`, 'max-w-[300px]'),
+  },
+  { id: 'valor', label: 'Valor', tipo: 'moeda', texto: (r) => formatMoeda(r.valor), valor: (r) => r.valor, total: true },
+  { id: 'status', label: 'Status', texto: (r) => r.statusLabel },
+  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigosPedido || '—' },
+  {
+    id: 'observacao',
+    label: 'Observação',
+    texto: (r) => r.observacaoProposta || '—',
+    render: (r) => cortado(r.observacaoProposta || '—', 'max-w-[260px]'),
+  },
+];
+
+const COLUNAS_PEDIDOS_MES: ColunaGrade<LinhaPedidoGerado>[] = [
+  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigoPedido },
+  { id: 'emissao', label: 'Emissão', tipo: 'data', texto: (r) => dataTexto(r.dataEmissao), valor: (r) => r.dataEmissao },
+  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente, render: (r) => cortado(r.cliente, 'max-w-[280px]') },
+  { id: 'origem', label: 'Proposta de origem', texto: (r) => r.propostasOrigem },
+  {
+    id: 'valor',
+    label: 'Valor vendido',
+    tipo: 'moeda',
+    texto: (r) => formatMoeda(r.valorVendido),
+    valor: (r) => r.valorVendido,
+    total: true,
+  },
+];

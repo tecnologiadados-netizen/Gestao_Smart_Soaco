@@ -33,6 +33,8 @@ type Props<T> = {
   maxHeightClass?: string;
   /** Mostra o botão Exportar Excel com o espelho da grade; o texto vira título e nome do arquivo. */
   tituloExportacao?: string;
+  /** Cabeçalho e células numa linha só (textos longos devem vir truncados no render da coluna). */
+  compacta?: boolean;
 };
 
 const NUMERICOS: TipoColuna[] = ['numero', 'moeda'];
@@ -75,7 +77,9 @@ export default function GradePortaPallets<T>({
   onLinhasExibidas,
   maxHeightClass = 'max-h-[min(62vh,560px)]',
   tituloExportacao,
+  compacta = false,
 }: Props<T>) {
+  const nowrap = compacta ? 'whitespace-nowrap' : '';
   const porId = useMemo(() => new Map(colunas.map((c) => [c.id, c])), [colunas]);
   const dateColumnIds = useMemo(() => colunas.filter((c) => c.tipo === 'data').map((c) => c.id), [colunas]);
 
@@ -221,7 +225,7 @@ export default function GradePortaPallets<T>({
                 return (
                   <th key={col.id} className="px-2 py-2 align-top">
                     <div className={`flex items-center gap-1.5 ${numerica ? 'justify-end' : 'justify-between'}`}>
-                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">{col.label}</span>
+                      <span className={`text-[11px] font-semibold text-slate-600 dark:text-slate-300 ${nowrap}`}>{col.label}</span>
                       <GradeFiltroCabecalhoBtn
                         ativo={grade.colunaComFiltroAtivo(col.id)}
                         onClick={(e) => grade.abrirFiltroExcel(col.id, e)}
@@ -241,7 +245,7 @@ export default function GradePortaPallets<T>({
                   return (
                     <td
                       key={col.id}
-                      className={`px-2 py-1.5 text-slate-800 dark:text-slate-100 ${numerica ? 'text-right tabular-nums' : ''} ${col.className ?? ''}`}
+                      className={`px-2 py-1.5 text-slate-800 dark:text-slate-100 ${nowrap} ${numerica ? 'text-right tabular-nums' : ''} ${col.className ?? ''}`}
                     >
                       {col.render ? col.render(row) : col.texto(row)}
                     </td>
@@ -256,7 +260,7 @@ export default function GradePortaPallets<T>({
                 {colunas.map((col, i) => (
                   <td
                     key={col.id}
-                    className={`px-2 py-2 text-slate-800 dark:text-slate-100 ${col.id in totais ? 'text-right tabular-nums' : ''}`}
+                    className={`px-2 py-2 text-slate-800 dark:text-slate-100 ${nowrap} ${col.id in totais ? 'text-right tabular-nums' : ''}`}
                   >
                     {col.id in totais
                       ? col.tipo === 'moeda'

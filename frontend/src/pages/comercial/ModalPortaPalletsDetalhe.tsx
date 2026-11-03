@@ -86,7 +86,7 @@ export default function ModalPortaPalletsDetalhe({
   );
 }
 
-export function Tabela({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; tituloExportacao: string }) {
+function Tabela({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; tituloExportacao: string }) {
   switch (detalhe.indicador) {
     case 'propostas':
       return (
