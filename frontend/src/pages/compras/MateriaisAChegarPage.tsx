@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -8,8 +8,8 @@ import {
 } from '../../utils/materiaisAChegarPermissoes';
 import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
+import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
-import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import {
   listarDatasEntregaAtualizar,
   obterPipelineAcompanhamento,
@@ -31,7 +31,7 @@ const ETAPAS: {
   id: EtapaAcompanhamento;
   titulo: string;
   apoio: string;
-  campo: keyof Pick<LinhaAcompanhamento, 'qtdeSolicitado' | 'qtdeComprado' | 'qtdePreEntrada'>;
+  campo: keyof Pick<LinhaAcompanhamento, 'qtdeSolicitado' | 'qtdePreCompra' | 'qtdeComprado' | 'qtdePreEntrada'>;
   ativo: string;
   anel: string;
 }[] = [
@@ -42,6 +42,14 @@ const ETAPAS: {
     campo: 'qtdeSolicitado',
     ativo: 'border-sky-300 bg-sky-50 text-sky-950 dark:border-sky-700 dark:bg-sky-950/50 dark:text-sky-50',
     anel: 'bg-sky-500',
+  },
+  {
+    id: 'pre_compra',
+    titulo: 'Pré-compra',
+    apoio: 'Cotação vinculada, sem pedido',
+    campo: 'qtdePreCompra',
+    ativo: 'border-teal-300 bg-teal-50 text-teal-950 dark:border-teal-700 dark:bg-teal-950/40 dark:text-teal-50',
+    anel: 'bg-teal-500',
   },
   {
     id: 'comprado',
@@ -63,17 +71,19 @@ const ETAPAS: {
 
 function qtdeDaEtapa(linha: LinhaAcompanhamento, etapa: EtapaAcompanhamento): number {
   if (etapa === 'solicitado') return linha.qtdeSolicitado;
+  if (etapa === 'pre_compra') return linha.qtdePreCompra;
   if (etapa === 'comprado') return linha.qtdeComprado;
   return linha.qtdePreEntrada;
 }
 
-type ColunaDataId = 'emissaoSc' | 'necessidadeSc' | 'emissaoPc' | 'emissaoPre';
+type ColunaDataId = 'emissaoSc' | 'necessidadeSc' | 'emissaoPreCompra' | 'emissaoPc' | 'emissaoPre';
 type OrdemDir = 'asc' | 'desc';
 type FiltroData = { de: string; ate: string };
 
 const FILTROS_DATA: { id: ColunaDataId; label: string }[] = [
   { id: 'emissaoSc', label: 'Emissão da solicitação' },
   { id: 'necessidadeSc', label: 'Necessidade da solicitação' },
+  { id: 'emissaoPreCompra', label: 'Emissão da pré-compra' },
   { id: 'emissaoPc', label: 'Emissão do pedido' },
   { id: 'emissaoPre', label: 'Emissão da NF' },
 ];
@@ -88,6 +98,7 @@ function fmtData(ymd: string | null | undefined): string {
 function dataDaLinha(linha: LinhaAcompanhamento, id: ColunaDataId): string | null {
   if (id === 'emissaoSc') return linha.emissaoSolicitacao;
   if (id === 'necessidadeSc') return linha.necessidadeSolicitacao;
+  if (id === 'emissaoPreCompra') return linha.emissaoPreCompra;
   if (id === 'emissaoPc') return linha.emissaoPedido;
   return linha.emissaoPreEntrada;
 }
@@ -111,27 +122,45 @@ function compararCodigo(a: LinhaAcompanhamento, b: LinhaAcompanhamento): number 
   return a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true, sensitivity: 'base' });
 }
 
-function casaNumero(match: (valor: string) => boolean, campo: string | null | undefined): boolean {
-  if (!campo?.trim()) return false;
-  if (match(campo.replace(/\n/g, ' '))) return true;
-  return campo.split(/[\n,]+/).some((bruto) => {
+/** Separa itens marcados no valor do filtro. Códigos e números não usam este caractere. */
+const SEP_FILTRO = '|';
+
+function tokensCampo(campo: string | null | undefined): string[] {
+  if (!campo?.trim()) return [];
+  const vistos = new Set<string>();
+  const tokens: string[] = [];
+  for (const bruto of campo.split(/[\n,]+/)) {
     const token = bruto.trim();
-    return token.length > 0 && match(token);
-  });
+    if (!token || vistos.has(token)) continue;
+    vistos.add(token);
+    tokens.push(token);
+  }
+  return tokens;
 }
 
-const CLASSE_FILTRO =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
-
-function Seta() {
-  return (
-    <div className="flex items-center justify-center text-slate-300 dark:text-slate-600" aria-hidden>
-      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M7.2 4.2a1 1 0 0 1 1.4 0l5 5.2a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.4-1.4L11.5 10 7.2 5.6a1 1 0 0 1 0-1.4Z" />
-      </svg>
-    </div>
+function selecionadosFiltro(valor: string): Set<string> {
+  if (!valor.trim()) return new Set();
+  return new Set(
+    valor
+      .split(SEP_FILTRO)
+      .map((s) => s.trim())
+      .filter(Boolean)
   );
 }
+
+/** Lista vazia não restringe. Com marcas, basta um dos itens marcados estar na linha. */
+function passaSelecao(selecionados: Set<string>, campo: string | null | undefined): boolean {
+  if (selecionados.size === 0) return true;
+  return tokensCampo(campo).some((token) => selecionados.has(token));
+}
+
+function ordenarTexto(valores: Iterable<string>): string[] {
+  return [...valores].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+}
+
+const CLASSE_ROTULO_FILTRO = 'mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400';
+const CLASSE_FILTRO =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
 
 export default function MateriaisAChegarPage() {
   const { hasPermission, profileLoaded } = useAuth();
@@ -149,6 +178,7 @@ export default function MateriaisAChegarPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [filtroProduto, setFiltroProduto] = useState('');
   const [filtroSolicitacao, setFiltroSolicitacao] = useState('');
+  const [filtroPreCompra, setFiltroPreCompra] = useState('');
   const [filtroPedido, setFiltroPedido] = useState('');
   const [filtroDocumento, setFiltroDocumento] = useState('');
   const [filtrosData, setFiltrosData] = useState<Partial<Record<ColunaDataId, FiltroData>>>({});
@@ -186,6 +216,7 @@ export default function MateriaisAChegarPage() {
       setVisao('produtos');
       setFiltroProduto(codigo);
       setFiltroSolicitacao('');
+      setFiltroPreCompra('');
       setFiltroPedido('');
       setFiltroDocumento('');
       setEtapaFiltro('todas');
@@ -199,6 +230,7 @@ export default function MateriaisAChegarPage() {
       setVisao('produtos');
       setFiltroProduto('');
       setFiltroSolicitacao('');
+      setFiltroPreCompra('');
       setFiltroPedido(tipo === 'pedido' ? numero : '');
       setFiltroDocumento(tipo === 'pre_entrada' ? numero : '');
       setEtapaFiltro('todas');
@@ -245,20 +277,47 @@ export default function MateriaisAChegarPage() {
     [filtrosData, ordemData]
   );
 
+  const opcoesLista = useMemo(() => {
+    const produtos: string[] = [];
+    const rotuloProduto: Record<string, string> = {};
+    const solicitacoes = new Set<string>();
+    const preCompras = new Set<string>();
+    const pedidos = new Set<string>();
+    const documentos = new Set<string>();
+    for (const linha of linhas) {
+      if (rotuloProduto[linha.codigo] == null) {
+        produtos.push(linha.codigo);
+        const descricao = linha.descricao?.trim();
+        rotuloProduto[linha.codigo] = descricao ? `${linha.codigo} ${descricao}` : linha.codigo;
+      }
+      for (const token of tokensCampo(linha.solicitacoes)) solicitacoes.add(token);
+      for (const token of tokensCampo(linha.preCompras)) preCompras.add(token);
+      for (const token of tokensCampo(linha.pedidos)) pedidos.add(token);
+      for (const token of tokensCampo(linha.documentos)) documentos.add(token);
+    }
+    produtos.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+    return {
+      produtos,
+      rotuloProduto,
+      solicitacoes: ordenarTexto(solicitacoes),
+      preCompras: ordenarTexto(preCompras),
+      pedidos: ordenarTexto(pedidos),
+      documentos: ordenarTexto(documentos),
+    };
+  }, [linhas]);
+
   const visiveis = useMemo(() => {
-    const matchProduto = criarMatcherTextoLivre(filtroProduto);
-    const matchSolicitacao = criarMatcherTextoLivre(filtroSolicitacao);
-    const matchPedido = criarMatcherTextoLivre(filtroPedido);
-    const matchDocumento = criarMatcherTextoLivre(filtroDocumento);
-    const buscaProduto = filtroProduto.trim().length > 0;
-    const buscaSolicitacao = filtroSolicitacao.trim().length > 0;
-    const buscaPedido = filtroPedido.trim().length > 0;
-    const buscaDocumento = filtroDocumento.trim().length > 0;
+    const produtos = selecionadosFiltro(filtroProduto);
+    const solicitacoes = selecionadosFiltro(filtroSolicitacao);
+    const preCompras = selecionadosFiltro(filtroPreCompra);
+    const pedidos = selecionadosFiltro(filtroPedido);
+    const documentos = selecionadosFiltro(filtroDocumento);
     const lista = linhas.filter((l) => {
-      if (buscaProduto && !matchProduto(l.codigo) && !matchProduto(l.descricao)) return false;
-      if (buscaSolicitacao && !casaNumero(matchSolicitacao, l.solicitacoes)) return false;
-      if (buscaPedido && !casaNumero(matchPedido, l.pedidos)) return false;
-      if (buscaDocumento && !casaNumero(matchDocumento, l.documentos)) return false;
+      if (produtos.size > 0 && !produtos.has(l.codigo)) return false;
+      if (!passaSelecao(solicitacoes, l.solicitacoes)) return false;
+      if (!passaSelecao(preCompras, l.preCompras)) return false;
+      if (!passaSelecao(pedidos, l.pedidos)) return false;
+      if (!passaSelecao(documentos, l.documentos)) return false;
       for (const col of FILTROS_DATA) {
         if (!passaPeriodo(dataDaLinha(l, col.id), filtrosData[col.id])) return false;
       }
@@ -277,7 +336,7 @@ export default function MateriaisAChegarPage() {
       return compararCodigo(a, b);
     });
     return lista;
-  }, [linhas, filtroProduto, filtroSolicitacao, filtroPedido, filtroDocumento, filtrosData, etapaFiltro, ordemData]);
+  }, [linhas, filtroProduto, filtroSolicitacao, filtroPreCompra, filtroPedido, filtroDocumento, filtrosData, etapaFiltro, ordemData]);
 
   const limparFiltrosData = useCallback(() => {
     setFiltrosData({});
@@ -304,7 +363,7 @@ export default function MateriaisAChegarPage() {
   if (!podeVer) return <Navigate to="/sem-acesso" replace />;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-5">
+    <div className="relative flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 md:p-5">
       <CarregandoInformacoesOverlay
         show={carregando}
         mensagem="Lendo solicitações, pedidos e pré-entradas…"
@@ -390,81 +449,130 @@ export default function MateriaisAChegarPage() {
         />
       ) : (
       <>
-      <div className="flex shrink-0 items-stretch gap-2">
-        {resumo.map((etapa, i) => (
-          <Fragment key={etapa.id}>
-            {i > 0 ? <Seta /> : null}
-            <button
-              type="button"
-              onClick={() => setEtapaFiltro((atual) => (atual === etapa.id ? 'todas' : etapa.id))}
-              className={`min-w-0 flex-1 rounded-xl border px-4 py-3 text-left shadow-sm transition ${
-                etapaFiltro === etapa.id ? `${etapa.ativo} ring-2 ring-offset-1 ring-slate-400` : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800'
-              }`}
-              aria-pressed={etapaFiltro === etapa.id}
-              title={etapa.apoio}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${etapa.anel}`} />
-                <span className="text-sm font-semibold">{etapa.titulo}</span>
-                <span className="truncate text-xs text-slate-500 dark:text-slate-400">{etapa.apoio}</span>
-              </div>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                <span className="mr-1.5 text-2xl font-semibold tabular-nums leading-none text-slate-900 dark:text-slate-50">
-                  {etapa.produtos}
-                </span>
-                {etapa.produtos === 1 ? 'produto' : 'produtos'} · {fmtQtde(etapa.qtde)}
-              </p>
-            </button>
-          </Fragment>
+      <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {resumo.map((etapa) => (
+          <button
+            key={etapa.id}
+            type="button"
+            onClick={() => setEtapaFiltro((atual) => (atual === etapa.id ? 'todas' : etapa.id))}
+            className={`rounded-xl border px-4 py-3.5 text-left shadow-sm transition ${
+              etapaFiltro === etapa.id ? `${etapa.ativo} ring-2 ring-offset-1 ring-slate-400` : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800'
+            }`}
+            aria-pressed={etapaFiltro === etapa.id}
+            title={etapa.apoio}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${etapa.anel}`} />
+              <span className="text-sm font-semibold">{etapa.titulo}</span>
+            </div>
+            <p className="mt-1 pl-5 text-xs leading-snug text-slate-500 dark:text-slate-400">{etapa.apoio}</p>
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              <span className="mr-1.5 text-2xl font-semibold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+                {etapa.produtos}
+              </span>
+              {etapa.produtos === 1 ? 'produto' : 'produtos'}
+              <span className="mx-1.5 text-slate-300 dark:text-slate-600">·</span>
+              {fmtQtde(etapa.qtde)}
+            </p>
+          </button>
         ))}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-end gap-3">
-        <label className="min-w-[14rem] flex-[1.4]">
-          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            Código ou descrição
-          </span>
-          <input
+      <div className="shrink-0 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="min-w-0">
+          <MultiSelectWithSearch
+            label="Código ou descrição"
+            placeholder="Todos"
+            options={opcoesLista.produtos}
             value={filtroProduto}
-            onChange={(e) => setFiltroProduto(e.target.value)}
-            placeholder="Qualquer um dos dois. Use % (ex.: CHAPA%)"
-            className={CLASSE_FILTRO}
-            aria-label="Filtrar por código ou descrição"
+            onChange={setFiltroProduto}
+            labelClass={CLASSE_ROTULO_FILTRO}
+            inputClass={CLASSE_FILTRO}
+            optionLabel="produtos"
+            labelByValue={opcoesLista.rotuloProduto}
+            valueSeparator={SEP_FILTRO}
+            fillContainer
+            minWidth="0px"
+            dropdownPortal
+            dropdownZIndex={70}
+            dropdownMinWidthPx={480}
+            dropdownMaxHeight="320px"
           />
-        </label>
-        <label className="min-w-[10rem] flex-1">
-          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Solicitação</span>
-          <input
+        </div>
+        <div className="min-w-0">
+          <MultiSelectWithSearch
+            label="Solicitação"
+            placeholder="Todas"
+            options={opcoesLista.solicitacoes}
             value={filtroSolicitacao}
-            onChange={(e) => setFiltroSolicitacao(e.target.value)}
-            placeholder="Nº da solicitação. Use %"
-            className={CLASSE_FILTRO}
-            aria-label="Filtrar pelo número da solicitação"
+            onChange={setFiltroSolicitacao}
+            labelClass={CLASSE_ROTULO_FILTRO}
+            inputClass={CLASSE_FILTRO}
+            optionLabel="solicitações"
+            valueSeparator={SEP_FILTRO}
+            fillContainer
+            minWidth="0px"
+            dropdownPortal
+            dropdownZIndex={70}
           />
-        </label>
-        <label className="min-w-[10rem] flex-1">
-          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Pedido de compra</span>
-          <input
+        </div>
+        <div className="min-w-0">
+          <MultiSelectWithSearch
+            label="Pré-compra"
+            placeholder="Todas"
+            options={opcoesLista.preCompras}
+            value={filtroPreCompra}
+            onChange={setFiltroPreCompra}
+            labelClass={CLASSE_ROTULO_FILTRO}
+            inputClass={CLASSE_FILTRO}
+            optionLabel="pré-compras"
+            valueSeparator={SEP_FILTRO}
+            fillContainer
+            minWidth="0px"
+            dropdownPortal
+            dropdownZIndex={70}
+            dropdownMinWidthPx={280}
+          />
+        </div>
+        <div className="min-w-0">
+          <MultiSelectWithSearch
+            label="Pedido de compra"
+            placeholder="Todos"
+            options={opcoesLista.pedidos}
             value={filtroPedido}
-            onChange={(e) => setFiltroPedido(e.target.value)}
-            placeholder="Nº do pedido. Use %"
-            className={CLASSE_FILTRO}
-            aria-label="Filtrar pelo número do pedido de compra"
+            onChange={setFiltroPedido}
+            labelClass={CLASSE_ROTULO_FILTRO}
+            inputClass={CLASSE_FILTRO}
+            optionLabel="pedidos"
+            valueSeparator={SEP_FILTRO}
+            fillContainer
+            minWidth="0px"
+            dropdownPortal
+            dropdownZIndex={70}
+            dropdownMinWidthPx={280}
           />
-        </label>
-        <label className="min-w-[10rem] flex-1">
-          <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">Documento</span>
-          <input
+        </div>
+        <div className="min-w-0">
+          <MultiSelectWithSearch
+            label="Documento"
+            placeholder="Todos"
+            options={opcoesLista.documentos}
             value={filtroDocumento}
-            onChange={(e) => setFiltroDocumento(e.target.value)}
-            placeholder="Nº do documento. Use %"
-            className={CLASSE_FILTRO}
-            aria-label="Filtrar pelo número do documento de entrada"
+            onChange={setFiltroDocumento}
+            labelClass={CLASSE_ROTULO_FILTRO}
+            inputClass={CLASSE_FILTRO}
+            optionLabel="documentos"
+            valueSeparator={SEP_FILTRO}
+            fillContainer
+            minWidth="0px"
+            dropdownPortal
+            dropdownZIndex={70}
           />
-        </label>
+        </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {FILTROS_DATA.map((col) => {
           const periodo = filtrosData[col.id];
           const ativo = Boolean(periodo?.de || periodo?.ate || ordemData?.id === col.id);
@@ -499,6 +607,7 @@ export default function MateriaisAChegarPage() {
           </button>
         ) : null}
       </div>
+      </div>
 
       {erro ? (
         <p className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
@@ -515,27 +624,26 @@ export default function MateriaisAChegarPage() {
           visiveis.map((linha) => (
             <article
               key={linha.idProduto}
-              className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 lg:flex-row lg:items-center lg:gap-5"
+              className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 sm:p-5"
             >
-              <header className="min-w-0 lg:w-80 lg:shrink-0" title={linha.descricao}>
+              <header className="min-w-0" title={linha.descricao}>
                 <div className="flex items-baseline gap-2">
                   <span className="text-base font-semibold text-slate-900 dark:text-slate-50">{linha.codigo}</span>
                   {linha.unidadeMedida ? (
                     <span className="text-xs text-slate-400">{linha.unidadeMedida}</span>
                   ) : null}
                 </div>
-                <p className="mt-1 line-clamp-2 text-sm leading-snug text-slate-600 dark:text-slate-300">
+                <p className="mt-1 text-sm leading-snug text-slate-600 dark:text-slate-300">
                   {linha.descricao}
                 </p>
               </header>
-              <div className="flex min-w-0 flex-1 items-stretch gap-2">
-                {ETAPAS.map((etapa, i) => {
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {ETAPAS.map((etapa) => {
                   const qtde = qtdeDaEtapa(linha, etapa.id);
                   const preenchida = qtde > 0;
                   return (
-                    <Fragment key={etapa.id}>
-                      {i > 0 ? <Seta /> : null}
                       <button
+                        key={etapa.id}
                         type="button"
                         disabled={!preenchida}
                         onClick={() =>
@@ -547,17 +655,15 @@ export default function MateriaisAChegarPage() {
                             qtdeGrade: qtde,
                           })
                         }
-                        className={`min-w-0 flex-1 rounded-lg border px-4 py-3 text-left ${
+                        className={`min-h-[5.5rem] rounded-lg px-3 py-3 text-left ${
                           preenchida
-                            ? `${etapa.ativo} hover:brightness-[0.98]`
-                            : 'cursor-default border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900/40'
+                            ? `border ${etapa.ativo} hover:brightness-[0.98]`
+                            : 'cursor-default bg-slate-50 text-slate-400 dark:bg-slate-900/50'
                         }`}
                         title={preenchida ? `Ver detalhe de ${etapa.titulo}` : `${etapa.titulo}: sem quantidade`}
                       >
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-70">
-                          {etapa.titulo}
-                        </span>
-                        <span className="mt-1 block text-xl font-semibold tabular-nums leading-tight">
+                        <span className="block text-xs font-semibold">{etapa.titulo}</span>
+                        <span className="mt-1.5 block text-xl font-semibold tabular-nums leading-tight">
                           {preenchida ? fmtQtde(qtde) : '—'}
                         </span>
                         {etapa.id === 'solicitado' && preenchida ? (
@@ -565,6 +671,11 @@ export default function MateriaisAChegarPage() {
                             Emissão {fmtData(linha.emissaoSolicitacao)}
                             <br />
                             Necessidade {fmtData(linha.necessidadeSolicitacao)}
+                          </span>
+                        ) : null}
+                        {etapa.id === 'pre_compra' && preenchida ? (
+                          <span className="mt-1 block text-[11px] font-normal leading-snug opacity-80">
+                            Emissão {fmtData(linha.emissaoPreCompra)}
                           </span>
                         ) : null}
                         {etapa.id === 'comprado' && preenchida ? (
@@ -578,7 +689,6 @@ export default function MateriaisAChegarPage() {
                           </span>
                         ) : null}
                       </button>
-                    </Fragment>
                   );
                 })}
               </div>

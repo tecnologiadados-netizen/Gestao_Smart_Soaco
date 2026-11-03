@@ -27,11 +27,11 @@ export const PERMISSOES = {
   COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
-  COMERCIAL_VER: 'comercial.ver',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   COMERCIAL_RFV_VER: 'comercial.rfv.ver',
   COMERCIAL_COMISSIONAMENTO_VER: 'comercial.comissionamento.ver',
+  COMERCIAL_PORTA_PALLETS_VER: 'comercial.porta_pallets.ver',
   QUALIDADE_VER: 'qualidade.ver',
   QUALIDADE_DOCUMENTOS: 'qualidade.documentos',
   QUALIDADE_DOCUMENTOS_INATIVAR: 'qualidade.documentos.inativar',
@@ -95,6 +95,7 @@ export const PERMISSOES = {
   RECEBIMENTO_TOTAL: 'recebimento.total',
   /** Histórico das conferências já enviadas à Mesa. Por enquanto, só o master. */
   RECEBIMENTO_HISTORICO: 'recebimento.historico',
+  RECEBIMENTO_USUARIO_CONFERENTE: 'recebimento.usuario_conferente',
 
   FLUXOS_VER: 'fluxos.ver',
   FLUXOS_EDITAR: 'fluxos.editar',

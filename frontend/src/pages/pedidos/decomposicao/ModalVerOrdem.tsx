@@ -7,6 +7,7 @@ import {
   obterDecomposicaoPai,
   preverAlocacoesPai,
   type AlocacaoPedido,
+  type AnotacaoPecaOrdem,
   type DecomposicaoPaiCadastro,
   type OrdemProducao,
 } from '../../../api/decomposicao';
@@ -17,7 +18,7 @@ export type RascunhoOrdem = {
   grupo: string;
   codigo: string;
   nome: string;
-  pecas: { medidaCorte: string; observacao: string }[];
+  pecas: AnotacaoPecaOrdem[];
 };
 
 function fmt(valor: number | null): string {
@@ -47,7 +48,7 @@ export default function ModalVerOrdem({
     quantidade: number;
     observacao: string;
     numero: string;
-    pecas: { medidaCorte: string; observacao: string }[];
+    pecas: AnotacaoPecaOrdem[];
     alocacoes: AlocacaoPedido[];
   }) => Promise<void>;
 }) {
@@ -166,6 +167,7 @@ export default function ModalVerOrdem({
           materiaPrima: peca.materiaPrima,
           medidaCorte: rascunho.pecas[index]?.medidaCorte ?? '',
           observacao: rascunho.pecas[index]?.observacao ?? '',
+          imprimir: rascunho.pecas[index]?.imprimir !== false,
         })),
       };
       setImprimindo(true);

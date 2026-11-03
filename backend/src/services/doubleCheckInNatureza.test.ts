@@ -35,7 +35,7 @@ describe('classificarNaturezaDivergencia', () => {
     ).toBe('real');
   });
 
-  it('mantém qualquer diferença de quantidade como real', () => {
+  it('mantém qualquer diferença de quantidade como real quando não é peso', () => {
     expect(
       classificarNaturezaDivergencia({
         linha: { qtdeNF: 1652, qtdePC: 1511.88 },
@@ -44,10 +44,61 @@ describe('classificarNaturezaDivergencia', () => {
     ).toBe('real');
     expect(
       classificarNaturezaDivergencia({
-        linha: { qtdeNF: 10, qtdePC: 20 },
+        linha: { entradaPorPeso: false, qtdeNF: 103.77, qtdePC: 100.1 },
         campo: 'qtde',
       })
     ).toBe('real');
+  });
+
+  it('no peso, só exige o número do Otimiza quando a quantidade passa de 10%', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 103.77, qtdePC: 100.1 },
+        campo: 'qtde',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 110, qtdePC: 100 },
+        campo: 'qtde',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 90, qtdePC: 100 },
+        campo: 'qtde',
+      })
+    ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 111, qtdePC: 100 },
+        campo: 'qtde',
+      })
+    ).toBe('real');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 89, qtdePC: 100 },
+        campo: 'qtde',
+      })
+    ).toBe('real');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 100, qtdePC: 50, qtdePcSoma: 95 },
+        campo: 'qtde',
+      })
+    ).toBe('benigna');
+    expect(
+      observacaoNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 103.77, qtdePC: 100.1 },
+        campo: 'qtde',
+      })
+    ).toMatch(/dentro do limiar de 10%/i);
+    expect(
+      observacaoNaturezaDivergencia({
+        linha: { entradaPorPeso: true, qtdeNF: 120, qtdePC: 100 },
+        campo: 'qtde',
+      })
+    ).toBeNull();
   });
 
   it('considera alíquota menor benigna e alíquota maior real, sem tolerância', () => {

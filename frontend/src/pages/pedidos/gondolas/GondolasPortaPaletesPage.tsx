@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { PERMISSOES, PERMISSOES_GONDOLAS, type CodigoPermissao } from '../../../config/permissoes';
 import { ComoLerBtn } from '../../../components/AjudaTelaModal';
 import CarregandoInformacoesOverlay from '../../../components/CarregandoInformacoesOverlay';
+import CopiarTextoBtn from '../../../components/CopiarTextoBtn';
 import GradeCelulaModalBtn from '../../../components/pcp/GradeCelulaModalBtn';
 import GradeFiltroCabecalhoBtn from '../../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../../components/grade/GradeFiltroExcelPortal';
@@ -32,6 +33,7 @@ import {
 import GondolasAjudaModal from './GondolasAjudaModal';
 import ModalFichaItem from './ModalFichaItem';
 import ModalGerarOrdem from './ModalGerarOrdem';
+import { exportarCarteiraGondolasXlsx } from './exportarCarteiraGondolasXlsx';
 import { exportarPpDoPedidoXlsx } from './exportarOrdemGondolasXlsx';
 import { imprimirOrdemGondolas } from './imprimirOrdemGondolas';
 
@@ -147,6 +149,7 @@ export default function GondolasPortaPaletesPage() {
   const [filtroHistorico, setFiltroHistorico] = useState({ pedido: '', cliente: '', produto: '' });
   const [pedidosAbertos, setPedidosAbertos] = useState<Set<string>>(new Set());
   const [exportandoPedido, setExportandoPedido] = useState<string | null>(null);
+  const [exportandoCarteira, setExportandoCarteira] = useState<{ feitas: number; total: number } | null>(null);
   const gerouOrdemRef = useRef(false);
   const detalheCacheRef = useRef(new Map<number, DetalheItemGondola>());
 
@@ -386,11 +389,39 @@ export default function GondolasPortaPaletesPage() {
     setErroOrdens(null);
     try {
       const linhas = await exportarPpDoPedidoXlsx(grupo.pedido, detalhes);
-      if (linhas === 0) setErroOrdens(`O ${grupo.pedido} ainda não tem PP em ordem.`);
+      if (linhas === 0) setErroOrdens(`As ordens do ${grupo.pedido} só têm PI. Use o PDF de cada ordem.`);
     } catch (e) {
       setErroOrdens(e instanceof Error ? e.message : 'Erro ao exportar o Excel.');
     } finally {
       setExportandoPedido(null);
+    }
+  }
+
+  async function exportarCarteira() {
+    const comFicha = linhas.filter((item) => item.temFicha);
+    const detalhes = new Map<number, DetalheItemGondola>();
+    const faltam: ItemCarteiraGondola[] = [];
+    for (const item of comFicha) {
+      const cached = detalheCacheRef.current.get(item.idItem);
+      if (cached) detalhes.set(item.idItem, cached);
+      else faltam.push(item);
+    }
+    setExportandoCarteira({ feitas: detalhes.size, total: comFicha.length });
+    setErro(null);
+    try {
+      const fila = [...faltam];
+      const trabalhar = async () => {
+        for (let item = fila.shift(); item; item = fila.shift()) {
+          detalhes.set(item.idItem, await carregarFicha(item));
+          setExportandoCarteira({ feitas: detalhes.size, total: comFicha.length });
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, fila.length) }, trabalhar));
+      await exportarCarteiraGondolasXlsx(linhas, detalhes, setor);
+    } catch (e) {
+      setErro(e instanceof Error ? `Excel não gerado: ${e.message}` : 'Erro ao exportar o Excel.');
+    } finally {
+      setExportandoCarteira(null);
     }
   }
 
@@ -624,7 +655,7 @@ export default function GondolasPortaPaletesPage() {
                                 e.stopPropagation();
                                 void exportarExcel(grupo);
                               }}
-                              title="Baixa um Excel com todos os PP das ordens deste pedido, nas colunas do PDF."
+                              title="Baixa um Excel com todos os PP e as peças da planilha das ordens deste pedido, nas colunas do PDF."
                               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
                             >
                               <Download className="h-3.5 w-3.5" />
@@ -868,10 +899,24 @@ export default function GondolasPortaPaletesPage() {
 
       <div className={`${painel} tabela-pedidos-outer overflow-hidden`}>
         <div className="flex items-center justify-between gap-3 border-b border-soaco-gray/35 px-4 py-2.5">
-          <p className="text-sm text-slate-600 dark:text-slate-200">
-            {linhas.length.toLocaleString('pt-BR')} {linhas.length === 1 ? 'item' : 'itens'}
-            {setor ? ` · ${setor}` : ''}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-slate-600 dark:text-slate-200">
+              {linhas.length.toLocaleString('pt-BR')} {linhas.length === 1 ? 'item' : 'itens'}
+              {setor ? ` · ${setor}` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => void exportarCarteira()}
+              disabled={linhas.length === 0 || exportandoCarteira != null}
+              title="Exporta as linhas da grade com o cartão e os filtros de coluna aplicados. A aba Componentes traz as peças da ficha de cada item."
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {exportandoCarteira
+                ? `Fichas ${exportandoCarteira.feitas.toLocaleString('pt-BR')}/${exportandoCarteira.total.toLocaleString('pt-BR')}…`
+                : 'Excel'}
+            </button>
+          </div>
           <p className="flex flex-wrap items-center justify-end gap-3 text-xs text-slate-400">
             <span className="inline-flex items-center gap-1.5">
               <span className="rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
@@ -935,6 +980,7 @@ export default function GondolasPortaPaletesPage() {
                       >
                         {item.codigo}
                       </GradeCelulaModalBtn>
+                      <CopiarTextoBtn texto={item.codigo} title="Copiar código do produto" />
                       {item.origem === 'nomus' && (
                         <span className="rounded bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                           Nomus

@@ -51,20 +51,26 @@ describe('natureza histórica do Double CheckIn', () => {
     expect(parseNumeroPtBr('1.511,88 QUILOGRAMA')).toBe(1511.88);
   });
 
-  it('reclassifica preço menor como benigno e mantém quantidade como real', () => {
-    const reclassificado = reclassificarRelatoHistorico(
+  it('reclassifica preço menor como benigno e quantidade por peso conforme o limiar de 10%', () => {
+    const acima = reclassificarRelatoHistorico(
       relato([
         campo({ campo: 'valor_unitario', nf: 'R$ 6,06', pc: 'R$ 6,16' }),
-        campo({ campo: 'qtde', nf: '1.652 QUILOGRAMA', pc: '1.511,88 QUILOGRAMA' }),
+        campo({ campo: 'qtde', nf: '1.800 QUILOGRAMA', pc: '1.511,88 QUILOGRAMA' }),
       ])
     );
-    expect(reclassificado.produtos[0]?.campos.map((item) => item.natureza)).toEqual([
+    expect(acima.produtos[0]?.campos.map((item) => item.natureza)).toEqual([
       'benigna',
       'real',
     ]);
-    expect(reclassificado.totalDivergenciasReais).toBe(1);
-    expect(reclassificado.totalDivergenciasBenignas).toBe(1);
-    expect(reclassificado.schemaVersion).toBe(2);
+    expect(acima.totalDivergenciasReais).toBe(1);
+    expect(acima.totalDivergenciasBenignas).toBe(1);
+    const dentro = reclassificarRelatoHistorico(
+      relato([
+        campo({ campo: 'qtde', nf: '103,77 QUILOGRAMA', pc: '100,1 QUILOGRAMA' }),
+      ])
+    );
+    expect(dentro.produtos[0]?.campos[0]?.natureza).toBe('benigna');
+    expect(acima.schemaVersion).toBe(2);
   });
 
   it('reconhece justificativa técnica benigna em snapshot antigo', () => {

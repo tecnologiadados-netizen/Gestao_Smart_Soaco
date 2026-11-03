@@ -1,7 +1,8 @@
 /**
  * PCP — acompanhamento da solicitação até a pré-entrada.
  *
- * A etapa Solicitado olha só solicitação Liberada sem pedido.
+ * Solicitado e Pré-compra nascem da solicitação Liberada sem pedido.
+ * A parte coberta por cotação aberta (status 1–3) sai de Solicitado e entra em Pré-compra.
  * Comprado e Pré-entrada nascem do pedido / documento: a solicitação de origem
  * já pode estar Encerrada depois que o pedido é vinculado.
  */
@@ -15,7 +16,7 @@ import {
   nomusQueryWithRetry,
   resetNomusPool,
 } from '../config/nomusDb.js';
-import { PCP_ID_EMPRESA_SO_ACO } from './sql/sqlComprasEstoqueFragments.js';
+import { PCP_ID_EMPRESA_SO_ACO, STATUS_COTACAO_AGPAG_SQL } from './sql/sqlComprasEstoqueFragments.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
 /** Nomus `solicitacaocompra.status` = Liberada. */
@@ -78,17 +79,33 @@ AND de.idEmpresaEntrada = ${PCP_ID_EMPRESA_SO_ACO}
 AND ide.discriminador = 'ItemDocumentoEntrada'
 `.trim();
 
-const SQL_GRADE_SOLICITADO = `
+/**
+ * Solicitação Liberada sem pedido, com a cotação aberta vinculada (se houver).
+ * Cotação encerrada não entra: o status fica no JOIN para a SC continuar na lista.
+ */
+const SQL_SC_E_PRE_COMPRA = `
 SELECT
   sc.idProduto AS idProduto,
-  SUM(ROUND(sc.quantidade, 2)) AS qtde,
-  DATE_FORMAT(MIN(CAST(sc.dataEmissao AS DATE)), '%Y-%m-%d') AS emissao,
-  DATE_FORMAT(MIN(CAST(sc.dataNecessidade AS DATE)), '%Y-%m-%d') AS necessidade,
-  GROUP_CONCAT(DISTINCT sc.id ORDER BY sc.id SEPARATOR '\n') AS solicitacoes
+  sc.id AS idSolicitacao,
+  u.nome AS usuario,
+  DATE_FORMAT(CAST(sc.dataEmissao AS DATE), '%Y-%m-%d') AS emissaoSc,
+  DATE_FORMAT(CAST(sc.dataNecessidade AS DATE), '%Y-%m-%d') AS necessidadeSc,
+  ROUND(sc.quantidade, 2) AS qtdeSc,
+  cc.id AS idCotacao,
+  NULLIF(TRIM(cc.nome), '') AS cotacao,
+  cc.status AS statusCotacao,
+  DATE_FORMAT(CAST(cc.dataEmissao AS DATE), '%Y-%m-%d') AS emissaoCotacao,
+  icc.id AS idItemCotacao,
+  ROUND(IFNULL(icc.qtde, 0), 2) AS qtdeItem
 FROM solicitacaocompra sc
+LEFT JOIN usuario u ON u.id = sc.idUsuario
+LEFT JOIN solicitacaocompra_itemcotacaocompra scicc ON scicc.idSolicitacaoCompra = sc.id
+LEFT JOIN itemcotacaocompra icc ON icc.id = scicc.idItemCotacaoCompra
+LEFT JOIN cotacaocompra cc
+  ON cc.id = icc.idCotacaoCompra
+ AND cc.status IN (${STATUS_COTACAO_AGPAG_SQL})
 WHERE ${SQL_SC_LIBERADA_SEM_PEDIDO}
   AND ROUND(sc.quantidade, 2) > 0
-GROUP BY sc.idProduto
 `.trim();
 
 const SQL_GRADE_COMPRADO = `
@@ -168,21 +185,6 @@ WHERE ${SQL_DOC_PRE_ENTRADA}
   AND ${SQL_IPC_ATENDIDO}
   AND ROUND(ide.qtde, 2) > 0
 GROUP BY ide.idProduto
-`.trim();
-
-const SQL_DETALHE_SOLICITADO = `
-SELECT
-  sc.id AS idSolicitacao,
-  u.nome AS usuario,
-  DATE_FORMAT(CAST(sc.dataEmissao AS DATE), '%d/%m/%Y') AS dataEmissao,
-  DATE_FORMAT(CAST(sc.dataNecessidade AS DATE), '%d/%m/%Y') AS dataNecessidade,
-  ROUND(sc.quantidade, 2) AS qtde
-FROM solicitacaocompra sc
-LEFT JOIN usuario u ON u.id = sc.idUsuario
-WHERE sc.idProduto = ?
-  AND ${SQL_SC_LIBERADA_SEM_PEDIDO}
-  AND ROUND(sc.quantidade, 2) > 0
-ORDER BY sc.dataNecessidade, sc.id
 `.trim();
 
 const SQL_DETALHE_COMPRADO = `
@@ -477,7 +479,7 @@ INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
 WHERE ide.idDocumentoEstoque = ?
 `.trim();
 
-export type EtapaAcompanhamento = 'solicitado' | 'comprado' | 'pre_entrada';
+export type EtapaAcompanhamento = 'solicitado' | 'pre_compra' | 'comprado' | 'pre_entrada';
 
 export type LinhaAcompanhamento = {
   idProduto: number;
@@ -485,15 +487,18 @@ export type LinhaAcompanhamento = {
   descricao: string;
   unidadeMedida: string;
   qtdeSolicitado: number;
+  qtdePreCompra: number;
   qtdeComprado: number;
   qtdePreEntrada: number;
   /** Mais antiga ainda na etapa, YYYY-MM-DD. */
   emissaoSolicitacao: string | null;
   necessidadeSolicitacao: string | null;
+  emissaoPreCompra: string | null;
   emissaoPedido: string | null;
   emissaoPreEntrada: string | null;
   /** Números ainda no pipeline, um por linha. Servem só à busca da grade. */
   solicitacoes: string;
+  preCompras: string;
   pedidos: string;
   documentos: string;
 };
@@ -503,6 +508,12 @@ export type AggSolicitado = {
   emissao: string | null;
   necessidade: string | null;
   solicitacoes?: string;
+};
+export type AggPreCompra = {
+  qtde: number;
+  emissao: string | null;
+  solicitacoes?: string;
+  cotacoes?: string;
 };
 export type AggComprado = { qtde: number; emissao: string | null; pedidos?: string; solicitacoes?: string };
 export type AggPreEntrada = {
@@ -518,6 +529,15 @@ export type LinhaDetalheSolicitado = {
   usuario: string | null;
   dataEmissao: string | null;
   dataNecessidade: string | null;
+  qtde: number;
+};
+
+export type LinhaDetalhePreCompra = {
+  idSolicitacao: number;
+  idCotacao: number;
+  cotacao: string;
+  situacao: string;
+  dataEmissao: string | null;
   qtde: number;
 };
 
@@ -680,34 +700,225 @@ export function unirTokensBusca(...partes: Array<string | null | undefined>): st
   return tokens.join('\n');
 }
 
+export type LinhaBrutaScPreCompra = {
+  idProduto: number;
+  idSolicitacao: number;
+  usuario: string | null;
+  emissaoSc: string | null;
+  necessidadeSc: string | null;
+  qtdeSc: number;
+  idCotacao: number | null;
+  cotacao: string | null;
+  statusCotacao: number | null;
+  emissaoCotacao: string | null;
+  idItemCotacao: number | null;
+  qtdeItem: number;
+};
+
+export type FatiaPreCompra = {
+  idCotacao: number;
+  cotacao: string;
+  statusCotacao: number;
+  emissaoCotacao: string | null;
+  qtde: number;
+};
+
+export type FatiaSc = {
+  idProduto: number;
+  idSolicitacao: number;
+  usuario: string | null;
+  emissaoSc: string | null;
+  necessidadeSc: string | null;
+  qtdeSolicitado: number;
+  preCompras: FatiaPreCompra[];
+};
+
+export function rotuloStatusCotacao(status: number): string {
+  if (status === 1) return 'Preparação';
+  if (status === 2) return 'Coleta de preços';
+  if (status === 3) return 'Decisão de compra';
+  return 'Pré-compra';
+}
+
+function dataMaisAntiga(atual: string | null | undefined, nova: string | null): string | null {
+  if (!nova) return atual ?? null;
+  if (!atual) return nova;
+  return atual < nova ? atual : nova;
+}
+
+function formatarDataBr(ymd: string | null): string | null {
+  if (!ymd) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  if (!m) return ymd;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * A quantidade da pré-compra é a da solicitação coberta pela cotação aberta,
+ * no máximo a quantidade da própria solicitação. O que sobra continua solicitado.
+ * Vários vínculos da mesma SC são consumidos da cotação mais antiga para a mais nova.
+ */
+export function repartirSolicitacaoPreCompra(linhas: LinhaBrutaScPreCompra[]): FatiaSc[] {
+  const porSc = new Map<number, LinhaBrutaScPreCompra[]>();
+  for (const linha of linhas) {
+    if (linha.idSolicitacao <= 0 || linha.qtdeSc <= 0) continue;
+    const grupo = porSc.get(linha.idSolicitacao) ?? [];
+    grupo.push(linha);
+    porSc.set(linha.idSolicitacao, grupo);
+  }
+  const fatias: FatiaSc[] = [];
+  for (const grupo of porSc.values()) {
+    const base = grupo[0]!;
+    const vistos = new Set<number>();
+    const links = grupo
+      .filter((l) => (l.idCotacao ?? 0) > 0 && l.qtdeItem > 0)
+      .sort((a, b) => {
+        const da = a.emissaoCotacao ?? '9999-99-99';
+        const db = b.emissaoCotacao ?? '9999-99-99';
+        if (da !== db) return da.localeCompare(db);
+        return (a.idItemCotacao ?? 0) - (b.idItemCotacao ?? 0);
+      });
+    let restante = round2(base.qtdeSc);
+    const preCompras: FatiaPreCompra[] = [];
+    for (const link of links) {
+      const idItem = link.idItemCotacao ?? link.idCotacao ?? 0;
+      if (idItem > 0 && vistos.has(idItem)) continue;
+      if (idItem > 0) vistos.add(idItem);
+      if (restante <= 0) break;
+      const usa = round2(Math.min(restante, link.qtdeItem));
+      if (usa <= 0 || !link.idCotacao) continue;
+      preCompras.push({
+        idCotacao: link.idCotacao,
+        cotacao: link.cotacao?.trim() || String(link.idCotacao),
+        statusCotacao: link.statusCotacao ?? 0,
+        emissaoCotacao: link.emissaoCotacao,
+        qtde: usa,
+      });
+      restante = round2(restante - usa);
+    }
+    fatias.push({
+      idProduto: base.idProduto,
+      idSolicitacao: base.idSolicitacao,
+      usuario: base.usuario,
+      emissaoSc: base.emissaoSc,
+      necessidadeSc: base.necessidadeSc,
+      qtdeSolicitado: restante,
+      preCompras,
+    });
+  }
+  return fatias;
+}
+
+export function agregarSolicitadoEPreCompra(fatias: FatiaSc[]): {
+  solicitado: Map<number, AggSolicitado>;
+  preCompra: Map<number, AggPreCompra>;
+} {
+  const solicitado = new Map<number, AggSolicitado>();
+  const preCompra = new Map<number, AggPreCompra>();
+  for (const fatia of fatias) {
+    if (fatia.qtdeSolicitado > 0) {
+      const atual = solicitado.get(fatia.idProduto);
+      solicitado.set(fatia.idProduto, {
+        qtde: round2((atual?.qtde ?? 0) + fatia.qtdeSolicitado),
+        emissao: dataMaisAntiga(atual?.emissao, fatia.emissaoSc),
+        necessidade: dataMaisAntiga(atual?.necessidade, fatia.necessidadeSc),
+        solicitacoes: unirTokensBusca(atual?.solicitacoes, String(fatia.idSolicitacao)),
+      });
+    }
+    const qtdePre = round2(fatia.preCompras.reduce((soma, item) => soma + item.qtde, 0));
+    if (qtdePre <= 0) continue;
+    const atual = preCompra.get(fatia.idProduto);
+    let emissao = atual?.emissao ?? null;
+    for (const item of fatia.preCompras) emissao = dataMaisAntiga(emissao, item.emissaoCotacao);
+    preCompra.set(fatia.idProduto, {
+      qtde: round2((atual?.qtde ?? 0) + qtdePre),
+      emissao,
+      solicitacoes: unirTokensBusca(atual?.solicitacoes, String(fatia.idSolicitacao)),
+      cotacoes: unirTokensBusca(atual?.cotacoes, ...fatia.preCompras.map((item) => item.cotacao)),
+    });
+  }
+  return { solicitado, preCompra };
+}
+
+export function detalheSolicitadoDe(fatias: FatiaSc[]): LinhaDetalheSolicitado[] {
+  return fatias
+    .filter((f) => f.qtdeSolicitado > 0)
+    .sort(
+      (a, b) =>
+        (a.necessidadeSc ?? '9999-99-99').localeCompare(b.necessidadeSc ?? '9999-99-99') ||
+        a.idSolicitacao - b.idSolicitacao
+    )
+    .map((f) => ({
+      idSolicitacao: f.idSolicitacao,
+      usuario: f.usuario,
+      dataEmissao: formatarDataBr(f.emissaoSc),
+      dataNecessidade: formatarDataBr(f.necessidadeSc),
+      qtde: f.qtdeSolicitado,
+    }));
+}
+
+export function detalhePreCompraDe(fatias: FatiaSc[]): LinhaDetalhePreCompra[] {
+  const linhas: LinhaDetalhePreCompra[] = [];
+  for (const fatia of fatias) {
+    for (const item of fatia.preCompras) {
+      if (item.qtde <= 0) continue;
+      linhas.push({
+        idSolicitacao: fatia.idSolicitacao,
+        idCotacao: item.idCotacao,
+        cotacao: item.cotacao,
+        situacao: rotuloStatusCotacao(item.statusCotacao),
+        dataEmissao: formatarDataBr(item.emissaoCotacao),
+        qtde: item.qtde,
+      });
+    }
+  }
+  const ymd = (br: string | null) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(br ?? '');
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '9999-99-99';
+  };
+  linhas.sort(
+    (a, b) =>
+      ymd(a.dataEmissao).localeCompare(ymd(b.dataEmissao)) ||
+      a.cotacao.localeCompare(b.cotacao, 'pt-BR', { numeric: true }) ||
+      a.idSolicitacao - b.idSolicitacao
+  );
+  return linhas;
+}
+
 export function montarLinhasPipeline(
   produtos: ProdutoBase[],
   solicitado: Map<number, AggSolicitado>,
+  preCompra: Map<number, AggPreCompra>,
   comprado: Map<number, AggComprado>,
   preEntrada: Map<number, AggPreEntrada>
 ): LinhaAcompanhamento[] {
   const linhas: LinhaAcompanhamento[] = [];
   for (const p of produtos) {
     const sol = solicitado.get(p.idProduto);
+    const cot = preCompra.get(p.idProduto);
     const comp = comprado.get(p.idProduto);
     const pre = preEntrada.get(p.idProduto);
     const qtdeSolicitado = round2(sol?.qtde ?? 0);
+    const qtdePreCompra = round2(cot?.qtde ?? 0);
     const qtdeComprado = round2(comp?.qtde ?? 0);
     const qtdePreEntrada = round2(pre?.qtde ?? 0);
-    if (qtdeSolicitado <= 0 && qtdeComprado <= 0 && qtdePreEntrada <= 0) continue;
+    if (qtdeSolicitado <= 0 && qtdePreCompra <= 0 && qtdeComprado <= 0 && qtdePreEntrada <= 0) continue;
     linhas.push({
       idProduto: p.idProduto,
       codigo: p.codigo,
       descricao: p.descricao,
       unidadeMedida: p.unidadeMedida,
       qtdeSolicitado,
+      qtdePreCompra,
       qtdeComprado,
       qtdePreEntrada,
       emissaoSolicitacao: qtdeSolicitado > 0 ? (sol?.emissao ?? null) : null,
       necessidadeSolicitacao: qtdeSolicitado > 0 ? (sol?.necessidade ?? null) : null,
+      emissaoPreCompra: qtdePreCompra > 0 ? (cot?.emissao ?? null) : null,
       emissaoPedido: qtdeComprado > 0 ? (comp?.emissao ?? null) : null,
       emissaoPreEntrada: qtdePreEntrada > 0 ? (pre?.emissao ?? null) : null,
-      solicitacoes: unirTokensBusca(sol?.solicitacoes, comp?.solicitacoes, pre?.solicitacoes),
+      solicitacoes: unirTokensBusca(sol?.solicitacoes, cot?.solicitacoes, comp?.solicitacoes, pre?.solicitacoes),
+      preCompras: unirTokensBusca(cot?.cotacoes),
       pedidos: unirTokensBusca(comp?.pedidos, pre?.pedidos),
       documentos: unirTokensBusca(pre?.documentos),
     });
@@ -756,21 +967,29 @@ async function queryAgg(sql: string): Promise<Record<string, unknown>[]> {
   throw lastErr;
 }
 
-async function mapaSolicitado(): Promise<Map<number, AggSolicitado>> {
-  const map = new Map<number, AggSolicitado>();
-  for (const r of await queryAgg(SQL_GRADE_SOLICITADO)) {
-    const id = toInt(r.idProduto);
-    const qtde = round2(toNum(r.qtde));
-    if (id > 0 && qtde > 0) {
-      map.set(id, {
-        qtde,
-        emissao: ymdOrNull(r.emissao),
-        necessidade: ymdOrNull(r.necessidade),
-        solicitacoes: strOrNull(r.solicitacoes) ?? '',
-      });
-    }
-  }
-  return map;
+function mapearBrutaSc(r: Record<string, unknown>): LinhaBrutaScPreCompra {
+  return {
+    idProduto: toInt(r.idProduto),
+    idSolicitacao: toInt(r.idSolicitacao),
+    usuario: strOrNull(r.usuario),
+    emissaoSc: ymdOrNull(r.emissaoSc),
+    necessidadeSc: ymdOrNull(r.necessidadeSc),
+    qtdeSc: round2(toNum(r.qtdeSc)),
+    idCotacao: intOrNull(r.idCotacao),
+    cotacao: strOrNull(r.cotacao),
+    statusCotacao: intOrNull(r.statusCotacao),
+    emissaoCotacao: ymdOrNull(r.emissaoCotacao),
+    idItemCotacao: intOrNull(r.idItemCotacao),
+    qtdeItem: round2(toNum(r.qtdeItem)),
+  };
+}
+
+async function carregarFatiasSc(idProduto?: number): Promise<FatiaSc[]> {
+  const rows =
+    idProduto != null
+      ? await queryDetalhe(`${SQL_SC_E_PRE_COMPRA}\n  AND sc.idProduto = ?`, idProduto)
+      : await queryAgg(SQL_SC_E_PRE_COMPRA);
+  return repartirSolicitacaoPreCompra(rows.map(mapearBrutaSc));
 }
 
 async function mapaComprado(): Promise<Map<number, AggComprado>> {
@@ -866,14 +1085,17 @@ export async function listarPipelineAcompanhamento(): Promise<{
   const off = exigirNomus();
   if (off) return { linhas: [], erro: off };
   try {
-    const [solicitado, comprado, preEntrada] = await Promise.all([
-      mapaSolicitado(),
+    const [fatias, comprado, preEntrada] = await Promise.all([
+      carregarFatiasSc(),
       mapaComprado(),
       mapaPreEntrada(),
     ]);
-    const ids = [...new Set([...solicitado.keys(), ...comprado.keys(), ...preEntrada.keys()])];
+    const { solicitado, preCompra } = agregarSolicitadoEPreCompra(fatias);
+    const ids = [
+      ...new Set([...solicitado.keys(), ...preCompra.keys(), ...comprado.keys(), ...preEntrada.keys()]),
+    ];
     const produtos = await listarProdutos(ids);
-    return { linhas: montarLinhasPipeline(produtos, solicitado, comprado, preEntrada) };
+    return { linhas: montarLinhasPipeline(produtos, solicitado, preCompra, comprado, preEntrada) };
   } catch (err) {
     return { linhas: [], erro: formatNomusErroConexao(err) };
   }
@@ -890,7 +1112,7 @@ export async function listarDetalheAcompanhamento(
   idProduto: number,
   etapa: EtapaAcompanhamento
 ): Promise<{
-  linhas: LinhaDetalheSolicitado[] | LinhaDetalheComprado[] | LinhaDetalhePreEntrada[];
+  linhas: LinhaDetalheSolicitado[] | LinhaDetalhePreCompra[] | LinhaDetalheComprado[] | LinhaDetalhePreEntrada[];
   erro?: string;
 }> {
   if (!Number.isFinite(idProduto) || idProduto <= 0) {
@@ -899,16 +1121,10 @@ export async function listarDetalheAcompanhamento(
   const off = exigirNomus();
   if (off) return { linhas: [], erro: off };
   try {
-    if (etapa === 'solicitado') {
-      const rows = await queryDetalhe(SQL_DETALHE_SOLICITADO, idProduto);
-      const linhas: LinhaDetalheSolicitado[] = rows.map((r) => ({
-        idSolicitacao: toInt(r.idSolicitacao),
-        usuario: strOrNull(r.usuario),
-        dataEmissao: strOrNull(r.dataEmissao),
-        dataNecessidade: strOrNull(r.dataNecessidade),
-        qtde: round2(toNum(r.qtde)),
-      }));
-      return { linhas };
+    if (etapa === 'solicitado' || etapa === 'pre_compra') {
+      const fatias = await carregarFatiasSc(idProduto);
+      if (etapa === 'solicitado') return { linhas: detalheSolicitadoDe(fatias) };
+      return { linhas: detalhePreCompraDe(fatias) };
     }
     if (etapa === 'comprado') {
       const rows = await queryDetalhe(SQL_DETALHE_COMPRADO, idProduto);

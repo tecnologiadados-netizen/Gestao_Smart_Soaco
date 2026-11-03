@@ -5,6 +5,7 @@ import {
   type DetalheAcompanhamento,
   type EtapaAcompanhamento,
   type LinhaDetalheComprado,
+  type LinhaDetalhePreCompra,
   type LinhaDetalhePreEntrada,
   type LinhaDetalheSolicitado,
 } from '../../api/acompanhamentoSolicitacao';
@@ -15,8 +16,16 @@ const CLASSE_LINK =
 
 const TITULO: Record<EtapaAcompanhamento, string> = {
   solicitado: 'Solicitado',
+  pre_compra: 'Pré-compra',
   comprado: 'Comprado',
   pre_entrada: 'Pré-entrada',
+};
+
+const COLUNAS_DETALHE: Record<EtapaAcompanhamento, number> = {
+  solicitado: 4,
+  pre_compra: 4,
+  comprado: 4,
+  pre_entrada: 7,
 };
 
 type Alvo = {
@@ -102,6 +111,14 @@ export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDo
                     <th className="px-2 py-2 font-medium">Usuário</th>
                     <th className="px-2 py-2 text-right font-medium">Qtde</th>
                   </tr>
+                ) : alvo.etapa === 'pre_compra' ? (
+                  <tr>
+                    <th className="px-2 py-2 font-medium">Solicitação</th>
+                    <th className="px-2 py-2 font-medium">Pré-compra</th>
+                    <th className="px-2 py-2 font-medium">Situação</th>
+                    <th className="px-2 py-2 font-medium">Emissão</th>
+                    <th className="px-2 py-2 text-right font-medium">Qtde</th>
+                  </tr>
                 ) : alvo.etapa === 'comprado' ? (
                   <tr>
                     <th className="px-2 py-2 font-medium">Solicitação</th>
@@ -131,6 +148,16 @@ export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDo
                       <td className="px-2 py-2">{celula(l.dataEmissao)}</td>
                       <td className="px-2 py-2">{celula(l.dataNecessidade)}</td>
                       <td className="px-2 py-2">{celula(l.usuario)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmtQtde(l.qtde)}</td>
+                    </tr>
+                  ))}
+                {alvo.etapa === 'pre_compra' &&
+                  (linhas as LinhaDetalhePreCompra[]).map((l) => (
+                    <tr key={`${l.idSolicitacao}-${l.idCotacao}`} className="border-t border-slate-100 dark:border-slate-700">
+                      <td className="px-2 py-2 font-medium text-slate-800 dark:text-slate-100">{l.idSolicitacao}</td>
+                      <td className="px-2 py-2">{l.cotacao}</td>
+                      <td className="px-2 py-2">{l.situacao}</td>
+                      <td className="px-2 py-2">{celula(l.dataEmissao)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmtQtde(l.qtde)}</td>
                     </tr>
                   ))}
@@ -215,7 +242,7 @@ export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDo
               </tbody>
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold dark:border-slate-600 dark:bg-slate-900">
-                  <td className="px-2 py-2" colSpan={alvo.etapa === 'pre_entrada' ? 7 : alvo.etapa === 'solicitado' ? 4 : 4}>
+                  <td className="px-2 py-2" colSpan={COLUNAS_DETALHE[alvo.etapa]}>
                     Total do detalhe
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">{fmtQtde(total)}</td>
@@ -224,7 +251,12 @@ export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDo
             </table>
             <p className="mt-2 text-xs text-slate-500">
               Quantidade na linha do pipeline: {fmtQtde(alvo.qtdeGrade)}. A soma do detalhe usa a mesma regra.
-              {alvo.etapa !== 'solicitado' ? ' Clique no pedido ou no documento para ver todos os itens dele.' : ''}
+              {alvo.etapa === 'pre_compra'
+                ? ' A quantidade é a da solicitação coberta pela cotação, no máximo a quantidade solicitada.'
+                : ''}
+              {alvo.etapa === 'comprado' || alvo.etapa === 'pre_entrada'
+                ? ' Clique no pedido ou no documento para ver todos os itens dele.'
+                : ''}
             </p>
           </div>
         );

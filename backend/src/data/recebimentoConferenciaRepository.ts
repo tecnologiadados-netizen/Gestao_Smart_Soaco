@@ -168,14 +168,16 @@ function usuarioEhConferente(opts: {
   grupoPermissoes: string | null;
   usuarioPermissoes: string | null;
 }): boolean {
-  if (isSuperLogin(opts.login) || isGrupoMasterNome(opts.grupoNome)) return true;
+  // Master recebe todas as permissões automaticamente; conferente é classificação explícita.
+  if (isSuperLogin(opts.login) || isGrupoMasterNome(opts.grupoNome)) return false;
   if (opts.grupoAtivo === false) return false;
   const union = new Set([
     ...parsePermissoesJSON(opts.grupoPermissoes),
     ...parsePermissoesJSON(opts.usuarioPermissoes),
   ]);
   return (
-    union.has(PERMISSOES.RECEBIMENTO_CONFERENTE) || union.has(PERMISSOES.RECEBIMENTO_TOTAL)
+    union.has(PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE) &&
+    (union.has(PERMISSOES.RECEBIMENTO_CONFERENTE) || union.has(PERMISSOES.RECEBIMENTO_TOTAL))
   );
 }
 

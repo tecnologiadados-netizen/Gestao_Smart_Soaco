@@ -47,6 +47,7 @@ const atualizarUsuarioSchema = z.object({
 
 const SECOES_PERMISSOES: Record<string, string> = {
   kpis: 'KPIs',
+  comercial: 'KPIs',
   producao: 'Produção',
   pcp: 'PCP',
   usuarios: 'Usuários',
@@ -111,6 +112,7 @@ function agruparPermissoes(permissoes: PermissaoItem[]): { secao: string; itens:
       p.codigo === PERMISSOES.RECEBIMENTO_MESA
       || p.codigo === PERMISSOES.RECEBIMENTO_CONFERENTE
       || p.codigo === PERMISSOES.RECEBIMENTO_TOTAL
+      || p.codigo === PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE
     ) {
       if (!map.has('Recebimento')) map.set('Recebimento', []);
       continue;
@@ -613,6 +615,7 @@ export default function UsuariosPage() {
     temRecebimentoTotal || grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_MESA);
   const temRecebimentoDigitacao =
     temRecebimentoTotal || grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_CONFERENTE);
+  const temUsuarioConferente = grupoPermissoes.includes(PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE);
 
   const setPermissaoGrupo = (codigo: string, ligado: boolean, prev: string[]) => {
     if (ligado) return prev.includes(codigo) ? prev : [...prev, codigo];
@@ -636,9 +639,27 @@ export default function UsuariosPage() {
       const ligado =
         prev.includes(PERMISSOES.RECEBIMENTO_TOTAL) || prev.includes(PERMISSOES.RECEBIMENTO_CONFERENTE);
       if (ligado) {
-        return prev.filter((p) => p !== PERMISSOES.RECEBIMENTO_CONFERENTE && p !== PERMISSOES.RECEBIMENTO_TOTAL);
+        return prev.filter(
+          (p) =>
+            p !== PERMISSOES.RECEBIMENTO_CONFERENTE
+            && p !== PERMISSOES.RECEBIMENTO_TOTAL
+            && p !== PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE
+        );
       }
       return setPermissaoGrupo(PERMISSOES.RECEBIMENTO_CONFERENTE, true, prev);
+    });
+  };
+
+  const toggleUsuarioConferente = () => {
+    if (editandoGrupoMaster) return;
+    setGrupoPermissoes((prev) => {
+      if (prev.includes(PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE)) {
+        return prev.filter((p) => p !== PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE);
+      }
+      const comAcesso = prev.includes(PERMISSOES.RECEBIMENTO_TOTAL)
+        ? prev
+        : setPermissaoGrupo(PERMISSOES.RECEBIMENTO_CONFERENTE, true, prev);
+      return setPermissaoGrupo(PERMISSOES.RECEBIMENTO_USUARIO_CONFERENTE, true, comAcesso);
     });
   };
 
@@ -1090,6 +1111,7 @@ export default function UsuariosPage() {
                     <div className="space-y-2">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Módulos do menu Recebimento. Mesa delibera o conferente; Recebimento é a digitação às cegas.
+                        Só quem está marcado como Usuário conferente aparece na lista de conferentes da Mesa.
                         O histórico das conferências enviadas é uma permissão à parte.
                       </p>
                       <label
@@ -1117,6 +1139,24 @@ export default function UsuariosPage() {
                           disabled={editandoGrupoMaster}
                         />
                         Recebimento
+                      </label>
+                      <label
+                        className={`ml-6 pl-3 border-l-2 border-slate-300 dark:border-slate-600 flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${
+                          editandoGrupoMaster ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        }`}
+                        title={
+                          editandoGrupoMaster
+                            ? 'O grupo Master não é classificado como conferente. Use um grupo próprio para os conferentes.'
+                            : 'Os usuários deste grupo passam a aparecer na lista de conferentes da Mesa.'
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!editandoGrupoMaster && temUsuarioConferente}
+                          onChange={toggleUsuarioConferente}
+                          disabled={editandoGrupoMaster}
+                        />
+                        Usuário conferente
                       </label>
                       <label
                         className={`flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100 ${

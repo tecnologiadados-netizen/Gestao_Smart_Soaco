@@ -8,7 +8,7 @@ import {
   type TipoDocumentoAcompanhamento,
 } from '../data/acompanhamentoSolicitacaoRepository.js';
 
-const ETAPAS = new Set<EtapaAcompanhamento>(['solicitado', 'comprado', 'pre_entrada']);
+const ETAPAS = new Set<EtapaAcompanhamento>(['solicitado', 'pre_compra', 'comprado', 'pre_entrada']);
 const TIPOS_DOCUMENTO = new Set<TipoDocumentoAcompanhamento>(['pedido', 'pre_entrada']);
 
 export async function getPipelineAcompanhamento(_req: Request, res: Response): Promise<void> {

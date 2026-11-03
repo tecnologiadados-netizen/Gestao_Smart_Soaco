@@ -207,13 +207,14 @@ function lerAlocacoesInformadas(lista: unknown): (AlocacaoPedido & { apareceNaPr
   return saida;
 }
 
-function anotacoesDasPecas(lista: unknown): { medidaCorte: string; observacao: string }[] {
+function anotacoesDasPecas(lista: unknown): { medidaCorte: string; observacao: string; imprimir: boolean }[] {
   if (!Array.isArray(lista)) return [];
   return lista.map((item) => {
     const linha = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
     return {
       medidaCorte: textoCurto(linha.medidaCorte, 80),
       observacao: textoCurto(linha.observacao, 240),
+      imprimir: linha.imprimir !== false,
     };
   });
 }
@@ -547,17 +548,23 @@ export async function emitirOrdemDecomposicao(body: unknown, login: string | nul
         }),
       },
       pecas: {
-        create: pai.pecas.map((peca, index) => ({
-          descricao: peca.descricao,
-          quantidadeNoPai: peca.quantidade,
-          quantidadeTotal: peca.quantidade * quantidade,
-          medidaL: peca.medidaL,
-          medidaA: peca.medidaA,
-          materiaPrima: peca.materiaPrima,
-          medidaCorte: anotacoes[index]?.medidaCorte ?? '',
-          observacao: anotacoes[index]?.observacao ?? '',
-          sortOrder: index,
-        })),
+        create: pai.pecas.flatMap((peca, index) => {
+          const anotacao = anotacoes[index];
+          if (anotacao && anotacao.imprimir === false) return [];
+          return [
+            {
+              descricao: peca.descricao,
+              quantidadeNoPai: peca.quantidade,
+              quantidadeTotal: peca.quantidade * quantidade,
+              medidaL: peca.medidaL,
+              medidaA: peca.medidaA,
+              materiaPrima: peca.materiaPrima,
+              medidaCorte: anotacao?.medidaCorte ?? '',
+              observacao: anotacao?.observacao ?? '',
+              sortOrder: index,
+            },
+          ];
+        }),
       },
       alocacoes: {
         create: elegiveis.map((linha) => dadosAlocacao(linha, linha.apareceNaProxima === true)),

@@ -18,7 +18,9 @@ import {
   montarItensPreEntrada,
   montarLinhasPipeline,
   parseRefsDocumento,
+  repartirSolicitacaoPreCompra,
   unirTokensBusca,
+  type LinhaBrutaScPreCompra,
 } from './acompanhamentoSolicitacaoRepository.js';
 
 describe('montarLinhasPipeline', () => {
@@ -32,6 +34,7 @@ describe('montarLinhasPipeline', () => {
     const linhas = montarLinhasPipeline(
       produtos,
       new Map([[1, { qtde: 10, emissao: '2026-08-01', necessidade: '2026-08-15' }]]),
+      new Map([[1, { qtde: 6, emissao: '2026-08-03', cotacoes: 'CC1', solicitacoes: '800' }]]),
       new Map([
         [1, { qtde: 4, emissao: '2026-08-02' }],
         [2, { qtde: 7, emissao: '2026-09-01' }],
@@ -41,8 +44,10 @@ describe('montarLinhasPipeline', () => {
     expect(linhas.map((l) => l.codigo)).toEqual(['A', 'B']);
     expect(linhas[0]).toMatchObject({
       qtdeSolicitado: 10,
+      qtdePreCompra: 6,
       qtdeComprado: 4,
       qtdePreEntrada: 0,
+      preCompras: 'CC1',
       emissaoSolicitacao: '2026-08-01',
       necessidadeSolicitacao: '2026-08-15',
       emissaoPedido: '2026-08-02',
@@ -50,6 +55,7 @@ describe('montarLinhasPipeline', () => {
     });
     expect(linhas[1]).toMatchObject({
       qtdeSolicitado: 0,
+      qtdePreCompra: 0,
       qtdeComprado: 7,
       qtdePreEntrada: 3,
       emissaoSolicitacao: null,
@@ -63,6 +69,7 @@ describe('montarLinhasPipeline', () => {
       produtos,
       new Map(),
       new Map(),
+      new Map(),
       new Map([[3, { qtde: 12.5, emissao: '2026-09-15' }]])
     );
     expect(linhas).toHaveLength(1);
@@ -73,6 +80,7 @@ describe('montarLinhasPipeline', () => {
     const linhas = montarLinhasPipeline(
       produtos,
       new Map([[1, { qtde: 10, emissao: '2026-08-01', necessidade: '2026-08-15', solicitacoes: '900' }]]),
+      new Map([[1, { qtde: 3, emissao: '2026-08-04', cotacoes: 'CC000858', solicitacoes: '902' }]]),
       new Map([[1, { qtde: 4, emissao: '2026-08-02', pedidos: 'PC 10', solicitacoes: '900\n901' }]]),
       new Map([
         [
@@ -88,10 +96,105 @@ describe('montarLinhasPipeline', () => {
       ])
     );
     expect(linhas[0]).toMatchObject({
-      solicitacoes: '900\n901',
+      solicitacoes: '900\n901\n902',
+      preCompras: 'CC000858',
       pedidos: 'PC 10\nPC 11',
       documentos: '55221',
     });
+  });
+});
+
+describe('repartirSolicitacaoPreCompra', () => {
+  function bruta(parcial: Partial<LinhaBrutaScPreCompra> = {}): LinhaBrutaScPreCompra {
+    return {
+      idProduto: 38638,
+      idSolicitacao: 30039,
+      usuario: 'Ana',
+      emissaoSc: '2026-10-13',
+      necessidadeSc: '2026-11-16',
+      qtdeSc: 300,
+      idCotacao: null,
+      cotacao: null,
+      statusCotacao: null,
+      emissaoCotacao: null,
+      idItemCotacao: null,
+      qtdeItem: 0,
+      ...parcial,
+    };
+  }
+
+  it('move a solicitação inteira quando a cotação cobre ou ultrapassa a quantidade', () => {
+    const fatias = repartirSolicitacaoPreCompra([
+      bruta({
+        idCotacao: 858,
+        cotacao: 'CC000858',
+        statusCotacao: 3,
+        emissaoCotacao: '2026-10-30',
+        idItemCotacao: 1433,
+        qtdeItem: 700,
+      }),
+    ]);
+    expect(fatias).toHaveLength(1);
+    expect(fatias[0]?.qtdeSolicitado).toBe(0);
+    expect(fatias[0]?.preCompras).toEqual([
+      {
+        idCotacao: 858,
+        cotacao: 'CC000858',
+        statusCotacao: 3,
+        emissaoCotacao: '2026-10-30',
+        qtde: 300,
+      },
+    ]);
+  });
+
+  it('deixa em solicitado o que a cotação não cobre', () => {
+    const fatias = repartirSolicitacaoPreCompra([
+      bruta({
+        idCotacao: 1,
+        cotacao: 'CC1',
+        statusCotacao: 2,
+        emissaoCotacao: '2026-10-01',
+        idItemCotacao: 1,
+        qtdeItem: 200,
+      }),
+    ]);
+    expect(fatias[0]?.qtdeSolicitado).toBe(100);
+    expect(fatias[0]?.preCompras[0]?.qtde).toBe(200);
+  });
+
+  it('sem cotação aberta a quantidade fica toda em solicitado', () => {
+    const fatias = repartirSolicitacaoPreCompra([bruta(), bruta()]);
+    expect(fatias).toHaveLength(1);
+    expect(fatias[0]?.qtdeSolicitado).toBe(300);
+    expect(fatias[0]?.preCompras).toEqual([]);
+  });
+
+  it('consome as cotações da mais antiga para a mais nova, sem passar da solicitação', () => {
+    const fatias = repartirSolicitacaoPreCompra([
+      bruta({
+        idCotacao: 2,
+        cotacao: 'CC2',
+        statusCotacao: 3,
+        emissaoCotacao: '2026-10-20',
+        idItemCotacao: 2,
+        qtdeItem: 80,
+        qtdeSc: 100,
+      }),
+      bruta({
+        idCotacao: 1,
+        cotacao: 'CC1',
+        statusCotacao: 1,
+        emissaoCotacao: '2026-10-01',
+        idItemCotacao: 1,
+        qtdeItem: 60,
+        qtdeSc: 100,
+      }),
+    ]);
+    expect(fatias[0]?.qtdeSolicitado).toBe(0);
+    expect(fatias[0]?.preCompras.map((p) => [p.cotacao, p.qtde])).toEqual([
+      ['CC1', 60],
+      ['CC2', 40],
+    ]);
   });
 });
 

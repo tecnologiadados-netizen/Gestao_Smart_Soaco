@@ -81,6 +81,9 @@ function acaoMesaDoStatus(status: RecebimentoStatusCodigo): RecebimentoMesaAcao 
   return '';
 }
 
+/** `CANCELAR_CONFERENCIA` é só da UI: dispara o cancelamento, não a ação da Mesa. */
+type AcaoMesaSelecionada = RecebimentoMesaAcao | 'CANCELAR_CONFERENCIA' | '';
+
 function podeAlterarAcaoMesa(status: RecebimentoStatusCodigo): boolean {
   return (
     status === 'DIVERGENCIA' ||
@@ -281,7 +284,7 @@ export default function GestaoMesaPage() {
   const [conferenteId, setConferenteId] = useState<number | ''>('');
   const [deliberando, setDeliberando] = useState(false);
   const [deliberarErro, setDeliberarErro] = useState<string | null>(null);
-  const [mesaAcao, setMesaAcao] = useState<RecebimentoMesaAcao | ''>('');
+  const [mesaAcao, setMesaAcao] = useState<AcaoMesaSelecionada>('');
   const [mesaJustificativa, setMesaJustificativa] = useState('');
   const [executandoMesaAcao, setExecutandoMesaAcao] = useState(false);
   const [mesaAcaoErro, setMesaAcaoErro] = useState<string | null>(null);
@@ -295,6 +298,7 @@ export default function GestaoMesaPage() {
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [cancelando, setCancelando] = useState(false);
   const [cancelarErro, setCancelarErro] = useState<string | null>(null);
+  const [cancelamentoAberto, setCancelamentoAberto] = useState(false);
 
   const filtrar = useCallback(async () => {
     setLoading(true);
@@ -364,6 +368,7 @@ export default function GestaoMesaPage() {
     setMesaAcaoOk(null);
     setMotivoCancelamento('');
     setCancelarErro(null);
+    setCancelamentoAberto(false);
     setConferenteBusca('');
     setConferenteId(doc.conferenteUsuarioId ?? '');
     const cached = detalheCacheRef.current.get(doc.idDocumento);
@@ -458,6 +463,10 @@ export default function GestaoMesaPage() {
 
   const executarAcaoMesa = async () => {
     if (!modalDoc || !detalhe || mesaAcao === '') return;
+    if (mesaAcao === 'CANCELAR_CONFERENCIA') {
+      await cancelarConferencia();
+      return;
+    }
     if (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '') {
       setMesaAcaoErro('Selecione o conferente que receberá a nova conferência.');
       return;
@@ -961,41 +970,27 @@ export default function GestaoMesaPage() {
                           {detalhe?.mesaAcaoPorLogin ? ` por ${detalhe.mesaAcaoPorLogin}` : ''}.
                         </p>
                       )}
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-[20rem] flex-1">
-                          <label className={labelClass}>Ação</label>
-                          <select
-                            className={`${inputClass} w-full`}
-                            value={mesaAcao}
-                            onChange={(e) => setMesaAcao(e.target.value as RecebimentoMesaAcao | '')}
-                            disabled={executandoMesaAcao}
-                          >
-                            <option value="">Selecione…</option>
-                            <option value="TRATAMENTO_COMPRAS">Retornar para Compras tratar</option>
-                            <option value="REENVIAR_CONFERENCIA">Enviar para conferência novamente</option>
-                            <option value="DEVOLVER_MATERIAL">Devolver material</option>
-                            <option value="ACEITAR_COMO_ESTA">Aceitar como está</option>
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          className={btnPrimary}
-                          disabled={
-                            mesaAcao === '' ||
-                            executandoMesaAcao ||
-                            (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '') ||
-                            (mesaAcao === 'ACEITAR_COMO_ESTA' && mesaJustificativa.trim() === '')
-                          }
-                          onClick={() => void executarAcaoMesa()}
+                      <div>
+                        <label className={labelClass}>Ação</label>
+                        <select
+                          className={`${inputClass} w-full`}
+                          value={mesaAcao}
+                          onChange={(e) => {
+                            setMesaAcao(e.target.value as AcaoMesaSelecionada);
+                            setMesaAcaoErro(null);
+                            setCancelarErro(null);
+                          }}
+                          disabled={executandoMesaAcao || cancelando}
                         >
-                          {executandoMesaAcao
-                            ? 'Executando…'
-                            : mesaAcao === 'ACEITAR_COMO_ESTA'
-                              ? 'Finalizar'
-                              : modalDoc.status === 'DIVERGENCIA'
-                                ? 'Executar ação'
-                                : 'Alterar ação'}
-                        </button>
+                          <option value="">Selecione…</option>
+                          <option value="TRATAMENTO_COMPRAS">Retornar para Compras tratar</option>
+                          <option value="REENVIAR_CONFERENCIA">Enviar para conferência novamente</option>
+                          <option value="DEVOLVER_MATERIAL">Devolver material</option>
+                          <option value="ACEITAR_COMO_ESTA">Aceitar como está</option>
+                          {modalDoc.conferenteUsuarioId != null && (
+                            <option value="CANCELAR_CONFERENCIA">Cancelar conferência</option>
+                          )}
+                        </select>
                       </div>
                       {mesaAcao === 'REENVIAR_CONFERENCIA' && (
                         <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1063,6 +1058,58 @@ export default function GestaoMesaPage() {
                           />
                         </div>
                       )}
+                      {mesaAcao === 'CANCELAR_CONFERENCIA' && (
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Use quando este material não é conferido pelo almoxarifado. O documento sai da
+                            Mesa e permanece no histórico com status cancelado.
+                          </p>
+                          <label className={`${labelClass} mt-3`} htmlFor="motivo-cancelamento-acao">
+                            Motivo do cancelamento
+                          </label>
+                          <textarea
+                            id="motivo-cancelamento-acao"
+                            className={`${inputClass} min-h-[4.5rem] w-full`}
+                            value={motivoCancelamento}
+                            onChange={(e) => setMotivoCancelamento(e.target.value)}
+                            maxLength={1000}
+                            placeholder="Ex.: material conferido por outro setor, fora do piloto do almoxarifado."
+                            disabled={cancelando || detalheLoading}
+                          />
+                          {cancelarErro && (
+                            <p className="mt-2 text-sm text-rose-600" role="alert">
+                              {cancelarErro}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          className={mesaAcao === 'CANCELAR_CONFERENCIA' ? btnDanger : btnPrimary}
+                          disabled={
+                            mesaAcao === '' ||
+                            executandoMesaAcao ||
+                            cancelando ||
+                            (mesaAcao === 'REENVIAR_CONFERENCIA' && conferenteId === '') ||
+                            (mesaAcao === 'ACEITAR_COMO_ESTA' && mesaJustificativa.trim() === '') ||
+                            (mesaAcao === 'CANCELAR_CONFERENCIA' && motivoCancelamento.trim() === '')
+                          }
+                          onClick={() => void executarAcaoMesa()}
+                        >
+                          {executandoMesaAcao
+                            ? 'Executando…'
+                            : cancelando
+                              ? 'Cancelando…'
+                              : mesaAcao === 'CANCELAR_CONFERENCIA'
+                                ? 'Cancelar conferência'
+                                : mesaAcao === 'ACEITAR_COMO_ESTA'
+                                  ? 'Finalizar'
+                                  : modalDoc.status === 'DIVERGENCIA'
+                                    ? 'Executar ação'
+                                    : 'Alterar ação'}
+                        </button>
+                      </div>
                     </>
                   ) : modalDoc.status === 'AGUARDANDO_DOUBLE_CHECK' ? (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
@@ -1135,7 +1182,7 @@ export default function GestaoMesaPage() {
                     modalDoc.status !== 'CONFERIDO' &&
                     modalDoc.status !== 'FINALIZADO' && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Nenhum usuário com permissão de conferente. Marque o módulo “Recebimento” no grupo.
+                      Nenhum usuário classificado como conferente. Marque “Usuário conferente” no grupo, na seção Recebimento.
                     </p>
                   )}
                   {deliberarErro && (
@@ -1153,40 +1200,72 @@ export default function GestaoMesaPage() {
                       {mesaAcaoOk}
                     </p>
                   )}
-                  {modalDoc.conferenteUsuarioId != null && modalDoc.status !== 'FINALIZADO' && (
+                  {modalDoc.conferenteUsuarioId != null &&
+                    modalDoc.status !== 'FINALIZADO' &&
+                    !podeAlterarAcaoMesa(modalDoc.status) && (
                     <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-600">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                        Cancelar conferência
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Use quando este material não é conferido pelo almoxarifado. O documento sai da
-                        Mesa e permanece no histórico com status cancelado.
-                      </p>
-                      <label className={labelClass} htmlFor="motivo-cancelamento">
-                        Motivo do cancelamento
-                      </label>
-                      <textarea
-                        id="motivo-cancelamento"
-                        className={`${inputClass} min-h-[4.5rem] w-full`}
-                        value={motivoCancelamento}
-                        onChange={(e) => setMotivoCancelamento(e.target.value)}
-                        maxLength={1000}
-                        placeholder="Ex.: material conferido por outro setor, fora do piloto do almoxarifado."
-                        disabled={cancelando || detalheLoading}
-                      />
-                      {cancelarErro && (
-                        <p className="text-sm text-rose-600" role="alert">
-                          {cancelarErro}
-                        </p>
+                      {!cancelamentoAberto ? (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            className={btnSecondary}
+                            disabled={detalheLoading}
+                            onClick={() => setCancelamentoAberto(true)}
+                          >
+                            Cancelar conferência
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                            Cancelar conferência
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Use quando este material não é conferido pelo almoxarifado. O documento sai da
+                            Mesa e permanece no histórico com status cancelado.
+                          </p>
+                          <label className={labelClass} htmlFor="motivo-cancelamento">
+                            Motivo do cancelamento
+                          </label>
+                          <textarea
+                            id="motivo-cancelamento"
+                            className={`${inputClass} min-h-[4.5rem] w-full`}
+                            value={motivoCancelamento}
+                            onChange={(e) => setMotivoCancelamento(e.target.value)}
+                            maxLength={1000}
+                            placeholder="Ex.: material conferido por outro setor, fora do piloto do almoxarifado."
+                            disabled={cancelando || detalheLoading}
+                            autoFocus
+                          />
+                          {cancelarErro && (
+                            <p className="text-sm text-rose-600" role="alert">
+                              {cancelarErro}
+                            </p>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              className={btnSecondary}
+                              disabled={cancelando}
+                              onClick={() => {
+                                setCancelamentoAberto(false);
+                                setMotivoCancelamento('');
+                                setCancelarErro(null);
+                              }}
+                            >
+                              Voltar
+                            </button>
+                            <button
+                              type="button"
+                              className={btnDanger}
+                              disabled={cancelando || detalheLoading || motivoCancelamento.trim() === ''}
+                              onClick={() => void cancelarConferencia()}
+                            >
+                              {cancelando ? 'Cancelando…' : 'Confirmar cancelamento'}
+                            </button>
+                          </div>
+                        </>
                       )}
-                      <button
-                        type="button"
-                        className={btnDanger}
-                        disabled={cancelando || detalheLoading || motivoCancelamento.trim() === ''}
-                        onClick={() => void cancelarConferencia()}
-                      >
-                        {cancelando ? 'Cancelando…' : 'Cancelar conferência'}
-                      </button>
                     </div>
                   )}
                 </div>

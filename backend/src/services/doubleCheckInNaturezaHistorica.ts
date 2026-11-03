@@ -76,6 +76,8 @@ function classificarCampoRelato(campo: CampoRelato, entradaPorPeso = false): Nat
   } else if (campo.campo === 'qtde') {
     linha.qtdeNF = parseNumeroPtBr(campo.nf) ?? 0;
     linha.qtdePC = parseNumeroPtBr(campo.pc) ?? 0;
+    linha.entradaPorPeso =
+      textoContemUnidadePeso(campo.nf) || textoContemUnidadePeso(campo.pc);
   } else {
     const prazos = campo.tabelaPrazos?.linhas ?? [];
     linha.prazosDiasNF = prazos
