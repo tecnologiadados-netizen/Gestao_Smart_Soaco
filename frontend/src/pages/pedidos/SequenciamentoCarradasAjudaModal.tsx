@@ -62,6 +62,14 @@ const SECOES: SecaoAjuda[] = [
       'Ao selecionar Comprado, Fabricado, Como padrão fabricado, Como padrão comprado ou Não informado, os semáforos e os modais AS/PP usam exatamente esse mesmo recorte. As duas tabelas exibem a coluna Método de ressuprimento para auditoria. Se uma data ou célula não tiver nenhum componente no recorte, sua bolinha AS/PP não aparece. Sem filtro de Ressuprimento, a bolinha AS volta ao padrão da produção: aparece em toda célula com quantidade assim que o motor de materiais carrega (verde = ok; vermelho = falta). PP verde = ok; PP vermelho = falta.',
   },
   {
+    id: 'horizonte-pc',
+    titulo: 'Horizonte do material',
+    oQueE:
+      'Cascata dia a dia do almox secundário ao clicar no código do material: saldo início − consumo + entrada de pedido de compra. O saldo projetado vira o início do dia seguinte.',
+    comoLe:
+      'Os toggles “Considerar Pedidos de compra em atraso?” e “Considerar Pedidos de compra a receber?” abrem em Sim. Entrega anterior a hoje, ou sem data, é atraso e entra no dia de hoje; entrega de hoje em diante entra na data do pedido. Com Não, essa quantidade sai da coluna Entrada PC, o saldo projetado é recalculado e o detalhe do pedido de compra deixa de listar essas linhas. O semáforo do calendário não muda.',
+  },
+  {
     id: 'semaforo',
     titulo: 'Semáforo de materiais',
     oQueE:

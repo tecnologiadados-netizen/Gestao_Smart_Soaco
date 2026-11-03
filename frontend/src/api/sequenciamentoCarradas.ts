@@ -309,6 +309,15 @@ export type HorizonteDiaCalendario = {
   status: StatusMaterialDia;
 };
 
+/** PC pendente do horizonte. `dataEntrega` é o dia no eixo (atrasado/sem data → hoje). */
+export type HorizontePcLinhaCalendario = {
+  pedidoCompra: string;
+  qtde: number;
+  dataEntrega: string;
+  /** Data original `dd/mm/yyyy`. Null = sem data. Ausente em snapshot legado. */
+  dataEntregaExibicao?: string | null;
+};
+
 export type OrigemConsumoCalendario = {
   dataIso: string;
   carrada: string;
@@ -420,6 +429,8 @@ export async function consultarDisponibilidadeMateriaisItem(
     saldoInicial: number;
     dias: HorizonteDiaCalendario[];
     origens: OrigemConsumoCalendario[];
+    hoje: string;
+    pcLinhas: HorizontePcLinhaCalendario[];
   };
   error?: string;
 }> {
@@ -446,6 +457,8 @@ export async function consultarDisponibilidadeMateriaisItem(
     saldoInicial: number;
     dias: HorizonteDiaCalendario[];
     origens: OrigemConsumoCalendario[];
+    hoje?: string;
+    pcLinhas?: HorizontePcLinhaCalendario[];
   }>(res);
   if (!parsed.ok) return { error: parsed.error };
   const b = parsed.body;
@@ -458,6 +471,8 @@ export async function consultarDisponibilidadeMateriaisItem(
       saldoInicial: b.saldoInicial,
       dias: b.dias ?? [],
       origens: b.origens ?? [],
+      hoje: b.hoje ?? '',
+      pcLinhas: b.pcLinhas ?? [],
     },
   };
 }

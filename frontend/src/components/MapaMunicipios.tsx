@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef, Fragment, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { MapContainer, TileLayer, Circle, Tooltip, Popup, useMap, Polyline, CircleMarker, Pane, Marker } from 'react-leaflet';
 import { MODAL_Z_MAPA_POPUP, useRegisterModalEscape } from '../contexts/ModalStackContext';
 import L from 'leaflet';
@@ -188,6 +189,29 @@ interface MapaMunicipiosProps {
   mapaOverlaySuperiorEsquerdo?: ReactNode;
 }
 
+function BotaoLegendaMapa({
+  aberta,
+  onClick,
+  className = '',
+}: {
+  aberta: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white/95 p-1.5 text-slate-700 shadow-sm hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-200 dark:hover:bg-slate-700 ${className}`}
+      title={aberta ? 'Recolher legenda' : 'Expandir legenda'}
+      aria-label={aberta ? 'Recolher legenda' : 'Expandir legenda'}
+      aria-expanded={aberta}
+    >
+      {aberta ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+    </button>
+  );
+}
+
 function RecalcularMapa({ token }: { token?: string }) {
   const map = useMap();
   useEffect(() => {
@@ -320,6 +344,8 @@ export default function MapaMunicipios({
   mapaOverlaySuperiorEsquerdo,
 }: MapaMunicipiosProps) {
   const filtros = filtrosProp ?? FILTROS_VAZIOS;
+  const [legendaAberta, setLegendaAberta] = useState(true);
+  const tokenMapa = `${layoutToken ?? ''}|leg:${legendaAberta ? 1 : 0}`;
   const municipiosFiltroDestaque = useMemo(
     () => parseMultiFiltro(filtros.municipio_entrega),
     [filtros.municipio_entrega]
@@ -400,54 +426,67 @@ export default function MapaMunicipios({
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700/50 rounded-xl overflow-hidden">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 p-4 pb-2 shrink-0">
-          Roteirizador
-      </h3>
-      <p className="text-xs text-slate-500 dark:text-slate-400 px-4 pb-1 shrink-0">
-        Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> (<strong>⌘+clique</strong> no Mac) em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
-        {municipiosFiltroDestaque.length > 0 && (
-          <>
-            {' '}
-            Com filtro de município, a cidade filtrada é marcada com <span aria-hidden>🚩</span> (demais cidades permanecem visíveis).
-          </>
-        )}
-      </p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-2 shrink-0 text-xs">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-green-600 border border-green-800" aria-hidden />
-          <span className="text-slate-600 dark:text-slate-400">Cidade com todos os pedidos na mesma rota</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-yellow-500 border border-yellow-700" aria-hidden />
-          <span className="text-slate-600 dark:text-slate-400">Cidade com rota mas possui pedidos ainda não alocados em rota</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-red-600 border border-red-800" aria-hidden />
-          <span className="text-slate-600 dark:text-slate-400">Cidade com pedido mas não possui rota</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-purple-600 border border-purple-800" aria-hidden />
-          <span className="text-slate-600 dark:text-slate-400">Cidade com 2 ou mais rotas</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-gray-800 border border-gray-900" aria-hidden />
-          <span className="text-slate-600 dark:text-slate-400">Cidade com 2 ou mais rotas e com pedidos sem rota</span>
-        </span>
-      </div>
-      {semCoordenadas.length > 0 && (
-        <details className="px-4 pb-2 shrink-0 text-xs">
-          <summary className="cursor-pointer text-amber-700 dark:text-amber-400 font-medium">
-            {semCoordenadas.length} município(s) com pedidos sem coordenadas (não aparecem no mapa)
-          </summary>
-          <ul className="mt-1 list-disc list-inside text-slate-600 dark:text-slate-400 max-h-24 overflow-y-auto">
-            {semCoordenadas.map((s, i) => (
-              <li key={i}><span className="font-mono">{s.chave || `${s.municipio}${s.uf ? ` (${s.uf})` : ''}`}</span> — {formatarValor(s.valorPendente)}</li>
-            ))}
-          </ul>
-        </details>
+    <div className="relative h-full flex flex-col min-h-0 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700/50 rounded-xl overflow-hidden">
+      {legendaAberta ? (
+        <div className="shrink-0">
+          <div className="flex items-start justify-between gap-2 p-4 pb-2">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Roteirizador
+            </h3>
+            <BotaoLegendaMapa aberta onClick={() => setLegendaAberta(false)} />
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 px-4 pb-1">
+            Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> (<strong>⌘+clique</strong> no Mac) em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
+            {municipiosFiltroDestaque.length > 0 && (
+              <>
+                {' '}
+                Com filtro de município, a cidade filtrada é marcada com <span aria-hidden>🚩</span> (demais cidades permanecem visíveis).
+              </>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-2 text-xs">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-green-600 border border-green-800" aria-hidden />
+              <span className="text-slate-600 dark:text-slate-400">Cidade com todos os pedidos na mesma rota</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-yellow-500 border border-yellow-700" aria-hidden />
+              <span className="text-slate-600 dark:text-slate-400">Cidade com rota mas possui pedidos ainda não alocados em rota</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-red-600 border border-red-800" aria-hidden />
+              <span className="text-slate-600 dark:text-slate-400">Cidade com pedido mas não possui rota</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-purple-600 border border-purple-800" aria-hidden />
+              <span className="text-slate-600 dark:text-slate-400">Cidade com 2 ou mais rotas</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-gray-800 border border-gray-900" aria-hidden />
+              <span className="text-slate-600 dark:text-slate-400">Cidade com 2 ou mais rotas e com pedidos sem rota</span>
+            </span>
+          </div>
+          {semCoordenadas.length > 0 && (
+            <details className="px-4 pb-2 text-xs">
+              <summary className="cursor-pointer text-amber-700 dark:text-amber-400 font-medium">
+                {semCoordenadas.length} município(s) com pedidos sem coordenadas (não aparecem no mapa)
+              </summary>
+              <ul className="mt-1 list-disc list-inside text-slate-600 dark:text-slate-400 max-h-24 overflow-y-auto">
+                {semCoordenadas.map((s, i) => (
+                  <li key={i}><span className="font-mono">{s.chave || `${s.municipio}${s.uf ? ` (${s.uf})` : ''}`}</span> — {formatarValor(s.valorPendente)}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      ) : (
+        <BotaoLegendaMapa
+          aberta={false}
+          onClick={() => setLegendaAberta(true)}
+          className="absolute right-2 top-2 z-[1200]"
+        />
       )}
-      <div className="flex-1 min-h-[280px] w-full relative z-0 rounded-b-xl overflow-hidden">
+      <div className={`flex-1 min-h-[280px] w-full relative z-0 overflow-hidden ${legendaAberta ? 'rounded-b-xl' : 'rounded-xl'}`}>
         <MapContainer
           center={CENTRO_BRASIL}
           zoom={ZOOM}
@@ -456,7 +495,7 @@ export default function MapaMunicipios({
           style={{ background: 'hsl(210 40% 96%)', height: '100%', minHeight: 280 }}
         >
           <TileLayer attribution={MAPA_TILE_ATTRIBUTION} url={MAPA_TILE_URL} />
-          <RecalcularMapa token={layoutToken} />
+          <RecalcularMapa token={tokenMapa} />
           {rotaPolyline && paradasRoteiro && paradasRoteiro.length > 0 ? (
             <AjustarBoundsRota
               polyline={rotaPolyline}

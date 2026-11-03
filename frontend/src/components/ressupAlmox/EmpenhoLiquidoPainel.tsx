@@ -6,8 +6,11 @@ import {
   calcularSaldoProjetadoPorPedido,
   DICA_EMPENHO_LIQ_GRADE,
   DICA_ESTOQUE_PA,
+  montarCascataEmpenhoComPedidosCompra,
   RUPTURA_CELL_CLASS,
   RUPTURA_ROW_CLASS,
+  type LinhaCascataEmpenho,
+  type PedidoCompraCascataEntrada,
 } from './empenhoModalUtils';
 
 function fmt(n: number): string {
@@ -20,6 +23,13 @@ function fmtData(ymd: string | null): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
   if (!m) return ymd;
   return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function ehChegadaPc(l: {
+  tipo?: string;
+  pedido: string;
+}): l is LinhaCascataEmpenho & { tipo: 'pc' } {
+  return l.tipo === 'pc';
 }
 
 const DICA_EMP_BRUTO = 'Demanda total dos pedidos incluídos no recorte (BOM + venda direta), antes de abater PA.';
@@ -45,7 +55,45 @@ type Props = {
   compacto?: boolean;
   /** Layout com cabeçalho/cards sticky e tabela scrollável (modal Consulta Estoque). */
   layoutSticky?: boolean;
+  /**
+   * Consulta de Estoque: toggles de PC na cascata. Ambos abrem em Sim.
+   * As linhas vêm da mesma lista da coluna Pedido compra.
+   */
+  exibirTogglesPedidoCompra?: boolean;
+  pedidosCompra?: PedidoCompraCascataEntrada[];
 };
+
+function ToggleSimNao({
+  ligado,
+  onChange,
+  rotulo,
+}: {
+  ligado: boolean;
+  onChange: (valor: boolean) => void;
+  rotulo: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={ligado}
+        aria-label={rotulo}
+        onClick={() => onChange(!ligado)}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+          ligado ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-600'
+        }`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
+            ligado ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+      <span className="text-xs font-medium leading-snug text-slate-700 dark:text-slate-200">{rotulo}</span>
+    </div>
+  );
+}
 
 function CardsResumo({
   detalhe,
@@ -153,16 +201,34 @@ export default function EmpenhoLiquidoPainel({
   mostrarCards = true,
   compacto = false,
   layoutSticky = false,
+  exibirTogglesPedidoCompra = false,
+  pedidosCompra = [],
 }: Props) {
   const [estoquePaOpen, setEstoquePaOpen] = useState(false);
+  const [considerarPcAtraso, setConsiderarPcAtraso] = useState(true);
+  const [considerarPcAReceber, setConsiderarPcAReceber] = useState(true);
   const totalBruto = detalhe.totalBruto ?? 0;
   const linhasEstoquePa = detalhe.linhasEstoquePa ?? [];
 
   const linhasComSaldo = useMemo(() => {
     const base = detalhe.linhas ?? [];
     if (saldoAtual == null || !Number.isFinite(saldoAtual)) return null;
-    return calcularSaldoProjetadoPorPedido(base, saldoAtual);
-  }, [detalhe.linhas, saldoAtual]);
+    if (!exibirTogglesPedidoCompra) return calcularSaldoProjetadoPorPedido(base, saldoAtual);
+    return montarCascataEmpenhoComPedidosCompra({
+      linhas: base,
+      pedidosCompra,
+      saldoAtual,
+      considerarAtraso: considerarPcAtraso,
+      considerarAReceber: considerarPcAReceber,
+    });
+  }, [
+    detalhe.linhas,
+    saldoAtual,
+    exibirTogglesPedidoCompra,
+    pedidosCompra,
+    considerarPcAtraso,
+    considerarPcAReceber,
+  ]);
 
   const linhasExibir = linhasComSaldo ?? detalhe.linhas ?? [];
 
@@ -183,6 +249,20 @@ export default function EmpenhoLiquidoPainel({
           compacto={compacto}
           onAbrirEstoquePa={() => setEstoquePaOpen(true)}
         />
+      )}
+      {exibirTogglesPedidoCompra && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+          <ToggleSimNao
+            ligado={considerarPcAtraso}
+            onChange={setConsiderarPcAtraso}
+            rotulo="Considerar Pedidos de compra em atraso?"
+          />
+          <ToggleSimNao
+            ligado={considerarPcAReceber}
+            onChange={setConsiderarPcAReceber}
+            rotulo="Considerar Pedidos de compra a receber?"
+          />
+        </div>
       )}
     </>
   );
@@ -224,34 +304,51 @@ export default function EmpenhoLiquidoPainel({
                 </tr>
               )}
               {linhasComSaldo
-                ? linhasComSaldo.map((l, i) => (
-                    <tr
-                      key={`${l.pedido}-${i}`}
-                      className={
-                        l.ruptura
-                          ? `border-b ${RUPTURA_ROW_CLASS}`
-                          : 'border-b border-slate-100 dark:border-slate-700'
-                      }
-                    >
-                      <td className="py-1.5 pr-2 font-mono">{l.pedido || '—'}</td>
-                      <td className="py-1.5 pr-2 tabular-nums">{fmtData(l.dataEntrega)}</td>
-                      {!compacto && (
-                        <td className="py-1.5 pr-2">
-                          <span className="line-clamp-1" title={l.rota}>
-                            {l.rota || '—'}
-                          </span>
-                        </td>
-                      )}
-                      <td className="py-1.5 pr-2 text-right tabular-nums">{fmt(l.bruto)}</td>
-                      <td
-                        className={`py-1.5 text-right tabular-nums font-medium ${
-                          l.ruptura ? RUPTURA_CELL_CLASS : ''
-                        }`}
+                ? linhasComSaldo.map((l, i) => {
+                    const chegada = ehChegadaPc(l);
+                    return (
+                      <tr
+                        key={`${chegada ? 'pc' : 'emp'}-${l.pedido}-${i}`}
+                        className={
+                          chegada
+                            ? 'border-b border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/40'
+                            : l.ruptura
+                              ? `border-b ${RUPTURA_ROW_CLASS}`
+                              : 'border-b border-slate-100 dark:border-slate-700'
+                        }
                       >
-                        {fmt(l.saldoProjetado)}
-                      </td>
-                    </tr>
-                  ))
+                        <td className="py-1.5 pr-2 font-mono">{l.pedido || '—'}</td>
+                        <td
+                          className="py-1.5 pr-2 tabular-nums"
+                          title={chegada ? 'Data de entrega do pedido de compra' : undefined}
+                        >
+                          {fmtData(l.dataEntrega)}
+                        </td>
+                        {!compacto && (
+                          <td className="py-1.5 pr-2">
+                            <span className="line-clamp-1" title={l.rota}>
+                              {l.rota || '—'}
+                            </span>
+                          </td>
+                        )}
+                        <td
+                          className={`py-1.5 pr-2 text-right tabular-nums ${
+                            chegada ? 'font-medium text-emerald-800 dark:text-emerald-200' : ''
+                          }`}
+                          title={chegada ? 'Quantidade a chegar' : undefined}
+                        >
+                          {chegada ? `+${fmt(l.bruto)}` : fmt(l.bruto)}
+                        </td>
+                        <td
+                          className={`py-1.5 text-right tabular-nums font-medium ${
+                            !chegada && l.ruptura ? RUPTURA_CELL_CLASS : ''
+                          }`}
+                        >
+                          {fmt(l.saldoProjetado)}
+                        </td>
+                      </tr>
+                    );
+                  })
                 : linhasExibir.map((l, i) => (
                     <tr key={`${l.pedido}-${i}`} className="border-b border-slate-100 dark:border-slate-700">
                       <td className="py-1.5 pr-2 font-mono">{l.pedido || '—'}</td>
@@ -271,7 +368,16 @@ export default function EmpenhoLiquidoPainel({
                 <td className="py-2 pr-2" colSpan={compacto ? 2 : 3}>
                   Total
                 </td>
-                <td className="py-2 pr-2 text-right tabular-nums">{fmt(totalBruto)}</td>
+                <td
+                  className="py-2 pr-2 text-right tabular-nums"
+                  title={
+                    exibirTogglesPedidoCompra
+                      ? 'Soma do empenho bruto. A chegada de pedido de compra não entra neste total.'
+                      : undefined
+                  }
+                >
+                  {fmt(totalBruto)}
+                </td>
                 <td className="py-2 text-right tabular-nums" />
               </tr>
             </tbody>

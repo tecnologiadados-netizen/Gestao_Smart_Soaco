@@ -197,6 +197,19 @@ export function opcoesModoProdutoConsulta(temBom: boolean): {
   return opcoes;
 }
 
+/**
+ * Quando a única visualização possível é “Item filtrado” (nenhum item tem BOM),
+ * não há o que perguntar: a consulta usa o próprio item e o empenho de todos
+ * os pedidos (com PD selecionado, o escopo do pedido prevalece).
+ */
+export function escolhaAutomaticaSoItemFiltrado(
+  temBom: boolean
+): ProdutoFiltroConsultaEstoque | null {
+  const opcoes = opcoesModoProdutoConsulta(temBom);
+  if (opcoes.length !== 1 || opcoes[0].valor !== 'diretos') return null;
+  return { modoProduto: 'diretos', empenhoEscopo: 'todos' };
+}
+
 export const OPCOES_EMPENHO_PRODUTO_CONSULTA: {
   valor: EmpenhoProdutoEscopoConsultaEstoque;
   titulo: string;

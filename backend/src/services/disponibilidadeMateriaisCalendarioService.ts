@@ -208,6 +208,8 @@ type EngineResult = {
   pcLinhas: PcLinhaPendente[];
   agPagLinhas: AgPagLinhaCongelada[];
   scLinhas: ScLinhaCongelada[];
+  /** Dia de referência do motor (atrasado/sem data cai neste dia). */
+  hoje: string;
 };
 
 function isoDateOnlyValid(s: string): boolean {
@@ -923,6 +925,7 @@ export async function computarEngineDisponibilidade(
         pcLinhas: [],
         agPagLinhas: [],
         scLinhas: [],
+        hoje,
       },
     };
   }
@@ -1186,6 +1189,7 @@ export async function computarEngineDisponibilidade(
       pcLinhas,
       agPagLinhas,
       scLinhas,
+      hoje,
     },
   };
 }
@@ -1411,6 +1415,25 @@ export async function obterHorizonteItem(
       saldoInicial: arred2(item.saldoInicial),
       dias,
       origens,
+      hoje: r.data.hoje,
+      pcLinhas: r.data.pcLinhas
+        .filter((l) => l.idProduto === item.idProduto)
+        .map((l) => {
+          const row: {
+            pedidoCompra: string;
+            qtde: number;
+            dataEntrega: string;
+            dataEntregaExibicao?: string | null;
+          } = {
+            pedidoCompra: l.pedidoCompra,
+            qtde: arred2(l.qtde),
+            dataEntrega: l.dataEntrega,
+          };
+          if (l.dataEntregaExibicao !== undefined) {
+            row.dataEntregaExibicao = l.dataEntregaExibicao;
+          }
+          return row;
+        }),
     },
   };
 }

@@ -10,7 +10,7 @@ import EmpenhoLiquidoPainel from '../../components/ressupAlmox/EmpenhoLiquidoPai
 import RotuloComDica from '../../components/ressupAlmox/RotuloComDica';
 import { DICA_EMPENHO_LIQ_GRADE, DICA_ESTOQUE_ATUAL_GRADE, DICA_ESTOQUE_PA_SALDO, isSetorEstoquePa } from '../../components/ressupAlmox/empenhoModalUtils';
 import type { RessupAlmoxPcPendLinha, RessupEmpenhoPedidoResultado } from '../../api/compras';
-import { obterRessupEmpenhoPorPedido } from '../../api/compras';
+import { obterRessupAlmoxPcPendDetalhes, obterRessupEmpenhoPorPedido } from '../../api/compras';
 import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
 import TabelaDetalheSolicitacao from '../../components/pcp/TabelaDetalheSolicitacao';
@@ -21,6 +21,7 @@ import ModalFiltrosConsultaEstoque, {
   OPCOES_EMPENHO_PRODUTO_CONSULTA,
   avisoEscopoEmpenhoProduto,
   devePerguntarEmpenhoProduto,
+  escolhaAutomaticaSoItemFiltrado,
   filtrosConsultaTemAlgumSelecionado,
   filtrosStateToPayload,
   opcoesModoProdutoConsulta,
@@ -245,6 +246,7 @@ export default function ConsultaEstoquePage() {
   const [detalhe, setDetalhe] = useState<DetalheModal | null>(null);
   const [detalheSaldo, setDetalheSaldo] = useState<SaldoSetorDetalhe[]>([]);
   const [detalheEmpenhoLiquido, setDetalheEmpenhoLiquido] = useState<RessupEmpenhoPedidoResultado | null>(null);
+  const [detalhePcCascata, setDetalhePcCascata] = useState<RessupAlmoxPcPendLinha[]>([]);
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
   const [colunasOcultas, setColunasOcultas] = useState<string[]>(() => loadConsultaEstoqueColunasOcultas());
@@ -611,7 +613,7 @@ export default function ConsultaEstoquePage() {
     setMsgFiltro(null);
   };
 
-  /** Consulta da grade. Com produto no filtro, o modal de visualização abre antes, no Filtrar. */
+  /** Consulta da grade. Com produto no filtro e mais de uma visualização, o modal abre antes, no Filtrar. */
   const dispararConsultaComProduto = useCallback(
     async (f: FiltrosConsultaEstoqueState, prodF: ProdutoFiltroConsultaEstoque) => {
       const pf = pedidoFiltroRef.current;
@@ -716,6 +718,20 @@ export default function ConsultaEstoquePage() {
       }
 
       setProdutoTemBom(r.temBom);
+
+      const automatica = escolhaAutomaticaSoItemFiltrado(r.temBom);
+      if (automatica) {
+        setProdutoFiltro(automatica);
+        setAvisoEscolhaProdutoPendente(false);
+        setConfirmEscolhasProdutoAberto(false);
+        setEscolhaModoProdutoTemp(null);
+        if (consultarAposEscolhaRef.current) {
+          consultarAposEscolhaRef.current = false;
+          void dispararConsultaComProduto(f, automatica);
+        }
+        return;
+      }
+
       setConfirmEscolhasProdutoAberto(true);
       if (modoInicial === 'componentes' || modoInicial === 'diretos') {
         setEscolhaModoProdutoTemp(modoInicial);
@@ -723,7 +739,7 @@ export default function ConsultaEstoquePage() {
         setEscolhaModoProdutoTemp(null);
       }
     },
-    []
+    [dispararConsultaComProduto]
   );
 
   const handleFiltrosChange = (patch: Partial<FiltrosConsultaEstoqueState>) => {
@@ -905,6 +921,14 @@ export default function ConsultaEstoquePage() {
   const carregarDetalheModal = useCallback(async (): Promise<{ error?: string }> => {
     if (!detalhe || detalhe.tipo === 'pc') return {};
     const id = detalhe.linha.idProduto;
+    const carregarPcCascata = async (idProduto: number): Promise<RessupAlmoxPcPendLinha[]> => {
+      const emCache = pcDetalheCacheRef.current.get(idProduto);
+      if (emCache) return emCache;
+      const r = await obterRessupAlmoxPcPendDetalhes(idProduto);
+      if (r.error) return [];
+      pcDetalheCacheRef.current.set(idProduto, r.data);
+      return r.data;
+    };
     const resumo = consultaPedidoResumoRef.current;
     const ctx = {
       escopo: resumo?.empenhoEscopo,
@@ -917,6 +941,7 @@ export default function ConsultaEstoquePage() {
       if (detalhe.tipo === 'saldo') setDetalheSaldo(cached as SaldoSetorDetalhe[]);
       else if (detalhe.tipo === 'empenho') {
         setDetalheEmpenhoLiquido(cached as RessupEmpenhoPedidoResultado);
+        setDetalhePcCascata(await carregarPcCascata(id));
       } else if (detalhe.tipo === 'solicitacao') setDetalheSc(cached as ScDetalhe[]);
       else setDetalheCotacao(cached as CotacaoDetalhe[]);
       return {};
@@ -935,15 +960,13 @@ export default function ConsultaEstoquePage() {
         !idPedidoFiltro && resumoProduto?.empenhoEscopo === 'produto'
           ? resumoProduto.idsProdutosPaiEscopo
           : undefined;
-      const rLiquido = await obterRessupEmpenhoPorPedido(
-        id,
-        considerarRequisicoes,
-        false,
-        idPedidoFiltro,
-        paisEscopo
-      );
+      const [rLiquido, pcs] = await Promise.all([
+        obterRessupEmpenhoPorPedido(id, considerarRequisicoes, false, idPedidoFiltro, paisEscopo),
+        carregarPcCascata(id),
+      ]);
       if (!rLiquido.error && rLiquido.data) detalheCacheRef.current.set(cacheKey, rLiquido.data);
       setDetalheEmpenhoLiquido(rLiquido.data);
+      setDetalhePcCascata(pcs);
       return { error: rLiquido.error };
     }
     if (detalhe.tipo === 'solicitacao') {
@@ -962,6 +985,7 @@ export default function ConsultaEstoquePage() {
     if (!detalhe || detalhe.tipo === 'pc') {
       setDetalheSaldo([]);
       setDetalheEmpenhoLiquido(null);
+      setDetalhePcCascata([]);
       setDetalheSc([]);
       setDetalheCotacao([]);
     }
@@ -1309,6 +1333,7 @@ export default function ConsultaEstoquePage() {
         produtoFiltro={produtoFiltro}
         avisoEscolhaProdutoPendente={avisoEscolhaProdutoPendente}
         onAlterarEscolhasProduto={handleAlterarEscolhasProduto}
+        produtoEscolhasAlteraveis={escolhaAutomaticaSoItemFiltrado(produtoTemBom) == null}
         opcoes={opcoesFiltro}
         onBuscarPedido={buscarPedidoAsync}
         onClose={() => setFiltrosPopoverAberto(false)}
@@ -1552,6 +1577,8 @@ export default function ConsultaEstoquePage() {
                   rotuloTotal="Empenho líquido"
                   mostrarCards
                   layoutSticky
+                  exibirTogglesPedidoCompra
+                  pedidosCompra={detalhePcCascata}
                 />
               );
             }

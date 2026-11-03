@@ -3,13 +3,18 @@ import { createPortal } from 'react-dom';
 import type {
   DemandaCalendarioMateriais,
   HorizonteDiaCalendario,
+  HorizontePcLinhaCalendario,
   OrigemConsumoCalendario,
 } from '../../api/sequenciamentoCarradas';
 import {
   consultarDisponibilidadeMateriaisItem,
   obterPcPendCongelado,
 } from '../../api/sequenciamentoCarradas';
-import type { RessupAlmoxPcPendLinha } from '../../api/compras';
+import { obterRessupAlmoxPcPendDetalhes, type RessupAlmoxPcPendLinha } from '../../api/compras';
+import {
+  classificarPedidoCompraCascata,
+  hojeIsoLocal,
+} from '../ressupAlmox/empenhoModalUtils';
 import { formatDataCurta } from './simulacaoCarradas';
 import CalendarioOrigemConsumoModal from './CalendarioOrigemConsumoModal';
 import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
@@ -35,6 +40,8 @@ type HorizonteCache = {
   saldoInicial: number;
   dias: HorizonteDiaCalendario[];
   origens: OrigemConsumoCalendario[];
+  hoje: string;
+  pcLinhas: HorizontePcLinhaCalendario[];
 };
 
 /** Linha do horizonte com saldo início/projetado em carry livre (pode ser negativo). */
@@ -132,6 +139,85 @@ export function compactarLinhasHorizonte(linhas: HorizonteLinhaDia[]): Horizonte
   return out;
 }
 
+/**
+ * Tira da Entrada PC os pedidos excluídos pelos toggles e mantém o dia em que o motor
+ * os colocou (atrasado ou sem data → hoje; antes do eixo → primeiro dia).
+ * Com os dois toggles em Sim, a entrada do backend permanece igual.
+ */
+export function ajustarEntradaHorizonte<T extends { data: string; entrada: number }>(
+  dias: T[],
+  pcLinhas: HorizontePcLinhaCalendario[],
+  opts: { considerarAtraso: boolean; considerarAReceber: boolean; hojeIso: string }
+): T[] {
+  if (opts.considerarAtraso && opts.considerarAReceber) return dias;
+  if (dias.length === 0) return dias;
+  const datas = new Set(dias.map((d) => d.data));
+  const primeiro = dias[0]!.data;
+  const desconto = new Map<string, number>();
+  for (const l of pcLinhas) {
+    const ref = l.dataEntregaExibicao === undefined ? l.dataEntrega : l.dataEntregaExibicao;
+    const classe = classificarPedidoCompraCascata(ref, opts.hojeIso);
+    const inclui = classe === 'atraso' ? opts.considerarAtraso : opts.considerarAReceber;
+    if (inclui) continue;
+    const qtde = Number(l.qtde) || 0;
+    if (qtde <= 0) continue;
+    let dia = l.dataEntrega;
+    if (!datas.has(dia)) {
+      if (dia < primeiro) dia = primeiro;
+      else continue;
+    }
+    desconto.set(dia, Math.round(((desconto.get(dia) ?? 0) + qtde) * 100) / 100);
+  }
+  if (desconto.size === 0) return dias;
+  return dias.map((d) => {
+    const menos = desconto.get(d.data) ?? 0;
+    if (!menos) return d;
+    return { ...d, entrada: Math.max(0, Math.round((d.entrada - menos) * 100) / 100) };
+  });
+}
+
+function pcPassaToggle(
+  dataEntrega: string | null,
+  hojeIso: string,
+  considerarAtraso: boolean,
+  considerarAReceber: boolean
+): boolean {
+  const classe = classificarPedidoCompraCascata(dataEntrega, hojeIso);
+  return classe === 'atraso' ? considerarAtraso : considerarAReceber;
+}
+
+function ToggleSimNao({
+  ligado,
+  onChange,
+  rotulo,
+}: {
+  ligado: boolean;
+  onChange: (valor: boolean) => void;
+  rotulo: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={ligado}
+        aria-label={rotulo}
+        onClick={() => onChange(!ligado)}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+          ligado ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-600'
+        }`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
+            ligado ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+      <span className="text-xs font-medium leading-snug text-slate-700 dark:text-slate-200">{rotulo}</span>
+    </div>
+  );
+}
+
 function classSaldoProjetado(saldoProj: number): string {
   if (saldoProj <= 0) return 'bg-red-50 dark:bg-red-950/30';
   return '';
@@ -166,6 +252,8 @@ export default function CalendarioMaterialHorizonteModal({
   const [erro, setErro] = useState<string | null>(null);
   const [pcOpen, setPcOpen] = useState(false);
   const [origemData, setOrigemData] = useState<string | null>(null);
+  const [considerarPcAtraso, setConsiderarPcAtraso] = useState(true);
+  const [considerarPcAReceber, setConsiderarPcAReceber] = useState(true);
 
   useRegisterModalEscape({
     id: 'calendario-material-horizonte',
@@ -185,6 +273,12 @@ export default function CalendarioMaterialHorizonteModal({
   });
 
   useEffect(() => {
+    if (!open) return;
+    setConsiderarPcAtraso(true);
+    setConsiderarPcAReceber(true);
+  }, [open, codigo]);
+
+  useEffect(() => {
     if (!open || !codigo) {
       setDados(null);
       setErro(null);
@@ -194,7 +288,7 @@ export default function CalendarioMaterialHorizonteModal({
       return;
     }
     const cached = cacheRef.current.get(codigo);
-    if (cached) {
+    if (cached && Array.isArray(cached.pcLinhas) && cached.hoje) {
       setDados(cached);
       setErro(null);
       setCarregando(false);
@@ -221,6 +315,8 @@ export default function CalendarioMaterialHorizonteModal({
         saldoInicial: r.data.saldoInicial,
         dias: r.data.dias,
         origens: r.data.origens,
+        hoje: r.data.hoje,
+        pcLinhas: r.data.pcLinhas,
       };
       cacheRef.current.set(codigo, payload);
       setDados(payload);
@@ -235,17 +331,34 @@ export default function CalendarioMaterialHorizonteModal({
     return dados.origens.filter((o) => o.dataIso === origemData);
   }, [dados, origemData]);
 
-  /** Em snapshot os PCs saem da base congelada; sem snapshot mantém o endpoint ao vivo. */
-  const fetchPcPendCongelado = useCallback(
-    (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> =>
-      obterPcPendCongelado(snapshotId!, id),
-    [snapshotId]
-  );
+  const hojeReferencia = dados?.hoje || hojeIsoLocal();
 
   const linhasHorizonte = useMemo(() => {
     if (!dados) return [];
-    return compactarLinhasHorizonte(montarLinhasHorizonteComCarry(dados.dias, dados.saldoInicial));
-  }, [dados]);
+    const dias = ajustarEntradaHorizonte(dados.dias, dados.pcLinhas ?? [], {
+      considerarAtraso: considerarPcAtraso,
+      considerarAReceber: considerarPcAReceber,
+      hojeIso: dados.hoje || hojeIsoLocal(),
+    });
+    return compactarLinhasHorizonte(montarLinhasHorizonteComCarry(dias, dados.saldoInicial));
+  }, [dados, considerarPcAtraso, considerarPcAReceber]);
+
+  const fetchPcFiltrado = useCallback(
+    async (id: number): Promise<{ data: RessupAlmoxPcPendLinha[]; error?: string }> => {
+      const r =
+        snapshotId != null
+          ? await obterPcPendCongelado(snapshotId, id)
+          : await obterRessupAlmoxPcPendDetalhes(id);
+      if (r.error) return r;
+      const hoje = hojeReferencia;
+      return {
+        data: r.data.filter((l) =>
+          pcPassaToggle(l.dataEntrega, hoje, considerarPcAtraso, considerarPcAReceber)
+        ),
+      };
+    },
+    [snapshotId, hojeReferencia, considerarPcAtraso, considerarPcAReceber]
+  );
 
   if (!open) return null;
 
@@ -267,7 +380,7 @@ export default function CalendarioMaterialHorizonteModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-600">
-            <div>
+            <div className="min-w-0 flex-1">
               <h2
                 id="calendario-material-horizonte-titulo"
                 className="text-lg font-semibold text-slate-800 dark:text-slate-100"
@@ -283,6 +396,18 @@ export default function CalendarioMaterialHorizonteModal({
                 dia seguinte). Clique em <strong>Consumo</strong> para PAs/pedidos; em{' '}
                 <strong>Entrada</strong> para PCs.
               </p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+                <ToggleSimNao
+                  ligado={considerarPcAtraso}
+                  onChange={setConsiderarPcAtraso}
+                  rotulo="Considerar Pedidos de compra em atraso?"
+                />
+                <ToggleSimNao
+                  ligado={considerarPcAReceber}
+                  onChange={setConsiderarPcAReceber}
+                  rotulo="Considerar Pedidos de compra a receber?"
+                />
+              </div>
             </div>
             <button
               type="button"
@@ -398,7 +523,7 @@ export default function CalendarioMaterialHorizonteModal({
           codigo={codigo}
           descricao={descricao}
           onClose={() => setPcOpen(false)}
-          fetchDetalhes={snapshotId != null ? fetchPcPendCongelado : undefined}
+          fetchDetalhes={fetchPcFiltrado}
           overlayFixed
           zIndexClass="z-[14250]"
         />

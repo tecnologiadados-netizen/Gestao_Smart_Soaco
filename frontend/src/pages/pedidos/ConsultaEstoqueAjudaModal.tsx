@@ -28,7 +28,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Valor da grade = max(0, empenho bruto − estoque em PA): o estoque de produto acabado (via BOM) abate o bruto por completo (piso 0). Sem escopo restrito, o piso é global; nos escopos restritos (um PD ou o item filtrado), o piso passa a ser por produto acabado — o estoque de um PA não abate a demanda de outro.',
     comoLe:
-      'A coluna da grade e o total do modal de empenho usam a mesma lógica e o mesmo escopo escolhido nos filtros. O toggle “Requisições de loja” (padrão Sim) inclui empenhos com atributo Requisitado; ao alterar, a consulta é refeita na hora.',
+      'A coluna da grade e o total do modal de empenho (empenho líquido) usam a mesma lógica e o mesmo escopo escolhido nos filtros. O toggle “Requisições de loja” (padrão Sim) inclui empenhos com atributo Requisitado; ao alterar, a consulta é refeita na hora. Na cascata do modal, o saldo projetado parte do estoque atual e desconta cada empenho bruto. Os toggles “Considerar Pedidos de compra em atraso?” e “Considerar Pedidos de compra a receber?” abrem em Sim e inserem a chegada de cada PC pendente — a mesma lista da coluna Pedido compra. Entrega anterior a hoje, ou sem data, é atraso; entrega de hoje em diante é a receber. Com Sim, a linha soma a quantidade no saldo da cascata (no mesmo dia, a chegada entra antes da saída). Com Não, a linha some e essa quantidade deixa de entrar. O empenho líquido da grade não muda com esses toggles.',
   },
   {
     id: 'pedido',
@@ -42,7 +42,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'produto',
     titulo: 'Filtro por produto (item ou componentes)',
     oQueE:
-      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar com código ou descrição, abre o modal para escolher a visualização: “Item filtrado” ou, quando todos têm BOM, “Componentes do item filtrado”. O aviso amarelo só aparece se esse modal for fechado sem confirmar. Sem BOM, só “Item filtrado” aparece e o empenho considera todos os pedidos. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece. A grade só carrega depois de confirmar essa escolha.',
+      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar, se a única visualização possível é “Item filtrado” (nenhum item tem BOM), a consulta carrega direto, sem perguntar como visualizar, e o empenho considera todos os pedidos. Quando todos os itens têm BOM, abre o modal para escolher “Item filtrado” ou “Componentes do item filtrado”. O aviso amarelo só aparece se esse modal for fechado sem confirmar. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece.',
     comoLe:
       'Em “Componentes do item filtrado” a grade traz SÓ os componentes — o item pai não aparece nas linhas. No empenho “Somente do item filtrado” (só no modo componentes sem PD), a coluna considera apenas a demanda gerada pelo(s) item(ns) pai filtrado(s); o modal analítico usa o mesmo escopo e fecha com a grade. Ao tentar misturar PA com MP, a seleção é revertida com aviso.',
   },
@@ -52,7 +52,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Tipo, grupo, coleta, setor e subgrupo cascateiam entre si; código e descrição aceitam busca de texto livre (use % como curinga).',
     comoLe:
-      'Escolha filtros de cima para baixo: ao mudar um nível, as opções dos níveis seguintes se atualizam. Código/descrição não substituem a cascata — combinam com ela e, quando preenchidos, exigem as escolhas do modal de produto.',
+      'Escolha filtros de cima para baixo: ao mudar um nível, as opções dos níveis seguintes se atualizam. Código/descrição não substituem a cascata — combinam com ela. Sem BOM, Filtrar carrega o próprio item; quando todos têm BOM, a consulta pede a visualização no modal de produto.',
   },
   {
     id: 'pa',

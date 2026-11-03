@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ajustarEntradaHorizonte,
   compactarLinhasHorizonte,
   montarLinhasHorizonteComCarry,
   type HorizonteLinhaDia,
@@ -94,5 +95,62 @@ describe('montarLinhasHorizonteComCarry', () => {
     );
     expect(out[0]).toMatchObject({ saldoInicio: 100, saldoProjetado: 90 });
     expect(out[1]).toMatchObject({ saldoInicio: 90, saldoProjetado: 95 });
+  });
+});
+
+describe('ajustarEntradaHorizonte', () => {
+  const dias = [
+    { data: '2026-10-29', consumo: 21, entrada: 23 },
+    { data: '2026-11-02', consumo: 0, entrada: 8 },
+  ];
+  const pcs = [
+    {
+      pedidoCompra: 'PC ATRASO',
+      qtde: 20,
+      dataEntrega: '2026-10-29',
+      dataEntregaExibicao: '12/10/2026',
+    },
+    {
+      pedidoCompra: 'PC SEM DATA',
+      qtde: 3,
+      dataEntrega: '2026-10-29',
+      dataEntregaExibicao: null,
+    },
+    {
+      pedidoCompra: 'PC FUTURO',
+      qtde: 8,
+      dataEntrega: '2026-11-02',
+      dataEntregaExibicao: '02/11/2026',
+    },
+  ];
+  const hojeIso = '2026-10-29';
+
+  it('com os dois toggles em Sim mantém a entrada do backend', () => {
+    const out = ajustarEntradaHorizonte(dias, pcs, {
+      considerarAtraso: true,
+      considerarAReceber: true,
+      hojeIso,
+    });
+    expect(out).toBe(dias);
+  });
+
+  it('sem atraso tira do dia de hoje o pedido vencido e o sem data', () => {
+    const out = ajustarEntradaHorizonte(dias, pcs, {
+      considerarAtraso: false,
+      considerarAReceber: true,
+      hojeIso,
+    });
+    expect(out[0]?.entrada).toBe(0);
+    expect(out[1]?.entrada).toBe(8);
+  });
+
+  it('sem a receber tira só o pedido com entrega futura', () => {
+    const out = ajustarEntradaHorizonte(dias, pcs, {
+      considerarAtraso: true,
+      considerarAReceber: false,
+      hojeIso,
+    });
+    expect(out[0]?.entrada).toBe(23);
+    expect(out[1]?.entrada).toBe(0);
   });
 });

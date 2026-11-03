@@ -56,6 +56,11 @@ describe('motor de disponibilidade com base congelada', () => {
     const dia25 = r.data.dias.find((d) => d.data === '2026-07-25');
     expect(dia25?.entrada).toBe(5);
     expect(dia25?.consumo).toBe(4);
+    expect(r.data.hoje).toBe('2026-07-24');
+    expect(r.data.pcLinhas).toEqual([
+      { pedidoCompra: 'PC-1', qtde: 4, dataEntrega: '2026-07-25' },
+      { pedidoCompra: 'PC-2', qtde: 1, dataEntrega: '2026-07-25' },
+    ]);
   });
 
   it('origem do consumo compacta por (data, carrada, pd)', async () => {
