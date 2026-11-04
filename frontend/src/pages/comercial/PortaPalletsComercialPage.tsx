@@ -4,11 +4,15 @@ import {
   obterPortaPalletsAuditoriaMensal,
   obterPortaPalletsDetalhe,
   obterPortaPalletsMensal,
+  obterPortaPalletsOpcoes,
   type DetalhePortaPallets,
   type IndicadorPortaPallets,
   type MesPortaPallets,
+  type OpcoesPortaPallets,
   type PortaPalletsMensal,
+  type RecortePortaPallets,
 } from '../../api/portaPalletsComercial';
+import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import KpiPainelVoltarLink from '../../components/kpis/KpiPainelVoltarLink';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
@@ -25,7 +29,55 @@ import PortaPalletsEvolucaoBarras, {
 import PortaPalletsAnoAnoBarras, { LARGURA_MES_ANO_ANO } from './PortaPalletsAnoAnoBarras';
 import AjudaPedidosCardFunil from './AjudaPedidosCardFunil';
 import { formatData, formatDias, formatTaxa, labelMes } from './portaPalletsComercialFormat';
+import FiltroArvoreFamilia from './FiltroArvoreFamilia';
 import SeletorPeriodoDias from './SeletorPeriodoDias';
+
+const FILTRO_INPUT_CLASS =
+  'w-full rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-600 focus:border-transparent';
+const FILTRO_LABEL_CLASS = 'block text-xs text-slate-500 dark:text-slate-400 mb-1';
+
+type FiltrosPainel = {
+  empresas: string;
+  vendedores: string;
+  subgrupos: string;
+  ufs: string;
+  cidades: string;
+  familias: string;
+};
+
+const FILTROS_INICIAIS: FiltrosPainel = {
+  empresas: '1',
+  vendedores: '',
+  subgrupos: '',
+  ufs: '',
+  cidades: '',
+  familias: '',
+};
+
+function filtrosQuery(f: FiltrosPainel): Pick<RecortePortaPallets, 'empresas' | 'vendedores' | 'subgrupos' | 'ufs' | 'cidades' | 'familias'> {
+  return {
+    empresas: f.empresas.trim() ? f.empresas : 'todas',
+    vendedores: f.vendedores || undefined,
+    subgrupos: f.subgrupos || undefined,
+    ufs: f.ufs || undefined,
+    cidades: f.cidades || undefined,
+    familias: f.familias || undefined,
+  };
+}
+
+function chaveFiltros(f: FiltrosPainel): string {
+  const q = filtrosQuery(f);
+  return [q.empresas, q.vendedores ?? '', q.subgrupos ?? '', q.ufs ?? '', q.cidades ?? '', q.familias ?? ''].join('§');
+}
+
+function vendedoresNoPeriodo(valor: string, lista: string[]): string {
+  const validos = new Set(lista);
+  return valor
+    .split('|')
+    .map((s) => s.trim())
+    .filter((nome) => validos.has(nome))
+    .join('|');
+}
 const DATA_MIN = '2018-01-01';
 
 const panelSurface =
@@ -94,6 +146,9 @@ export default function PortaPalletsComercialPage() {
   const [draftAte, setDraftAte] = useState(padrao.ate);
   const [desde, setDesde] = useState(padrao.desde);
   const [ate, setAte] = useState(padrao.ate);
+  const [draftFiltros, setDraftFiltros] = useState<FiltrosPainel>(FILTROS_INICIAIS);
+  const [filtros, setFiltros] = useState<FiltrosPainel>(FILTROS_INICIAIS);
+  const [opcoes, setOpcoes] = useState<OpcoesPortaPallets | null>(null);
   const [dados, setDados] = useState<PortaPalletsMensal | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -115,11 +170,11 @@ export default function PortaPalletsComercialPage() {
   const [exportandoAuditoria, setExportandoAuditoria] = useState(false);
   const [erroAuditoria, setErroAuditoria] = useState<string | null>(null);
 
-  const carregar = useCallback(async (ini: string, fim: string, refresh = false) => {
+  const carregar = useCallback(async (ini: string, fim: string, f: FiltrosPainel, refresh = false) => {
     setLoading(true);
     setErro(null);
     try {
-      setDados(await obterPortaPalletsMensal({ desde: ini, ate: fim, refresh }));
+      setDados(await obterPortaPalletsMensal({ desde: ini, ate: fim, refresh, ...filtrosQuery(f) }));
     } catch (e) {
       setDados(null);
       setErro(e instanceof Error ? e.message : 'Erro ao carregar o painel.');
@@ -129,42 +184,94 @@ export default function PortaPalletsComercialPage() {
   }, []);
 
   useEffect(() => {
-    void carregar(desde, ate, false);
-  }, [carregar, desde, ate]);
+    void carregar(desde, ate, filtros, false);
+  }, [carregar, desde, ate, filtros]);
 
-  const aplicar = useCallback(
-    (ini: string, fim: string) => {
-      detalheCacheRef.current.clear();
-      setDraftDesde(ini);
-      setDraftAte(fim);
-      setDesde(ini);
-      setAte(fim);
-    },
-    []
-  );
+  useEffect(() => {
+    let ativo = true;
+    void obterPortaPalletsOpcoes({ desde, ate })
+      .then((data) => {
+        if (!ativo) return;
+        setOpcoes(data);
+        const ajustar = (f: FiltrosPainel): FiltrosPainel => {
+          const vendedores = vendedoresNoPeriodo(
+            f.vendedores,
+            data.vendedores.map((v) => v.nome)
+          );
+          return vendedores === f.vendedores ? f : { ...f, vendedores };
+        };
+        setDraftFiltros(ajustar);
+        setFiltros(ajustar);
+      })
+      .catch(() => {
+        if (ativo) setOpcoes(null);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [desde, ate]);
+
+  const cidadesOpcoes = useMemo(() => {
+    const ufs = draftFiltros.ufs.split('|').map((s) => s.trim()).filter(Boolean);
+    const lista = opcoes?.cidades ?? [];
+    const filtradas = ufs.length ? lista.filter((c) => ufs.includes(c.uf)) : lista;
+    return [...new Set(filtradas.map((c) => c.nome))];
+  }, [draftFiltros.ufs, opcoes]);
+
+  const filtrosParaAplicar = (f: FiltrosPainel): FiltrosPainel => {
+    const ufs = f.ufs.split('|').map((s) => s.trim()).filter(Boolean);
+    if (!ufs.length || !opcoes) return f;
+    const validas = new Set(opcoes.cidades.filter((c) => ufs.includes(c.uf)).map((c) => c.nome));
+    const cidades = f.cidades
+      .split('|')
+      .map((s) => s.trim())
+      .filter((c) => validas.has(c))
+      .join('|');
+    return { ...f, cidades };
+  };
+
+  const empresasRotulo = useMemo(() => {
+    const mapa: Record<string, string> = {};
+    for (const e of opcoes?.empresas ?? []) mapa[String(e.id)] = e.nome;
+    if (!mapa['1']) mapa['1'] = 'Só Aço';
+    return mapa;
+  }, [opcoes]);
+
+  const aplicar = useCallback((ini: string, fim: string, f: FiltrosPainel) => {
+    detalheCacheRef.current.clear();
+    setDraftDesde(ini);
+    setDraftAte(fim);
+    setDraftFiltros(f);
+    setDesde(ini);
+    setAte(fim);
+    setFiltros(f);
+  }, []);
 
   const atualizar = useCallback(() => {
     detalheCacheRef.current.clear();
-    void carregar(desde, ate, true);
-  }, [ate, carregar, desde]);
+    void carregar(desde, ate, filtros, true);
+    void obterPortaPalletsOpcoes({ desde, ate, refresh: true })
+      .then(setOpcoes)
+      .catch(() => setOpcoes(null));
+  }, [ate, carregar, desde, filtros]);
 
   const buscarDetalhe = useCallback(
     (indicador: IndicadorPortaPallets, recorte: { mes?: string; desde: string; ate: string }) => {
-      const chave = `${indicador}|${recorte.mes ?? ''}|${recorte.desde}|${recorte.ate}`;
+      const chave = `${chaveFiltros(filtros)}|${indicador}|${recorte.mes ?? ''}|${recorte.desde}|${recorte.ate}`;
       const cached = detalheCacheRef.current.get(chave);
       if (cached) return Promise.resolve(cached);
-      return obterPortaPalletsDetalhe(indicador, recorte).then((data) => {
+      return obterPortaPalletsDetalhe(indicador, { ...recorte, ...filtrosQuery(filtros) }).then((data) => {
         detalheCacheRef.current.set(chave, data);
         return data;
       });
     },
-    []
+    [filtros]
   );
 
   const abrir = useCallback((alvo: ModalAlvo) => {
     setModal(alvo);
     setDetalheErro(null);
-    const chave = `${alvo.indicador}|${alvo.mes ?? ''}|${alvo.desde ?? desde}|${alvo.ate ?? ate}`;
+    const chave = `${chaveFiltros(filtros)}|${alvo.indicador}|${alvo.mes ?? ''}|${alvo.desde ?? desde}|${alvo.ate ?? ate}`;
     const cached = detalheCacheRef.current.get(chave);
     if (cached) {
       setDetalhe(cached);
@@ -190,7 +297,7 @@ export default function PortaPalletsComercialPage() {
       .finally(() => {
         if (detalheReqRef.current === req) setDetalheLoading(false);
       });
-  }, [ate, buscarDetalhe, desde]);
+  }, [ate, buscarDetalhe, desde, filtros]);
 
   const [modalMes, setModalMes] = useState<ModalMesAlvo | null>(null);
   const abrirMes = useCallback(
@@ -220,13 +327,13 @@ export default function PortaPalletsComercialPage() {
     setExportandoAuditoria(true);
     setErroAuditoria(null);
     try {
-      await exportarAuditoriaMensalXlsx(await obterPortaPalletsAuditoriaMensal({ desde, ate }));
+      await exportarAuditoriaMensalXlsx(await obterPortaPalletsAuditoriaMensal({ desde, ate, ...filtrosQuery(filtros) }));
     } catch (e) {
       setErroAuditoria(e instanceof Error ? e.message : 'Erro ao exportar a auditoria mensal.');
     } finally {
       setExportandoAuditoria(false);
     }
-  }, [ate, desde]);
+  }, [ate, desde, filtros]);
 
   const abrirPeriodo = (indicador: IndicadorPortaPallets, titulo: string, subtitulo: string) => {
     abrir({ indicador, desde, ate, titulo: `${titulo} · ${formatData(desde)} a ${formatData(ate)}`, subtitulo });
@@ -250,7 +357,7 @@ export default function PortaPalletsComercialPage() {
               Indicadores de porta-pallets
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Venda do grupo Porta Paletes — não é faturamento. Clique no número para ver a origem.
+              Venda da família 95 (Porta palete) e ramificações — não é faturamento. Clique no número para ver a origem.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -261,31 +368,126 @@ export default function PortaPalletsComercialPage() {
           </div>
         </header>
 
-        <div className={`flex flex-wrap items-end gap-3 px-4 py-3 ${panelSurface}`}>
-          <SeletorPeriodoDias
-            desde={draftDesde}
-            ate={draftAte}
-            min={DATA_MIN}
-            max={hoje()}
-            onChange={(ini, fim) => {
-              setDraftDesde(ini);
-              setDraftAte(fim);
-            }}
-          />
-          <button type="button" className={btnSecondary} onClick={() => aplicar(inicioMesHa(12), hoje())}>
-            12 meses
-          </button>
-          <button type="button" className={btnSecondary} onClick={() => aplicar(DATA_MIN, hoje())}>
-            Desde 2018
-          </button>
-          <button
-            type="button"
-            className={btnPrimary}
-            disabled={loading || !draftDesde || !draftAte || draftAte < draftDesde}
-            onClick={() => aplicar(draftDesde, draftAte)}
-          >
-            Filtrar
-          </button>
+        <div className={`space-y-3 px-4 py-3 ${panelSurface}`}>
+          <div className="flex flex-wrap items-end gap-3">
+            <SeletorPeriodoDias
+              desde={draftDesde}
+              ate={draftAte}
+              min={DATA_MIN}
+              max={hoje()}
+              onChange={(ini, fim) => {
+                setDraftDesde(ini);
+                setDraftAte(fim);
+              }}
+            />
+            <button type="button" className={btnSecondary} onClick={() => aplicar(inicioMesHa(12), hoje(), filtrosParaAplicar(draftFiltros))}>
+              12 meses
+            </button>
+            <button type="button" className={btnSecondary} onClick={() => aplicar(DATA_MIN, hoje(), filtrosParaAplicar(draftFiltros))}>
+              Desde 2018
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={loading || !draftDesde || !draftAte || draftAte < draftDesde}
+              onClick={() => aplicar(draftDesde, draftAte, filtrosParaAplicar(draftFiltros))}
+            >
+              Filtrar
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <MultiSelectWithSearch
+              label="Empresa"
+              placeholder="Todas"
+              options={(opcoes?.empresas ?? [{ id: 1, nome: 'Só Aço' }]).map((e) => String(e.id))}
+              labelByValue={empresasRotulo}
+              value={draftFiltros.empresas}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, empresas: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="empresas"
+              minWidth="180px"
+              optionsLoading={!opcoes}
+              dropdownPortal
+              dropdownZIndex={220}
+            />
+            <MultiSelectWithSearch
+              label="Vendedor / representante"
+              placeholder="Todos"
+              options={(opcoes?.vendedores ?? []).map((v) => v.nome)}
+              metricByValue={Object.fromEntries((opcoes?.vendedores ?? []).map((v) => [v.nome, v.valor]))}
+              formatMetric={(n) => formatMoeda(n)}
+              value={draftFiltros.vendedores}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, vendedores: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="vendedores"
+              valueSeparator="|"
+              minWidth="200px"
+              dropdownMinWidthPx={460}
+              optionsLoading={!opcoes}
+              dropdownPortal
+              dropdownZIndex={220}
+            />
+            <MultiSelectWithSearch
+              label="Subgrupo 1"
+              placeholder="Todos"
+              options={opcoes?.subgrupos ?? []}
+              value={draftFiltros.subgrupos}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, subgrupos: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="subgrupos"
+              valueSeparator="|"
+              minWidth="180px"
+              optionsLoading={!opcoes}
+              dropdownPortal
+              dropdownZIndex={220}
+            />
+            <MultiSelectWithSearch
+              label="UF"
+              placeholder="Todas"
+              options={opcoes?.ufs ?? []}
+              value={draftFiltros.ufs}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, ufs: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="UFs"
+              valueSeparator="|"
+              minWidth="110px"
+              optionsLoading={!opcoes}
+              dropdownPortal
+              dropdownZIndex={220}
+            />
+            <MultiSelectWithSearch
+              label="Cidade"
+              placeholder="Todas"
+              options={cidadesOpcoes}
+              value={draftFiltros.cidades}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, cidades: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              optionLabel="cidades"
+              valueSeparator="|"
+              minWidth="180px"
+              optionsLoading={!opcoes}
+              dropdownPortal
+              dropdownZIndex={220}
+            />
+            <FiltroArvoreFamilia
+              nos={opcoes?.familias ?? []}
+              value={draftFiltros.familias}
+              onChange={(v) => setDraftFiltros((f) => ({ ...f, familias: v }))}
+              labelClass={FILTRO_LABEL_CLASS}
+              inputClass={FILTRO_INPUT_CLASS}
+              carregando={!opcoes}
+            />
+          </div>
+          {(chaveFiltros(draftFiltros) !== chaveFiltros(filtros) || draftDesde !== desde || draftAte !== ate) && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              Filtros alterados — clique em Filtrar para atualizar.
+            </p>
+          )}
         </div>
 
         {erro && (

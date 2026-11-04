@@ -8,8 +8,7 @@ import type {
   MesPortaPallets,
 } from '../../api/portaPalletsComercial';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
-import GradePortaPallets, { type ColunaGrade } from './GradePortaPallets';
-import { formatData } from './portaPalletsComercialFormat';
+import { GradePedidosGeradosOrigem, GradePropostasOrigem } from './portaPalletsOrigemItens';
 
 export type AbaEvolucaoMes = 'propostas' | 'pedidos';
 
@@ -198,10 +197,8 @@ function ResumoPedidos({ rows, mes }: { rows: LinhaPedidoGerado[]; mes: MesPorta
 function TabelaMes({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; tituloExportacao: string }) {
   if (detalhe.indicador === 'propostas') {
     return (
-      <GradePortaPallets
+      <GradePropostasOrigem
         rows={detalhe.rows}
-        colunas={COLUNAS_PROPOSTAS_MES}
-        rowKey={(r) => r.idItem}
         defaultSortLevels={[{ id: 'valor', dir: 'desc' }]}
         tituloExportacao={tituloExportacao}
         compacta
@@ -210,10 +207,8 @@ function TabelaMes({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets
   }
   if (detalhe.indicador === 'pedidos_gerados') {
     return (
-      <GradePortaPallets
+      <GradePedidosGeradosOrigem
         rows={detalhe.rows}
-        colunas={COLUNAS_PEDIDOS_MES}
-        rowKey={(r) => r.idPedido}
         defaultSortLevels={[{ id: 'emissao', dir: 'asc' }]}
         tituloExportacao={tituloExportacao}
         compacta
@@ -222,49 +217,3 @@ function TabelaMes({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets
   }
   return null;
 }
-
-function cortado(texto: string, largura: string) {
-  return (
-    <span title={texto} className={`block truncate ${largura}`}>
-      {texto}
-    </span>
-  );
-}
-
-const dataTexto = (iso: string) => (iso ? formatData(iso) : '—');
-
-const COLUNAS_PROPOSTAS_MES: ColunaGrade<LinhaPropostaItem>[] = [
-  { id: 'proposta', label: 'Proposta', texto: (r) => r.codigoProposta },
-  { id: 'abertura', label: 'Abertura', tipo: 'data', texto: (r) => dataTexto(r.dataAbertura), valor: (r) => r.dataAbertura },
-  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente, render: (r) => cortado(r.cliente, 'max-w-[220px]') },
-  {
-    id: 'produto',
-    label: 'Produto',
-    texto: (r) => `${r.codigoProduto} - ${r.descricaoProduto}`,
-    render: (r) => cortado(`${r.codigoProduto} - ${r.descricaoProduto}`, 'max-w-[300px]'),
-  },
-  { id: 'valor', label: 'Valor', tipo: 'moeda', texto: (r) => formatMoeda(r.valor), valor: (r) => r.valor, total: true },
-  { id: 'status', label: 'Status', texto: (r) => r.statusLabel },
-  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigosPedido || '—' },
-  {
-    id: 'observacao',
-    label: 'Observação',
-    texto: (r) => r.observacaoProposta || '—',
-    render: (r) => cortado(r.observacaoProposta || '—', 'max-w-[260px]'),
-  },
-];
-
-const COLUNAS_PEDIDOS_MES: ColunaGrade<LinhaPedidoGerado>[] = [
-  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigoPedido },
-  { id: 'emissao', label: 'Emissão', tipo: 'data', texto: (r) => dataTexto(r.dataEmissao), valor: (r) => r.dataEmissao },
-  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente, render: (r) => cortado(r.cliente, 'max-w-[280px]') },
-  { id: 'origem', label: 'Proposta de origem', texto: (r) => r.propostasOrigem },
-  {
-    id: 'valor',
-    label: 'Valor vendido',
-    tipo: 'moeda',
-    texto: (r) => formatMoeda(r.valorVendido),
-    valor: (r) => r.valorVendido,
-    total: true,
-  },
-];

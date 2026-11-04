@@ -1,9 +1,11 @@
 import type { Request, Response } from 'express';
 import {
+  filtrosPortaPalletsDeQuery,
   obterPortaPalletsAuditoriaMensal,
   obterPortaPalletsDadosAbertos,
   obterPortaPalletsDetalhe,
   obterPortaPalletsMensal,
+  obterPortaPalletsOpcoes,
   type IndicadorPortaPallets,
 } from '../data/portaPalletsComercialRepository.js';
 
@@ -36,9 +38,20 @@ function recorteQuery(req: Request) {
   return { desde: strQuery(req, 'desde'), ate: strQuery(req, 'ate') };
 }
 
+function filtrosQuery(req: Request) {
+  return filtrosPortaPalletsDeQuery({
+    empresas: strQuery(req, 'empresas'),
+    vendedores: strQuery(req, 'vendedores'),
+    subgrupos: strQuery(req, 'subgrupos'),
+    ufs: strQuery(req, 'ufs'),
+    cidades: strQuery(req, 'cidades'),
+    familias: strQuery(req, 'familias'),
+  });
+}
+
 export async function getPortaPalletsMensal(req: Request, res: Response): Promise<void> {
   try {
-    const data = await obterPortaPalletsMensal(flagRefresh(req), recorteQuery(req));
+    const data = await obterPortaPalletsMensal(flagRefresh(req), recorteQuery(req), filtrosQuery(req));
     if (data.erro) {
       res.status(503).json({ error: data.erro });
       return;
@@ -62,7 +75,8 @@ export async function getPortaPalletsDetalhe(req: Request, res: Response): Promi
       mes,
       indicador as IndicadorPortaPallets,
       flagRefresh(req),
-      recorteQuery(req)
+      recorteQuery(req),
+      filtrosQuery(req)
     );
     if (data.erro) {
       res.status(503).json({ error: data.erro });
@@ -77,7 +91,7 @@ export async function getPortaPalletsDetalhe(req: Request, res: Response): Promi
 
 export async function getPortaPalletsAuditoriaMensal(req: Request, res: Response): Promise<void> {
   try {
-    const data = await obterPortaPalletsAuditoriaMensal(flagRefresh(req), recorteQuery(req));
+    const data = await obterPortaPalletsAuditoriaMensal(flagRefresh(req), recorteQuery(req), filtrosQuery(req));
     if (data.erro) {
       res.status(503).json({ error: data.erro });
       return;
@@ -89,9 +103,23 @@ export async function getPortaPalletsAuditoriaMensal(req: Request, res: Response
   }
 }
 
+export async function getPortaPalletsOpcoes(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await obterPortaPalletsOpcoes(flagRefresh(req), recorteQuery(req));
+    if (data.erro) {
+      res.status(503).json({ error: data.erro });
+      return;
+    }
+    res.json(data);
+  } catch (err) {
+    console.error('getPortaPalletsOpcoes', err);
+    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
+  }
+}
+
 export async function getPortaPalletsDadosAbertos(req: Request, res: Response): Promise<void> {
   try {
-    const data = await obterPortaPalletsDadosAbertos(flagRefresh(req));
+    const data = await obterPortaPalletsDadosAbertos(flagRefresh(req), filtrosQuery(req));
     if (data.erro) {
       res.status(503).json({ error: data.erro });
       return;

@@ -1,13 +1,18 @@
 /**
  * Indicadores comerciais de porta-pallets (venda, não faturamento).
  *
- * Grupo de produto Nomus "Porta Paletes" (id 64): acessórios e produto acabado.
+ * Família de produto 95 (Porta palete) e todas as ramificações: 95.1 a 95.6
+ * e os níveis abaixo (95.1.1, 95.4.11, …). O código da árvore é familiaproduto.classificacao.
  * Proposta e pedido saem do mesmo recorte, para a grade mensal e o detalhe baterem.
  */
 import { formatNomusErroConexao, isNomusEnabled, queryNomus } from '../config/nomusDb.js';
 
-const ID_GRUPO = 64;
-const ID_EMPRESA = 1;
+/** Família 95 e qualquer descendente (95.1, 95.4.11, …). Não pega 950 nem 96. */
+const SQL_FAMILIA_PORTA_PALETE = `(TRIM(fp.classificacao) = '95' OR TRIM(fp.classificacao) LIKE '95.%')`;
+const SQL_JOIN_FAMILIA = `JOIN familiaproduto fp ON fp.id = pr.idFamiliaProduto AND ${SQL_FAMILIA_PORTA_PALETE}`;
+/** Sem parâmetro de empresa, o painel continua na Só Aço. */
+const EMPRESA_PADRAO = 1;
+const SQL_EMPRESAS = '__EMPRESAS__';
 const ID_TIPO_PEDIDO_ESTOQUE = 5;
 const ID_ATRIBUTO_REQ_LOJA = 313;
 const MES_INICIO = '2018-01';
@@ -39,6 +44,13 @@ venda AS (
     ip.id AS idItem,
     CASE WHEN ip.idItemProposta IS NULL THEN 0 ELSE 1 END AS deProposta,
     prpv.nome AS codigoPropostaItem,
+    p.idEmpresa AS idEmpresa,
+    COALESCE(NULLIF(TRIM(emp.nomeFantasia), ''), NULLIF(TRIM(emp.nome), ''), 'Não informado') AS empresa,
+    COALESCE(NULLIF(TRIM(vr.nome), ''), 'Não informado') AS vendedor,
+    COALESCE(NULLIF(TRIM(alo1.opcao), ''), 'Não informado') AS subgrupo1,
+    COALESCE(NULLIF(TRIM(m.UF), ''), NULLIF(TRIM(pec.uf), ''), 'Não informado') AS uf,
+    COALESCE(NULLIF(TRIM(m.nome), ''), 'Não informado') AS cidade,
+    TRIM(fp.classificacao) AS classificacaoFamilia,
     pr.nome AS codigoProduto,
     pr.descricao AS descricaoProduto,
     ROUND(
@@ -52,13 +64,18 @@ venda AS (
   FROM itempedido ip
   JOIN pedido p ON p.id = ip.idPedido
   JOIN produto pr ON pr.id = ip.idProduto
+  ${SQL_JOIN_FAMILIA}
   LEFT JOIN pessoa pec ON pec.id = p.idCliente
   LEFT JOIN cadastro_pessoa cp ON cp.idPessoa = pec.id
+  LEFT JOIN pessoa vr ON vr.id = COALESCE(p.idVendedor, p.idRepresentante)
+  LEFT JOIN municipio m ON m.id = pec.idMunicipio
+  LEFT JOIN empresa emp ON emp.id = p.idEmpresa
+  LEFT JOIN atributoprodutovalor apv1 ON apv1.idProduto = pr.id AND apv1.idAtributo = 398
+  LEFT JOIN atributolistaopcao alo1 ON alo1.id = apv1.idListaOpcao
   LEFT JOIN movimento_liquido ml ON ml.idItemPedido = ip.id
   LEFT JOIN itemproposta ipv ON ipv.id = ip.idItemProposta
   LEFT JOIN proposta prpv ON prpv.id = ipv.idProposta
-  WHERE p.idEmpresa = ${ID_EMPRESA}
-    AND pr.idGrupoProduto = ${ID_GRUPO}
+  WHERE p.idEmpresa IN (${SQL_EMPRESAS})
     AND p.idTipoPedido <> ${ID_TIPO_PEDIDO_ESTOQUE}
     AND ip.status <> 6
     AND NOT EXISTS (
@@ -89,8 +106,8 @@ movimento_liquido AS (
   JOIN itempedido ip ON ip.id = ide.idItemPedidoVenda
   JOIN pedido p ON p.id = ip.idPedido
   JOIN produto pr ON pr.id = ip.idProduto
-  WHERE pr.idGrupoProduto = ${ID_GRUPO}
-    AND p.idEmpresa = ${ID_EMPRESA}
+  ${SQL_JOIN_FAMILIA}
+  WHERE p.idEmpresa IN (${SQL_EMPRESAS})
     AND p.idTipoPedido <> ${ID_TIPO_PEDIDO_ESTOQUE}
     AND NOT EXISTS (
       SELECT 1
@@ -106,14 +123,25 @@ SELECT DISTINCT
   ip.idProposta,
   ped.id AS idPedido,
   ped.nome AS codigoPedido,
-  DATE_FORMAT(ped.dataEmissao, '%Y-%m-%d') AS dataEmissao
+  DATE_FORMAT(ped.dataEmissao, '%Y-%m-%d') AS dataEmissao,
+  prp.idEmpresa AS idEmpresa,
+  COALESCE(NULLIF(TRIM(vr.nome), ''), 'Não informado') AS vendedor,
+  COALESCE(NULLIF(TRIM(alo1.opcao), ''), 'Não informado') AS subgrupo1,
+  COALESCE(NULLIF(TRIM(m.UF), ''), NULLIF(TRIM(pec.uf), ''), 'Não informado') AS uf,
+  COALESCE(NULLIF(TRIM(m.nome), ''), 'Não informado') AS cidade,
+  TRIM(fp.classificacao) AS classificacaoFamilia
 FROM itempedido ipe
 JOIN itemproposta ip ON ip.id = ipe.idItemProposta
 JOIN proposta prp ON prp.id = ip.idProposta
 JOIN produto pr ON pr.id = ip.idProduto
+${SQL_JOIN_FAMILIA}
 JOIN pedido ped ON ped.id = ipe.idPedido
-WHERE prp.idEmpresa = ${ID_EMPRESA}
-  AND pr.idGrupoProduto = ${ID_GRUPO}`;
+LEFT JOIN pessoa pec ON pec.id = prp.idCliente
+LEFT JOIN pessoa vr ON vr.id = COALESCE(prp.idVendedor, prp.idRepresentante)
+LEFT JOIN municipio m ON m.id = pec.idMunicipio
+LEFT JOIN atributoprodutovalor apv1 ON apv1.idProduto = pr.id AND apv1.idAtributo = 398
+LEFT JOIN atributolistaopcao alo1 ON alo1.id = apv1.idListaOpcao
+WHERE prp.idEmpresa IN (${SQL_EMPRESAS})`;
 
 const SQL_PROPOSTA = `
 pedido_do_item AS (
@@ -136,6 +164,13 @@ proposta_item AS (
     COALESCE(NULLIF(TRIM(pec.nomeRazaoSocial), ''), NULLIF(TRIM(pec.nome), ''), '—') AS cliente,
     COALESCE(CAST(pec.id AS CHAR), '') AS codigoCliente,
     ${SQL_DATA_CADASTRO} AS dataCadastroCliente,
+    prp.idEmpresa AS idEmpresa,
+    COALESCE(NULLIF(TRIM(emp.nomeFantasia), ''), NULLIF(TRIM(emp.nome), ''), 'Não informado') AS empresa,
+    COALESCE(NULLIF(TRIM(vr.nome), ''), 'Não informado') AS vendedor,
+    COALESCE(NULLIF(TRIM(alo1.opcao), ''), 'Não informado') AS subgrupo1,
+    COALESCE(NULLIF(TRIM(m.UF), ''), NULLIF(TRIM(pec.uf), ''), 'Não informado') AS uf,
+    COALESCE(NULLIF(TRIM(m.nome), ''), 'Não informado') AS cidade,
+    TRIM(fp.classificacao) AS classificacaoFamilia,
     ip.id AS idItem,
     pr.nome AS codigoProduto,
     pr.descricao AS descricaoProduto,
@@ -148,12 +183,17 @@ proposta_item AS (
   FROM itemproposta ip
   JOIN proposta prp ON prp.id = ip.idProposta
   JOIN produto pr ON pr.id = ip.idProduto
+  ${SQL_JOIN_FAMILIA}
   LEFT JOIN pessoa pec ON pec.id = prp.idCliente
   LEFT JOIN cadastro_pessoa cp ON cp.idPessoa = pec.id
+  LEFT JOIN pessoa vr ON vr.id = COALESCE(prp.idVendedor, prp.idRepresentante)
+  LEFT JOIN municipio m ON m.id = pec.idMunicipio
+  LEFT JOIN empresa emp ON emp.id = prp.idEmpresa
+  LEFT JOIN atributoprodutovalor apv1 ON apv1.idProduto = pr.id AND apv1.idAtributo = 398
+  LEFT JOIN atributolistaopcao alo1 ON alo1.id = apv1.idListaOpcao
   LEFT JOIN motivorejeicaoitemproposta mr ON mr.id = ip.idRejeicao
   LEFT JOIN pedido_do_item pd ON pd.idItemProposta = ip.id
-  WHERE prp.idEmpresa = ${ID_EMPRESA}
-    AND pr.idGrupoProduto = ${ID_GRUPO}
+  WHERE prp.idEmpresa IN (${SQL_EMPRESAS})
     AND prp.dataAbertura < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
 )`;
 
@@ -255,6 +295,13 @@ export interface VinculoPropostaPedido {
   dataEmissao: string;
 }
 
+export interface ItemPedidoGerado {
+  idItem: number;
+  codigoProduto: string;
+  descricaoProduto: string;
+  valorVendido: number;
+}
+
 export interface LinhaPedidoGerado {
   idPedido: number;
   codigoPedido: string;
@@ -264,6 +311,8 @@ export interface LinhaPedidoGerado {
   propostasOrigem: string;
   valorVendido: number;
   contaNaVenda: boolean;
+  /** Preenchido só no detalhe do funil, para o modal de itens. A soma é o valor vendido. */
+  itens?: ItemPedidoGerado[];
 }
 
 /** Diferença entre os pedidos do card Valor vendido (emitidos no recorte) e os do funil (gerados pelas propostas do recorte). */
@@ -349,16 +398,204 @@ export type DetalhePortaPallets =
     };
 
 type CacheBase = {
-  at: number;
   propostas: LinhaPropostaItem[];
   pedidos: LinhaPedidoItem[];
   vinculos: VinculoPropostaPedido[];
-  /** Primeiro pedido do cliente na empresa, de qualquer produto (ISO). */
+  /** Primeiro pedido do cliente nas empresas do filtro, de qualquer produto (ISO). */
   primeiroPedidoEmpresa: Map<number, string>;
 };
 
-let cache: CacheBase | null = null;
+type CacheBruto = {
+  at: number;
+  propostasRaw: Record<string, unknown>[];
+  pedidosRaw: Record<string, unknown>[];
+  vinculosRaw: Record<string, unknown>[];
+  /** Chave `idCliente:idEmpresa` → data do primeiro pedido nessa empresa. */
+  primeiroPorEmpresa: Map<string, string>;
+  familias: NoFamiliaPortaPalete[];
+};
+
+let cache: CacheBruto | null = null;
+let carregando: Promise<CacheBruto> | null = null;
 const CACHE_MS = 60_000;
+
+export interface NoFamiliaPortaPalete {
+  id: number;
+  classificacao: string;
+  nome: string;
+  filhos: NoFamiliaPortaPalete[];
+}
+
+export interface FiltrosPortaPallets {
+  /** null = todas as empresas que têm porta-palete. */
+  empresas: number[] | null;
+  vendedores: string[];
+  subgrupos: string[];
+  ufs: string[];
+  cidades: string[];
+  /** Códigos da árvore (95, 95.4, 95.4.11). Vazio = família 95 inteira. */
+  familias: string[];
+}
+
+export interface OpcaoEmpresaPortaPalete {
+  id: number;
+  nome: string;
+}
+
+export interface OpcaoCidadePortaPalete {
+  nome: string;
+  uf: string;
+}
+
+export interface OpcaoVendedorPortaPalete {
+  nome: string;
+  valor: number;
+}
+
+export interface OpcoesPortaPallets {
+  empresas: OpcaoEmpresaPortaPalete[];
+  vendedores: OpcaoVendedorPortaPalete[];
+  subgrupos: string[];
+  ufs: string[];
+  cidades: OpcaoCidadePortaPalete[];
+  familias: NoFamiliaPortaPalete[];
+  erro?: string;
+}
+
+const FILTROS_PADRAO: FiltrosPortaPallets = {
+  empresas: [EMPRESA_PADRAO],
+  vendedores: [],
+  subgrupos: [],
+  ufs: [],
+  cidades: [],
+  familias: [],
+};
+
+function listaPipe(v: string | undefined): string[] {
+  if (!v?.trim()) return [];
+  return v.split('|').map((s) => s.trim()).filter(Boolean);
+}
+
+/** Lê os filtros da query. Sem `empresas`, fica a Só Aço. `empresas=todas` tira o recorte. */
+export function filtrosPortaPalletsDeQuery(q: {
+  empresas?: string;
+  vendedores?: string;
+  subgrupos?: string;
+  ufs?: string;
+  cidades?: string;
+  familias?: string;
+}): FiltrosPortaPallets {
+  const emp = q.empresas?.trim();
+  let empresas: number[] | null;
+  if (emp == null || emp === '') empresas = [EMPRESA_PADRAO];
+  else if (emp === 'todas') empresas = null;
+  else {
+    const ids = [
+      ...new Set(
+        emp
+          .split(',')
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isInteger(n) && n > 0)
+      ),
+    ];
+    empresas = ids.length ? ids : [EMPRESA_PADRAO];
+  }
+  const familiasBrutas = listaPipe(q.familias);
+  const familias =
+    familiasBrutas.length === 1 && familiasBrutas[0] === 'nenhuma'
+      ? ['nenhuma']
+      : familiasBrutas.filter((c) => c === '95' || /^95\.\d+(\.\d+)*$/.test(c));
+  return {
+    empresas,
+    vendedores: listaPipe(q.vendedores),
+    subgrupos: listaPipe(q.subgrupos),
+    ufs: listaPipe(q.ufs),
+    cidades: listaPipe(q.cidades),
+    familias,
+  };
+}
+
+/** O item entra se o código é a raiz marcada ou um descendente (95.4 cobre 95.4.11; 95 não cobre 950). */
+export function familiaCobre(classificacao: string, raizes: string[]): boolean {
+  if (raizes.length === 0) return true;
+  const cod = classificacao.trim();
+  return raizes.some((r) => cod === r || cod.startsWith(`${r}.`));
+}
+
+export function compararClassificacaoFamilia(a: string, b: string): number {
+  const pa = a.split('.').map((p) => Number(p));
+  const pb = b.split('.').map((p) => Number(p));
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pa[i] ?? -1) - (pb[i] ?? -1);
+    if (d) return d;
+  }
+  return 0;
+}
+
+export function montarArvoreFamilia(
+  rows: { id: number; classificacao: string; nome: string }[]
+): NoFamiliaPortaPalete[] {
+  const nos = rows.map((r) => ({
+    id: r.id,
+    classificacao: r.classificacao.trim(),
+    nome: r.nome.trim(),
+    filhos: [] as NoFamiliaPortaPalete[],
+  }));
+  const porCodigo = new Map(nos.map((n) => [n.classificacao, n]));
+  const raizes: NoFamiliaPortaPalete[] = [];
+  for (const n of nos) {
+    const ponto = n.classificacao.lastIndexOf('.');
+    const pai = ponto > 0 ? porCodigo.get(n.classificacao.slice(0, ponto)) : undefined;
+    if (pai) pai.filhos.push(n);
+    else raizes.push(n);
+  }
+  const ordenar = (lista: NoFamiliaPortaPalete[]) => {
+    lista.sort((a, b) => compararClassificacaoFamilia(a.classificacao, b.classificacao));
+    for (const n of lista) ordenar(n.filhos);
+  };
+  ordenar(raizes);
+  return raizes;
+}
+
+function passaFiltro(row: Record<string, unknown>, filtros: FiltrosPortaPallets): boolean {
+  if (filtros.empresas && !filtros.empresas.includes(num(row.idEmpresa))) return false;
+  if (filtros.vendedores.length && !filtros.vendedores.includes(str(row.vendedor))) return false;
+  if (filtros.subgrupos.length && !filtros.subgrupos.includes(str(row.subgrupo1))) return false;
+  if (filtros.ufs.length && !filtros.ufs.includes(str(row.uf))) return false;
+  if (filtros.cidades.length && !filtros.cidades.includes(str(row.cidade))) return false;
+  if (!familiaCobre(str(row.classificacaoFamilia), filtros.familias)) return false;
+  return true;
+}
+
+function mapaPrimeiro(porEmpresa: Map<string, string>, empresas: number[] | null): Map<number, string> {
+  const out = new Map<number, string>();
+  const permitidas = empresas ? new Set(empresas) : null;
+  for (const [chave, data] of porEmpresa) {
+    const sep = chave.indexOf(':');
+    const id = Number(chave.slice(0, sep));
+    const emp = Number(chave.slice(sep + 1));
+    if (!data || !Number.isInteger(id) || (permitidas && !permitidas.has(emp))) continue;
+    const atual = out.get(id);
+    if (!atual || data < atual) out.set(id, data);
+  }
+  return out;
+}
+
+function materializar(bruto: CacheBruto, filtros: FiltrosPortaPallets): CacheBase {
+  const propostasRaw = bruto.propostasRaw.filter((r) => passaFiltro(r, filtros));
+  const pedidosRaw = bruto.pedidosRaw.filter((r) => passaFiltro(r, filtros));
+  const vinculosRaw = bruto.vinculosRaw.filter((r) => passaFiltro(r, filtros));
+  const primeiroPedidoEmpresa = mapaPrimeiro(bruto.primeiroPorEmpresa, filtros.empresas);
+  const pedidos = enriquecerPedidos(pedidosRaw, primeiroPedidoEmpresa);
+  const vinculos = vinculosValidos(vinculosRaw, pedidos);
+  return {
+    propostas: enriquecerPropostas(propostasSoComPedidosValidos(propostasRaw, vinculos)),
+    pedidos,
+    vinculos,
+    primeiroPedidoEmpresa,
+  };
+}
 
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v);
@@ -586,47 +823,183 @@ function propostasSoComPedidosValidos(
   });
 }
 
-async function carregarBase(refresh: boolean): Promise<CacheBase> {
+function sqlEmpresas(ids: number[]): string {
+  const limpos = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  return (limpos.length ? limpos : [EMPRESA_PADRAO]).join(',');
+}
+
+function aplicarEmpresas(sql: string, ids: number[]): string {
+  return sql.replaceAll(SQL_EMPRESAS, sqlEmpresas(ids));
+}
+
+async function idsEmpresasPortaPalete(): Promise<number[]> {
+  const [rows] = await queryNomus<Record<string, unknown>[]>(
+    `SELECT DISTINCT idEmpresa FROM (
+       SELECT p.idEmpresa AS idEmpresa
+       FROM itempedido ip
+       JOIN pedido p ON p.id = ip.idPedido
+       JOIN produto pr ON pr.id = ip.idProduto
+       ${SQL_JOIN_FAMILIA}
+       UNION
+       SELECT prp.idEmpresa AS idEmpresa
+       FROM itemproposta ip
+       JOIN proposta prp ON prp.id = ip.idProposta
+       JOIN produto pr ON pr.id = ip.idProduto
+       ${SQL_JOIN_FAMILIA}
+     ) e
+     WHERE idEmpresa IS NOT NULL`
+  );
+  const ids = [...new Set(rows.map((r) => num(r.idEmpresa)).filter((id) => id > 0))];
+  return ids.length ? ids : [EMPRESA_PADRAO];
+}
+
+async function carregarBase(refresh: boolean): Promise<CacheBruto> {
   if (!refresh && cache && Date.now() - cache.at < CACHE_MS) return cache;
+  if (!refresh && carregando) return carregando;
   if (!isNomusEnabled()) throw new Error('NOMUS_DB_URL não configurado');
 
-  const [propostasRaw] = await queryNomus<Record<string, unknown>[]>(
-    `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_PROPOSTA}
-     SELECT idItem, idProposta, codigoProposta, dataAbertura, mes, idCliente, cliente, codigoCliente, dataCadastroCliente,
-            codigoProduto, descricaoProduto,
-            valor, statusItem, motivoRejeicao, observacaoProposta, codigosPedido, dataPrimeiroPedido
-     FROM proposta_item`
-  );
-  const [pedidosRaw] = await queryNomus<Record<string, unknown>[]>(
-    `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_MOVIMENTO}, ${SQL_VENDA}
-     SELECT idItem, idPedido, codigoPedido, dataEmissao, mes, idCliente, cliente, codigoCliente, dataCadastroCliente, deProposta,
-            codigoPropostaItem,
-            codigoProduto, descricaoProduto, valorVendido
-     FROM venda`
-  );
-  const [vinculosRaw] = await queryNomus<Record<string, unknown>[]>(SQL_VINCULO_PROPOSTA_PEDIDO);
-  const [primeiroPedidoRaw] = await queryNomus<Record<string, unknown>[]>(
-    `SELECT p.idCliente, DATE_FORMAT(MIN(p.dataEmissao), '%Y-%m-%d') AS primeiroPedido
-     FROM pedido p
-     WHERE p.idEmpresa = ${ID_EMPRESA}
-       AND p.idCliente IS NOT NULL
-       AND p.idTipoPedido <> ${ID_TIPO_PEDIDO_ESTOQUE}
-       AND EXISTS (SELECT 1 FROM itempedido ip WHERE ip.idPedido = p.id AND ip.status <> 6)
-     GROUP BY p.idCliente`
-  );
-  const primeiroPedidoEmpresa = new Map(
-    primeiroPedidoRaw.map((row) => [num(row.idCliente), str(row.primeiroPedido)] as const)
-  );
-  const pedidos = enriquecerPedidos(pedidosRaw, primeiroPedidoEmpresa);
-  const vinculos = vinculosValidos(vinculosRaw, pedidos);
-  cache = {
-    at: Date.now(),
-    primeiroPedidoEmpresa,
-    propostas: enriquecerPropostas(propostasSoComPedidosValidos(propostasRaw, vinculos)),
-    pedidos,
-    vinculos,
-  };
-  return cache;
+  const promessa = (async () => {
+    const empresas = await idsEmpresasPortaPalete();
+    const com = (sql: string) => aplicarEmpresas(sql, empresas);
+    const [propostasRaw] = await queryNomus<Record<string, unknown>[]>(
+      com(
+        `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_PROPOSTA}
+         SELECT idItem, idProposta, codigoProposta, dataAbertura, mes, idCliente, cliente, codigoCliente, dataCadastroCliente,
+                idEmpresa, empresa, vendedor, subgrupo1, uf, cidade, classificacaoFamilia,
+                codigoProduto, descricaoProduto,
+                valor, statusItem, motivoRejeicao, observacaoProposta, codigosPedido, dataPrimeiroPedido
+         FROM proposta_item`
+      )
+    );
+    const [pedidosRaw] = await queryNomus<Record<string, unknown>[]>(
+      com(
+        `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_MOVIMENTO}, ${SQL_VENDA}
+         SELECT idItem, idPedido, codigoPedido, dataEmissao, mes, idCliente, cliente, codigoCliente, dataCadastroCliente, deProposta,
+                codigoPropostaItem,
+                idEmpresa, empresa, vendedor, subgrupo1, uf, cidade, classificacaoFamilia,
+                codigoProduto, descricaoProduto, valorVendido
+         FROM venda`
+      )
+    );
+    const [vinculosRaw] = await queryNomus<Record<string, unknown>[]>(com(SQL_VINCULO_PROPOSTA_PEDIDO));
+    const [primeiroPedidoRaw] = await queryNomus<Record<string, unknown>[]>(
+      com(
+        `SELECT p.idCliente, p.idEmpresa, DATE_FORMAT(MIN(p.dataEmissao), '%Y-%m-%d') AS primeiroPedido
+         FROM pedido p
+         WHERE p.idEmpresa IN (${SQL_EMPRESAS})
+           AND p.idCliente IS NOT NULL
+           AND p.idTipoPedido <> ${ID_TIPO_PEDIDO_ESTOQUE}
+           AND EXISTS (SELECT 1 FROM itempedido ip WHERE ip.idPedido = p.id AND ip.status <> 6)
+         GROUP BY p.idCliente, p.idEmpresa`
+      )
+    );
+    const [familiasRaw] = await queryNomus<Record<string, unknown>[]>(
+      `SELECT id, TRIM(classificacao) AS classificacao, nome
+       FROM familiaproduto
+       WHERE TRIM(classificacao) = '95' OR TRIM(classificacao) LIKE '95.%'`
+    );
+    const primeiroPorEmpresa = new Map<string, string>();
+    for (const row of primeiroPedidoRaw) {
+      const id = num(row.idCliente);
+      const emp = num(row.idEmpresa);
+      const data = str(row.primeiroPedido);
+      if (id > 0 && emp > 0 && data) primeiroPorEmpresa.set(`${id}:${emp}`, data);
+    }
+    cache = {
+      at: Date.now(),
+      propostasRaw,
+      pedidosRaw,
+      vinculosRaw,
+      primeiroPorEmpresa,
+      familias: montarArvoreFamilia(
+        familiasRaw.map((row) => ({
+          id: num(row.id),
+          classificacao: str(row.classificacao),
+          nome: str(row.nome),
+        }))
+      ),
+    };
+    return cache;
+  })();
+
+  if (!refresh) carregando = promessa;
+  try {
+    return await promessa;
+  } finally {
+    if (carregando === promessa) carregando = null;
+  }
+}
+
+async function baseFiltrada(refresh: boolean, filtros?: FiltrosPortaPallets): Promise<CacheBase> {
+  return materializar(await carregarBase(refresh), filtros ?? FILTROS_PADRAO);
+}
+
+/** Soma o valor vendido de cada pessoa no período e ordena do maior para o menor. */
+function vendedoresPorValor(rows: Record<string, unknown>[]): OpcaoVendedorPortaPalete[] {
+  const soma = new Map<string, number>();
+  for (const row of rows) {
+    const nome = str(row.vendedor);
+    if (!nome || nome === 'Não informado') continue;
+    soma.set(nome, (soma.get(nome) ?? 0) + num(row.valorVendido));
+  }
+  return [...soma.entries()]
+    .map(([nome, valor]) => ({ nome, valor: round2(valor) }))
+    .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+function distintos(rows: Record<string, unknown>[], campo: string): string[] {
+  const set = new Set<string>();
+  for (const row of rows) {
+    const v = str(row[campo]);
+    if (v) set.add(v);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+export async function obterPortaPalletsOpcoes(
+  refresh = false,
+  recorte?: RecortePortaPallets
+): Promise<OpcoesPortaPallets> {
+  try {
+    const bruto = await carregarBase(refresh);
+    const { desde, ate } = recorteEfetivo(recorte);
+    const pedidosNoPeriodo = bruto.pedidosRaw.filter((row) => dataNoRecorte(str(row.dataEmissao), desde, ate));
+    const linhas = [...bruto.propostasRaw, ...bruto.pedidosRaw];
+    const empresas = new Map<number, string>();
+    for (const row of linhas) {
+      const id = num(row.idEmpresa);
+      if (id > 0 && !empresas.has(id)) empresas.set(id, str(row.empresa) || `Empresa ${id}`);
+    }
+    const cidades = new Map<string, OpcaoCidadePortaPalete>();
+    for (const row of linhas) {
+      const nome = str(row.cidade);
+      if (!nome) continue;
+      const uf = str(row.uf);
+      cidades.set(`${uf}\0${nome}`, { nome, uf });
+    }
+    return {
+      empresas: [...empresas.entries()]
+        .map(([id, nome]) => ({ id, nome }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.id - b.id),
+      vendedores: vendedoresPorValor(pedidosNoPeriodo),
+      subgrupos: distintos(linhas, 'subgrupo1'),
+      ufs: distintos(linhas, 'uf'),
+      cidades: [...cidades.values()].sort(
+        (a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.uf.localeCompare(b.uf, 'pt-BR')
+      ),
+      familias: bruto.familias,
+    };
+  } catch (err) {
+    return {
+      empresas: [],
+      vendedores: [],
+      subgrupos: [],
+      ufs: [],
+      cidades: [],
+      familias: [],
+      erro: formatNomusErroConexao(err),
+    };
+  }
 }
 
 function vazio(mes: string): MesPortaPallets {
@@ -945,7 +1318,9 @@ export function pedidosGeradosPelasPropostas(
   pedidos: LinhaPedidoItem[],
   vinculos: VinculoPropostaPedido[],
   desde: string,
-  ate: string
+  ate: string,
+  /** Inclui os itens de porta-pallet. A soma deles é o valor vendido da linha. */
+  comItens = false
 ): LinhaPedidoGerado[] {
   const propostasRecorte = new Map<number, { codigo: string; cliente: string; codigoCliente: string }>();
   for (const item of propostas) {
@@ -956,8 +1331,17 @@ export function pedidosGeradosPelasPropostas(
       codigoCliente: item.codigoCliente,
     });
   }
-  const valorPorPedido = new Map<number, number>();
-  for (const item of pedidos) valorPorPedido.set(item.idPedido, (valorPorPedido.get(item.idPedido) ?? 0) + item.valorVendido);
+  const itensPorPedido = new Map<number, ItemPedidoGerado[]>();
+  for (const item of pedidos) {
+    const lista = itensPorPedido.get(item.idPedido) ?? [];
+    lista.push({
+      idItem: item.idItem,
+      codigoProduto: item.codigoProduto,
+      descricaoProduto: item.descricaoProduto,
+      valorVendido: item.valorVendido,
+    });
+    itensPorPedido.set(item.idPedido, lista);
+  }
 
   const porPedido = new Map<number, LinhaPedidoGerado & { origens: Set<string> }>();
   for (const v of vinculos) {
@@ -970,9 +1354,16 @@ export function pedidosGeradosPelasPropostas(
       cliente: origem.cliente,
       codigoCliente: origem.codigoCliente,
       propostasOrigem: '',
-      valorVendido: round2(valorPorPedido.get(v.idPedido) ?? 0),
-      contaNaVenda: valorPorPedido.has(v.idPedido),
+      valorVendido: round2((itensPorPedido.get(v.idPedido) ?? []).reduce((s, i) => s + i.valorVendido, 0)),
+      contaNaVenda: itensPorPedido.has(v.idPedido),
       origens: new Set<string>(),
+      ...(comItens
+        ? {
+            itens: [...(itensPorPedido.get(v.idPedido) ?? [])].sort(
+              (a, b) => a.codigoProduto.localeCompare(b.codigoProduto, 'pt-BR') || a.idItem - b.idItem
+            ),
+          }
+        : {}),
     };
     atual.origens.add(origem.codigo);
     porPedido.set(v.idPedido, atual);
@@ -1151,11 +1542,12 @@ export interface AuditoriaMensalPortaPallets {
 /** Linhas de cada mês da Auditoria mensal, com as mesmas funções dos modais de cada célula. */
 export async function obterPortaPalletsAuditoriaMensal(
   refresh = false,
-  recorte?: RecortePortaPallets
+  recorte?: RecortePortaPallets,
+  filtros?: FiltrosPortaPallets
 ): Promise<AuditoriaMensalPortaPallets> {
   const { desde, ate } = recorteEfetivo(recorte);
   try {
-    const base = await carregarBase(refresh);
+    const base = await baseFiltrada(refresh, filtros);
     const { meses, totais } = montarMensal(base, desde, ate);
     const ordem = [...meses].sort((a, b) => b.mes.localeCompare(a.mes)).map((m) => m.mes);
     const clientesFunil = new Map(
@@ -1200,11 +1592,12 @@ export async function obterPortaPalletsAuditoriaMensal(
 
 export async function obterPortaPalletsMensal(
   refresh = false,
-  recorte?: RecortePortaPallets
+  recorte?: RecortePortaPallets,
+  filtros?: FiltrosPortaPallets
 ): Promise<PortaPalletsMensal> {
   const { desde, ate } = recorteEfetivo(recorte);
   try {
-    const base = await carregarBase(refresh);
+    const base = await baseFiltrada(refresh, filtros);
     const antDesde = menosUmAno(desde);
     const antAte = menosUmAno(ate);
     const anoAnterior =
@@ -1215,11 +1608,11 @@ export async function obterPortaPalletsMensal(
             ate: antAte,
             meses: montarMensal(base, antDesde < DATA_INICIO ? DATA_INICIO : antDesde, antAte).meses,
           };
-    return { grupo: 'Porta Paletes', desde, ate, ...montarMensal(base, desde, ate), anoAnterior };
+    return { grupo: 'Família 95 — Porta palete', desde, ate, ...montarMensal(base, desde, ate), anoAnterior };
   } catch (err) {
     const vazioTotal = fecharMes(vazio('total'), 0, 0);
     return {
-      grupo: 'Porta Paletes',
+      grupo: 'Família 95 — Porta palete',
       desde,
       ate,
       meses: [],
@@ -1235,7 +1628,8 @@ export async function obterPortaPalletsDetalhe(
   mes: string,
   indicador: IndicadorPortaPallets,
   refresh = false,
-  recorte?: RecortePortaPallets
+  recorte?: RecortePortaPallets,
+  filtros?: FiltrosPortaPallets
 ): Promise<DetalhePortaPallets & { erro?: string }> {
   const unico = mesValido(mes) ? mes : '';
   const temRecorte = [recorte?.desde, recorte?.ate].some((v) => mesValido(v) || dataValida(v));
@@ -1249,7 +1643,7 @@ export async function obterPortaPalletsDetalhe(
       : { desde: unico, ate: unico }
     : efetivo;
   try {
-    const base = await carregarBase(refresh);
+    const base = await baseFiltrada(refresh, filtros);
     if (indicador === 'propostas') {
       return { indicador, rows: base.propostas.filter((r) => dataNoRecorte(r.dataAbertura, desde, ate)) };
     }
@@ -1257,7 +1651,10 @@ export async function obterPortaPalletsDetalhe(
       return { indicador, rows: pedidosDoRecorte(base.pedidos, desde, ate) };
     }
     if (indicador === 'pedidos_gerados') {
-      return { indicador, rows: pedidosGeradosPelasPropostas(base.propostas, base.pedidos, base.vinculos, desde, ate) };
+      return {
+        indicador,
+        rows: pedidosGeradosPelasPropostas(base.propostas, base.pedidos, base.vinculos, desde, ate, true),
+      };
     }
     if (indicador === 'clientes' || indicador === 'primeira') {
       return {
@@ -1293,13 +1690,16 @@ export async function obterPortaPalletsDetalhe(
   }
 }
 
-export async function obterPortaPalletsDadosAbertos(refresh = false): Promise<{
+export async function obterPortaPalletsDadosAbertos(
+  refresh = false,
+  filtros?: FiltrosPortaPallets
+): Promise<{
   propostas: LinhaPropostaItem[];
   pedidos: LinhaPedidoItem[];
   erro?: string;
 }> {
   try {
-    const base = await carregarBase(refresh);
+    const base = await baseFiltrada(refresh, filtros);
     const ate = mesAtual();
     return {
       propostas: base.propostas.filter((r) => r.mes >= MES_INICIO && r.mes <= ate),

@@ -45,6 +45,9 @@ export interface MultiSelectWithSearchProps {
   onSearchAsync?: (term: string) => Promise<string[]>;
   /** Lista ainda carregando no servidor (ex.: opções de filtro). */
   optionsLoading?: boolean;
+  /** Valor numérico por opção, na mesma ordem de grandeza. Desenha uma barra proporcional e o valor formatado. */
+  metricByValue?: Record<string, number>;
+  formatMetric?: (valor: number) => string;
   /** Renderiza o dropdown em portal com posição fixa — evita corte por container com rolagem (modais). */
   dropdownPortal?: boolean;
 }
@@ -72,6 +75,8 @@ export default function MultiSelectWithSearch({
   onSearchAsync,
   optionsLoading = false,
   dropdownPortal = false,
+  metricByValue,
+  formatMetric,
 }: MultiSelectWithSearchProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -94,6 +99,13 @@ export default function MultiSelectWithSearch({
   }, [labelByValue]);
 
   const buscaInsuficiente = minSearchChars > 0 && search.trim().length < minSearchChars;
+
+  const maxMetrica = useMemo(() => {
+    if (!metricByValue) return 0;
+    let maior = 0;
+    for (const opt of options) maior = Math.max(maior, metricByValue[opt] ?? 0);
+    return maior;
+  }, [metricByValue, options]);
 
   const filteredOptions = useMemo(() => {
     if (onSearchAsync) {
@@ -279,19 +291,33 @@ export default function MultiSelectWithSearch({
         ) : !asyncLoading && !optionsLoading ? (
           filteredOptions.map((opt) => {
             const texto = displayFor(opt);
+            const metrica = metricByValue?.[opt];
+            const temMetrica = metrica != null && Number.isFinite(metrica);
+            const pct = temMetrica && maxMetrica > 0 ? Math.max(0, Math.min(100, (Math.max(0, metrica) / maxMetrica) * 100)) : 0;
+            const valorTexto = temMetrica && formatMetric ? formatMetric(metrica) : '';
             return (
               <label
                 key={opt}
-                className="flex min-w-0 cursor-pointer items-start gap-2 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-600"
-                title={texto}
+                className="flex min-w-0 cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-600"
+                title={valorTexto ? `${texto} · ${valorTexto}` : texto}
               >
                 <input
                   type="checkbox"
                   checked={selected.includes(opt)}
                   onChange={() => toggle(opt)}
-                  className="mt-0.5 shrink-0 rounded border-slate-400 text-primary-600 focus:ring-primary-500"
+                  className="shrink-0 rounded border-slate-400 text-primary-600 focus:ring-primary-500"
                 />
                 <span className="min-w-0 flex-1 line-clamp-2 break-words leading-snug">{texto}</span>
+                {temMetrica ? (
+                  <>
+                    <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-600" aria-hidden>
+                      <span className="block h-full rounded-full bg-[#1E22AA] dark:bg-[#C5C9EF]" style={{ width: `${pct}%` }} />
+                    </span>
+                    <span className="w-[6.5rem] shrink-0 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
+                      {valorTexto}
+                    </span>
+                  </>
+                ) : null}
               </label>
             );
           })

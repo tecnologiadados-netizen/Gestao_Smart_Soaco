@@ -13,6 +13,13 @@ export type IndicadorPortaPallets =
   | 'clientes_novos'
   | 'novos_com_pedido';
 
+export interface ItemPedidoGerado {
+  idItem: number;
+  codigoProduto: string;
+  descricaoProduto: string;
+  valorVendido: number;
+}
+
 export interface LinhaPedidoGerado {
   idPedido: number;
   codigoPedido: string;
@@ -22,6 +29,8 @@ export interface LinhaPedidoGerado {
   propostasOrigem: string;
   valorVendido: number;
   contaNaVenda: boolean;
+  /** Itens de porta-pallet do pedido. A soma é o valor vendido. */
+  itens?: ItemPedidoGerado[];
 }
 
 export interface ConciliacaoPedidos {
@@ -181,10 +190,34 @@ export interface AuditoriaMensalPortaPallets {
   clientes: Array<LinhaClienteMes & { mes: string; primeiraCompra: boolean }>;
 }
 
+export interface NoFamiliaPortaPalete {
+  id: number;
+  classificacao: string;
+  nome: string;
+  filhos: NoFamiliaPortaPalete[];
+}
+
+export interface OpcoesPortaPallets {
+  empresas: { id: number; nome: string }[];
+  vendedores: { nome: string; valor: number }[];
+  subgrupos: string[];
+  ufs: string[];
+  cidades: { nome: string; uf: string }[];
+  familias: NoFamiliaPortaPalete[];
+}
+
 export type RecortePortaPallets = {
   desde?: string;
   ate?: string;
   refresh?: boolean;
+  /** Ids separados por vírgula, ou `todas`. */
+  empresas?: string;
+  /** Listas separadas por `|`. Família: códigos da árvore (`95.4|95.1`) ou `nenhuma`. */
+  vendedores?: string;
+  subgrupos?: string;
+  ufs?: string;
+  cidades?: string;
+  familias?: string;
 };
 
 function qs(params: RecortePortaPallets & { indicador?: string; mes?: string }): string {
@@ -199,6 +232,10 @@ function qs(params: RecortePortaPallets & { indicador?: string; mes?: string }):
   }
   const s = sp.toString();
   return s ? `?${s}` : '';
+}
+
+export function obterPortaPalletsOpcoes(recorte: RecortePortaPallets = {}): Promise<OpcoesPortaPallets> {
+  return apiJson<OpcoesPortaPallets>(`/api/comercial/porta-pallets/opcoes${qs(recorte)}`);
 }
 
 export function obterPortaPalletsMensal(recorte: RecortePortaPallets = {}): Promise<PortaPalletsMensal> {

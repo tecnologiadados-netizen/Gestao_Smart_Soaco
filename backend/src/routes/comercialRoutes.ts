@@ -32,6 +32,7 @@ import {
   getPortaPalletsDadosAbertos,
   getPortaPalletsDetalhe,
   getPortaPalletsMensal,
+  getPortaPalletsOpcoes,
 } from '../controllers/portaPalletsComercialController.js';
 
 const router = Router();
@@ -53,6 +54,7 @@ router.get('/historico-vendas/serie-fatia', verHistoricoVendas, getHistoricoVend
 
 router.get('/rfv/analytics', verRfvClientes, getRfvClientesAnalytics);
 
+router.get('/porta-pallets/opcoes', verPortaPallets, getPortaPalletsOpcoes);
 router.get('/porta-pallets/mensal', verPortaPallets, getPortaPalletsMensal);
 router.get('/porta-pallets/detalhe', verPortaPallets, getPortaPalletsDetalhe);
 router.get('/porta-pallets/dados-abertos', verPortaPallets, getPortaPalletsDadosAbertos);

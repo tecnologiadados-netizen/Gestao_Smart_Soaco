@@ -2,13 +2,12 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { DetalhePortaPallets } from '../../api/portaPalletsComercial';
 import GradePortaPallets from './GradePortaPallets';
+import { GradePedidosGeradosOrigem, GradePropostasOrigem } from './portaPalletsOrigemItens';
 import {
   COLUNAS_CLIENTES_FUNIL,
   COLUNAS_CLIENTES_MES,
   COLUNAS_CONVERSAO,
   COLUNAS_PEDIDOS,
-  COLUNAS_PEDIDOS_GERADOS,
-  COLUNAS_PROPOSTAS,
 } from './portaPalletsColunasGrade';
 
 type Props = {
@@ -90,10 +89,8 @@ function Tabela({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; t
   switch (detalhe.indicador) {
     case 'propostas':
       return (
-        <GradePortaPallets
+        <GradePropostasOrigem
           rows={detalhe.rows}
-          colunas={COLUNAS_PROPOSTAS}
-          rowKey={(r) => r.idItem}
           defaultSortLevels={[{ id: 'abertura', dir: 'asc' }]}
           tituloExportacao={tituloExportacao}
         />
@@ -110,10 +107,8 @@ function Tabela({ detalhe, tituloExportacao }: { detalhe: DetalhePortaPallets; t
       );
     case 'pedidos_gerados':
       return (
-        <GradePortaPallets
+        <GradePedidosGeradosOrigem
           rows={detalhe.rows}
-          colunas={COLUNAS_PEDIDOS_GERADOS}
-          rowKey={(r) => r.idPedido}
           defaultSortLevels={[{ id: 'emissao', dir: 'asc' }]}
           tituloExportacao={tituloExportacao}
         />

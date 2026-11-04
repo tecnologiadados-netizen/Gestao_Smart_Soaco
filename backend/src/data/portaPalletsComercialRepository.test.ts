@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   agregarMeses,
   clienteNovo,
+  familiaCobre,
+  filtrosPortaPalletsDeQuery,
+  montarArvoreFamilia,
   montarFunil,
+  pedidosGeradosPelasPropostas,
   type LinhaPedidoItem,
   type LinhaPropostaItem,
 } from './portaPalletsComercialRepository.js';
@@ -153,6 +157,15 @@ describe('agregarMeses porta-pallets', () => {
     expect(funil.clientesComPedido).toBe(2);
     expect(funil.clientesNovos).toBe(2);
     expect(funil.novosComPedido).toBe(1);
+    const gerados = pedidosGeradosPelasPropostas(propostas, pedidos, vinculos, '2024-01', '2024-01', true);
+    const pd10 = gerados.find((g) => g.idPedido === 10);
+    expect(pd10?.itens).toEqual([
+      { idItem: 10, codigoProduto: 'P1', descricaoProduto: 'Longarina', valorVendido: 100 },
+    ]);
+    expect(pd10?.valorVendido).toBe(pd10?.itens?.reduce((s, i) => s + i.valorVendido, 0));
+    const semItem = gerados.find((g) => g.idPedido === 13);
+    expect(semItem?.itens).toEqual([]);
+    expect(semItem?.valorVendido).toBe(0);
     expect(funil.conciliacao).toEqual({
       pedidosCard: 3,
       pedidosFunil: 3,
@@ -161,5 +174,40 @@ describe('agregarMeses porta-pallets', () => {
       geradosForaDaVenda: 0,
       geradosForaDoPeriodo: 1,
     });
+  });
+});
+
+describe('família 95', () => {
+  it('cobre o ramo e não confunde prefixo', () => {
+    expect(familiaCobre('95.4.11', [])).toBe(true);
+    expect(familiaCobre('95.4.11', ['95'])).toBe(true);
+    expect(familiaCobre('95.4.11', ['95.4'])).toBe(true);
+    expect(familiaCobre('95.4.11', ['95.4.11'])).toBe(true);
+    expect(familiaCobre('95.5.1', ['95.4'])).toBe(false);
+    expect(familiaCobre('950', ['95'])).toBe(false);
+    expect(familiaCobre('95.1', ['nenhuma'])).toBe(false);
+  });
+
+  it('monta a árvore pelo código, com 95.4.2 antes de 95.4.10', () => {
+    const [raiz] = montarArvoreFamilia([
+      { id: 1, classificacao: '95', nome: 'PORTA PALETE' },
+      { id: 2, classificacao: '95.4', nome: 'COMPONENTE' },
+      { id: 3, classificacao: '95.4.10', nome: 'PLANO' },
+      { id: 4, classificacao: '95.4.2', nome: 'LONGARINA' },
+      { id: 5, classificacao: '95.1', nome: 'INDUSTRIAL' },
+    ]);
+    expect(raiz?.classificacao).toBe('95');
+    expect(raiz?.filhos.map((f) => f.classificacao)).toEqual(['95.1', '95.4']);
+    expect(raiz?.filhos[1]?.filhos.map((f) => f.classificacao)).toEqual(['95.4.2', '95.4.10']);
+  });
+
+  it('sem empresas na query fica na Só Aço; todas abre; família inválida sai', () => {
+    expect(filtrosPortaPalletsDeQuery({}).empresas).toEqual([1]);
+    expect(filtrosPortaPalletsDeQuery({ empresas: 'todas' }).empresas).toBeNull();
+    expect(filtrosPortaPalletsDeQuery({ empresas: '1,2', familias: '95.4|96|95.4.11' }).familias).toEqual([
+      '95.4',
+      '95.4.11',
+    ]);
+    expect(filtrosPortaPalletsDeQuery({ familias: 'nenhuma' }).familias).toEqual(['nenhuma']);
   });
 });

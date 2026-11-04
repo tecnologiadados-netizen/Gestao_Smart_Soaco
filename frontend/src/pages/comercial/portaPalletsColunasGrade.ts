@@ -3,9 +3,7 @@ import type {
   LinhaClienteFunil,
   LinhaClienteMes,
   LinhaConversaoMes,
-  LinhaPedidoGerado,
   LinhaPedidoItem,
-  LinhaPropostaItem,
 } from '../../api/portaPalletsComercial';
 import { formatMoeda, formatNumero } from '../../components/painel-comercial/painelComercialUtils';
 import type { ColunaGrade } from './GradePortaPallets';
@@ -18,29 +16,6 @@ function dataTexto(iso: string): string {
 function diasValor(v: number | null): number {
   return v == null ? Number.NaN : v;
 }
-
-export const COLUNAS_PROPOSTAS: ColunaGrade<LinhaPropostaItem>[] = [
-  { id: 'mes', label: 'Mês', texto: (r) => labelMes(r.mes), valor: (r) => r.mes },
-  { id: 'proposta', label: 'Proposta', texto: (r) => r.codigoProposta },
-  { id: 'abertura', label: 'Abertura', tipo: 'data', texto: (r) => dataTexto(r.dataAbertura), valor: (r) => r.dataAbertura },
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
-  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
-  { id: 'produto', label: 'Produto', texto: (r) => r.codigoProduto },
-  { id: 'descricao', label: 'Descrição', texto: (r) => r.descricaoProduto, className: 'max-w-[260px] truncate' },
-  { id: 'valor', label: 'Valor', tipo: 'moeda', texto: (r) => formatMoeda(r.valor), valor: (r) => r.valor, total: true },
-  { id: 'status', label: 'Status', texto: (r) => r.statusLabel },
-  { id: 'motivo', label: 'Motivo da rejeição', texto: (r) => r.motivoRejeicao || '—' },
-  {
-    id: 'observacao',
-    label: 'Observação da proposta',
-    texto: (r) => r.observacaoProposta || '—',
-    render: (r) =>
-      createElement('span', { title: r.observacaoProposta || undefined, className: 'block max-w-[280px] truncate' }, r.observacaoProposta || '—'),
-  },
-  { id: 'convertida', label: 'Convertida', texto: (r) => simNao(r.propostaConvertida) },
-  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigosPedido || '—' },
-  { id: 'dias', label: 'Dias para criar pedido', tipo: 'numero', texto: (r) => formatDias(r.dias), valor: (r) => diasValor(r.dias) },
-];
 
 export const COLUNAS_PEDIDOS: ColunaGrade<LinhaPedidoItem>[] = [
   { id: 'mes', label: 'Mês', texto: (r) => labelMes(r.mes), valor: (r) => r.mes },
@@ -60,22 +35,6 @@ export const COLUNAS_PEDIDOS: ColunaGrade<LinhaPedidoItem>[] = [
     total: true,
   },
   { id: 'primeira', label: 'Primeira compra', texto: (r) => simNao(r.primeiraCompra) },
-];
-
-export const COLUNAS_PEDIDOS_GERADOS: ColunaGrade<LinhaPedidoGerado>[] = [
-  { id: 'pedido', label: 'Pedido', texto: (r) => r.codigoPedido },
-  { id: 'emissao', label: 'Emissão', tipo: 'data', texto: (r) => dataTexto(r.dataEmissao), valor: (r) => r.dataEmissao },
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
-  { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
-  { id: 'origem', label: 'Proposta de origem', texto: (r) => r.propostasOrigem },
-  {
-    id: 'valor',
-    label: 'Valor vendido',
-    tipo: 'moeda',
-    texto: (r) => formatMoeda(r.valorVendido),
-    valor: (r) => r.valorVendido,
-    total: true,
-  },
 ];
 
 export const COLUNAS_CLIENTES_FUNIL: ColunaGrade<LinhaClienteFunil>[] = [
