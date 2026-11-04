@@ -94,7 +94,7 @@ export async function salvarResponsaveis(params: {
     throw new Error(
       area === 'montagem'
         ? 'Setores de montagem aceitam um único responsável.'
-        : `Máximo de ${MAX_RESPONSAVEIS[area]} colaboradores por setor.`,
+        : `Máximo de ${MAX_RESPONSAVEIS[area]} responsáveis por setor.`,
     );
   }
 

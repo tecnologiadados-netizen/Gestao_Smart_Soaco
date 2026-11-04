@@ -206,7 +206,7 @@ export function ResponsaveisPickerModal({
         <div className="resp-modal-body">
           <div className="resp-modal-secao">
             <span className="resp-modal-rotulo">
-              {multiplo ? 'Colaboradores vinculados' : 'Responsável'}
+              {multiplo ? 'Responsáveis vinculados' : 'Responsável'}
             </span>
             {selecionados.length === 0 ? (
               <span className="resp-vazio">Nenhum vinculado.</span>
@@ -325,7 +325,7 @@ export function ResponsaveisCelula({
         responsaveis={responsaveis}
         definidoEm={definidoEm}
         mes={mes}
-        vazio={multiplo ? 'Sem colaboradores' : 'Sem responsável'}
+        vazio={multiplo ? 'Sem responsáveis' : 'Sem responsável'}
       />
       {podeEditar && (
         <button type="button" className="resp-editar-btn" onClick={() => setAberto(true)}>

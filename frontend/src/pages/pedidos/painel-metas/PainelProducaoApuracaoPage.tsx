@@ -1129,7 +1129,7 @@ export default function PainelProducaoApuracaoPage() {
     }
   }
 
-  async function salvarColaboradoresProducao(setor: string, organicoIds: string[]) {
+  async function salvarResponsaveisProducao(setor: string, organicoIds: string[]) {
     const salvo = await savePainelProducaoResponsaveis({
       mes,
       area: 'producao',
@@ -1217,7 +1217,7 @@ export default function PainelProducaoApuracaoPage() {
                 <p>
                   {area === 'montagem'
                     ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam os setores de produção. O responsável de cada setor é vinculado no Cadastro de Metas.'
-                    : 'Setores de produção (Perfiladeiras, Corte e Dobra, Solda e Pintura): valor indireto conforme níveis atingidos pela montagem. Clique no valor a pagar para o memorial. Os colaboradores vinculados valem do mês em diante, até serem alterados.'}
+                    : 'Setores de produção (Perfiladeiras, Corte e Dobra, Solda e Pintura): valor indireto conforme níveis atingidos pela montagem. Clique no valor a pagar para o memorial. Os responsáveis vinculados valem do mês em diante, até serem alterados.'}
                 </p>
               </div>
               <button
@@ -1352,7 +1352,7 @@ export default function PainelProducaoApuracaoPage() {
                   <thead>
                     <tr>
                       <th>Setor</th>
-                      <th>Colaboradores</th>
+                      <th>Responsáveis</th>
                       <th>Setores com meta</th>
                       <th>Bronze</th>
                       <th>Prata</th>
@@ -1367,16 +1367,16 @@ export default function PainelProducaoApuracaoPage() {
                     {rowsFiltradas.map((row) => (
                       <tr key={`${row.setor}-${row.mes}`}>
                         <td className="apuracao-setor">{row.setor}</td>
-                        <td className="apuracao-colaboradores">
+                        <td className="apuracao-responsaveis">
                           <ResponsaveisCelula
                             responsaveis={row.responsaveis ?? []}
                             definidoEm={row.responsaveis_definidos_em}
                             mes={mes}
                             podeEditar={podeEditarResponsaveis}
                             multiplo
-                            titulo={`Colaboradores — ${row.setor}`}
+                            titulo={`Responsáveis — ${row.setor}`}
                             subtitulo={`A partir de ${formatMesLabel(mes)}`}
-                            onSalvar={(ids) => salvarColaboradoresProducao(row.setor, ids)}
+                            onSalvar={(ids) => salvarResponsaveisProducao(row.setor, ids)}
                           />
                         </td>
                         <td>{formatNumero(row.setores_atingiram_meta ?? 0, 0)}</td>
