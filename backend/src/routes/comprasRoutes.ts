@@ -6,6 +6,7 @@ import { requireMasterOrAdmin } from '../middleware/requireMasterOrAdmin.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getVinculosDerivadosColeta, getVinculosDerivadosPreview, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchEnviarAprovacao, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
+import { getSolicitacoesCompraRotina } from '../controllers/solicitacoesCompraRotinaController.js';
 import {
   getGestaoEntradasComprador,
   getGestaoEntradasDia,
@@ -476,6 +477,12 @@ router.get(
   '/rotina/pendencias/prioridade-fixa/historico',
   requirePermission(PERMISSOES.COMPRAS_VER),
   async503(getPendenciasComprasPrioridadeFixaHistorico)
+);
+
+router.get(
+  '/rotina/solicitacoes',
+  requirePermission(PERMISSOES.COMPRAS_SOLICITACOES_VER),
+  async503(getSolicitacoesCompraRotina)
 );
 
 router.get(

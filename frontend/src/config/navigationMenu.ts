@@ -17,6 +17,7 @@ import {
 import { podeAcessarSequenciamentoCarradas } from '../utils/sequenciamentoCarradasPermissoes';
 import { podeAcessarProgramacaoSetorial } from '../utils/programacaoSetorialPermissoes';
 import { podeAcessarMateriaisAChegar } from '../utils/materiaisAChegarPermissoes';
+import { podeAcessarSolicitacoesCompra } from '../utils/solicitacoesCompraPermissoes';
 
 export type NavMenuEntry =
   | { kind: 'link'; to: string; label: string }
@@ -122,6 +123,7 @@ export const COMPRAS_MENU: NavMenuEntry[] = [
     label: 'Rotina',
     children: [
       { kind: 'link', to: '/compras/rotina/pendencias', label: 'Pendências compras' },
+      { kind: 'link', to: '/compras/rotina/solicitacoes', label: 'Solicitações de compra' },
     ],
   },
 ];
@@ -269,6 +271,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/compras/painel-rupturas': 'Painel de Rupturas',
   '/compras/double-checkin': 'Double Check NFe',
   '/compras/rotina/pendencias': 'Pendências compras',
+  '/compras/rotina/solicitacoes': 'Solicitações de compra',
   '/compras/materiais-a-chegar': 'Materiais a chegar',
   '/engenharia': 'Engenharia',
   '/engenharia/precificacao': 'Precificação',
@@ -457,7 +460,13 @@ export function buildComprasMenuForUser(hasPermission: HasPermission): NavMenuEn
       if (podeComprasGeral) filtered.push(entry);
       continue;
     }
-    if (podeComprasGeral) filtered.push(entry);
+    const children = entry.children.filter((child) => {
+      if (child.kind === 'link' && child.to === '/compras/rotina/solicitacoes') {
+        return podeAcessarSolicitacoesCompra(hasPermission);
+      }
+      return podeComprasGeral;
+    });
+    if (children.length > 0) filtered.push({ ...entry, children });
   }
   return filtered;
 }

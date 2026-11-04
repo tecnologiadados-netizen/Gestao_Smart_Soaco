@@ -11,11 +11,12 @@ export function podeAcessarDoubleCheckIn(hasPermission: HasPermission): boolean 
   return PERMISSOES_ACESSO_DOUBLE_CHECKIN.some((p) => hasPermission(p));
 }
 
-/** Exibe o menu Compras se tiver Compras geral, Double Check ou Materiais a chegar. */
+/** Exibe o menu Compras se tiver Compras geral ou alguma tela isolada do setor. */
 export function podeVerMenuCompras(hasPermission: HasPermission): boolean {
   return (
     hasPermission(PERMISSOES.COMPRAS_VER) ||
     podeAcessarDoubleCheckIn(hasPermission) ||
-    hasPermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER)
+    hasPermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER) ||
+    hasPermission(PERMISSOES.COMPRAS_SOLICITACOES_VER)
   );
 }

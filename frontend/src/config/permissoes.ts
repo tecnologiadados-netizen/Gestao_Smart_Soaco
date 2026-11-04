@@ -25,6 +25,8 @@ export const PERMISSOES = {
   COMPRAS_MATERIAIS_CHEGAR_DATAS_VER: 'compras.materiais_chegar.datas_entrega.ver',
   /** Materiais a chegar — alterar data de entrega do item do pedido de compra. */
   COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
+  /** Solicitações de compra — fila do setor, priorizada por coleta. */
+  COMPRAS_SOLICITACOES_VER: 'compras.solicitacoes.ver',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',

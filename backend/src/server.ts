@@ -34,6 +34,7 @@ import { ensureDoubleCheckInPermissao } from './config/ensureDoubleCheckInPermis
 import { ensureOrdemProducaoPermissao } from './config/ensureOrdemProducaoPermissao.js';
 import { ensureGondolasPermissao } from './config/ensureGondolasPermissao.js';
 import { ensureMateriaisAChegarPermissao } from './config/ensureMateriaisAChegarPermissao.js';
+import { ensureSolicitacoesCompraPermissao } from './config/ensureSolicitacoesCompraPermissao.js';
 import { initPainelProducaoMetas } from './services/painelProducao/painelProducaoTargetsService.js';
 import { migrateLegacyRhUploads, rhUploadRoot } from './rh/utils/rhUpload.js';
 import {
@@ -136,6 +137,11 @@ async function ensureDbReady(): Promise<void> {
     await ensureMateriaisAChegarPermissao();
   } catch (e) {
     console.warn('[startup] ensureMateriaisAChegarPermissao:', (e as Error)?.message ?? e);
+  }
+  try {
+    await ensureSolicitacoesCompraPermissao();
+  } catch (e) {
+    console.warn('[startup] ensureSolicitacoesCompraPermissao:', (e as Error)?.message ?? e);
   }
   try {
     const { ensureDoubleCheckInNfPcWhatsappTipo, ensureDoubleCheckInJustificativaOpcoes } =

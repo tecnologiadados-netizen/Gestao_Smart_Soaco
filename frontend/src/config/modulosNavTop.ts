@@ -76,7 +76,12 @@ export const MODULOS_NAV_TOP: ModuloNavTopDef[] = [
   {
     code: 'compras',
     label: 'Compras',
-    permissoes: [PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN, PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER],
+    permissoes: [
+      PERMISSOES.COMPRAS_VER,
+      PERMISSOES.COMPRAS_DOUBLE_CHECKIN,
+      PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER,
+      PERMISSOES.COMPRAS_SOLICITACOES_VER,
+    ],
   },
   {
     code: 'recebimento',

@@ -29,6 +29,7 @@ import {
 } from './recebimentoPermissoes';
 import { PERMISSOES_ACESSO_DOUBLE_CHECKIN } from './doubleCheckInPermissoes';
 import { PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR } from './materiaisAChegarPermissoes';
+import { PERMISSOES_ACESSO_SOLICITACOES_COMPRA } from './solicitacoesCompraPermissoes';
 import { PERMISSOES_ACESSO_QUALIDADE } from './qualidadePermissoes';
 import {
   PERMISSOES_ACESSO_HUB_KPIS,
@@ -93,13 +94,19 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
   '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_APURACAO,
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
-  '/compras': [PERMISSOES.COMPRAS_VER, ...PERMISSOES_ACESSO_DOUBLE_CHECKIN, ...PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR],
+  '/compras': [
+    PERMISSOES.COMPRAS_VER,
+    ...PERMISSOES_ACESSO_DOUBLE_CHECKIN,
+    ...PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR,
+    ...PERMISSOES_ACESSO_SOLICITACOES_COMPRA,
+  ],
   '/compras/dashboard': [PERMISSOES.COMPRAS_VER],
   '/compras/coletas-precos': [PERMISSOES.COMPRAS_VER],
   '/compras/pre-compra': [PERMISSOES.COMPRAS_VER],
   '/compras/painel-rupturas': [PERMISSOES.COMPRAS_VER],
   '/compras/double-checkin': PERMISSOES_ACESSO_DOUBLE_CHECKIN,
   '/compras/rotina/pendencias': [PERMISSOES.COMPRAS_VER],
+  '/compras/rotina/solicitacoes': PERMISSOES_ACESSO_SOLICITACOES_COMPRA,
   '/compras/materiais-a-chegar': PERMISSOES_ACESSO_MATERIAIS_A_CHEGAR,
   '/engenharia': [PERMISSOES.PRECIFICACAO_VER],
   '/engenharia/precificacao': [PERMISSOES.PRECIFICACAO_VER],
@@ -229,6 +236,7 @@ export const ROTAS_ORDEM = [
   '/compras/painel-rupturas',
   '/compras/double-checkin',
   '/compras/rotina/pendencias',
+  '/compras/rotina/solicitacoes',
   '/compras/materiais-a-chegar',
   '/engenharia',
   '/engenharia/precificacao',

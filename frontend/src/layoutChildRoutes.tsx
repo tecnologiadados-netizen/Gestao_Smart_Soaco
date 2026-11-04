@@ -21,6 +21,7 @@ import ColetasPrecosPage from './pages/compras/ColetasPrecosPage';
 import ComprasDashboardPage from './pages/compras/ComprasDashboardPage';
 import PreCompraPage from './pages/compras/PreCompraPage';
 import PendenciasComprasPage from './pages/compras/PendenciasComprasPage';
+import SolicitacoesCompraRotinaPage from './pages/compras/SolicitacoesCompraRotinaPage';
 import PainelRupturasPage from './pages/compras/PainelRupturasPage';
 import DoubleCheckInPage from './pages/compras/DoubleCheckInPage';
 import PrecificacaoPage from './pages/PrecificacaoPage';
@@ -155,6 +156,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'compras/double-checkin', element: <ErrorBoundary><DoubleCheckInPage /></ErrorBoundary> },
   { path: 'compras/materiais-a-chegar', element: <ErrorBoundary><MateriaisAChegarPage /></ErrorBoundary> },
   { path: 'compras/rotina/pendencias', element: <ErrorBoundary><PendenciasComprasPage /></ErrorBoundary> },
+  { path: 'compras/rotina/solicitacoes', element: <ErrorBoundary><SolicitacoesCompraRotinaPage /></ErrorBoundary> },
   { path: 'precificacao', element: <Navigate to="/engenharia/precificacao" replace /> },
   { path: 'engenharia/precificacao', element: <PrecificacaoPage /> },
   ...qualidadeRoutes,

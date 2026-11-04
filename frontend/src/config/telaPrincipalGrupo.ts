@@ -76,6 +76,11 @@ export const OPCOES_TELA_PRINCIPAL: { key: string; label: string; requiredAny: C
     requiredAny: [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER],
   },
   {
+    key: 'solicitacoes_compra',
+    label: 'Solicitações de compra',
+    requiredAny: [PERMISSOES.COMPRAS_SOLICITACOES_VER],
+  },
+  {
     key: 'gestao_mesa',
     label: 'Recebimento — Gestão Mesa',
     requiredAny: [PERMISSOES.RECEBIMENTO_MESA, PERMISSOES.RECEBIMENTO_TOTAL],

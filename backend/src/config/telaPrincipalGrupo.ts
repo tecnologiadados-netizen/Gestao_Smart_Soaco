@@ -13,6 +13,7 @@ export const TELA_PRINCIPAL_KEYS = [
   'pre_compra',
   'double_checkin',
   'materiais_a_chegar',
+  'solicitacoes_compra',
   'gestao_mesa',
   'digitacao_conferencia',
   'precificacao',
@@ -99,6 +100,11 @@ export const TELA_PRINCIPAL_MAP: Record<
     path: '/compras/materiais-a-chegar',
     label: 'Materiais a chegar',
     requiredAny: [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER],
+  },
+  solicitacoes_compra: {
+    path: '/compras/rotina/solicitacoes',
+    label: 'Solicitações de compra',
+    requiredAny: [PERMISSOES.COMPRAS_SOLICITACOES_VER],
   },
   gestao_mesa: {
     path: '/recebimento/mesa',

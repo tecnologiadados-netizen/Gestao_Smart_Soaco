@@ -30,6 +30,8 @@ export const PERMISSOES = {
   COMPRAS_MATERIAIS_CHEGAR_DATAS_VER: 'compras.materiais_chegar.datas_entrega.ver',
   /** Materiais a chegar — alterar a data de entrega do item do pedido de compra. */
   COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR: 'compras.materiais_chegar.datas_entrega.alterar',
+  /** Solicitações de compra — fila do setor, priorizada por coleta. */
+  COMPRAS_SOLICITACOES_VER: 'compras.solicitacoes.ver',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
   COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
@@ -229,6 +231,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_VER,
   PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER,
   PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR,
+  PERMISSOES.COMPRAS_SOLICITACOES_VER,
   PERMISSOES.PRECIFICACAO_VER,
   PERMISSOES.PRECIFICACAO_GERAR,
   PERMISSOES.COMERCIAL_PAINEL_VER,
@@ -417,6 +420,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER]:
     'Materiais a chegar — ver a guia "Datas de entrega a atualizar"',
   [PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_ALTERAR]: 'Materiais a chegar — alterar datas de entrega',
+  [PERMISSOES.COMPRAS_SOLICITACOES_VER]: 'Solicitações de compra — acesso à tela',
   [PERMISSOES.PRECIFICACAO_VER]: 'Visualizar Precificação',
   [PERMISSOES.PRECIFICACAO_GERAR]: 'Gerar precificação',
   [PERMISSOES.COMERCIAL_PAINEL_VER]: 'KPIs — painel Comercial',
