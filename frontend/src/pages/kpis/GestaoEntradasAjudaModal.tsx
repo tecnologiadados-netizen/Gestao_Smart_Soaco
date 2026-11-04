@@ -7,10 +7,18 @@ export type GestaoEntradasAjudaModalProps = {
 
 const SECOES: SecaoAjuda[] = [
   {
+    id: 'guias',
+    titulo: 'Duas guias',
+    oQueE:
+      'A tela tem duas leituras. Acuracidade acompanha a nota de entrada contra o pedido, no Double Check. Conferência física acompanha a contagem às cegas da Gestão Mesa: cada destinação ao conferente, o retorno à Mesa e o tempo entre os dois.',
+    comoLe:
+      'A guia abre em Acuracidade. Conferência física usa início, fim e mês atual, mas a data é a da destinação, não a da entrada da nota. Visão real e visão geral só existem na acuracidade. Os cards são destinações, conferidas e finalizadas, taxa de divergência e lead time.',
+  },
+  {
     id: 'universo',
     titulo: 'O que entra na conta',
     oQueE:
-      'O painel lê as notas de entrada do Nomus pela data de entrada, nos tipos de movimentação 11, 35 e 111 a 116. A tela Double Check também lista a pré-entrada (tipo 173) enquanto o documento ainda está na Gestão Mesa; esse tipo não entra neste painel. Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
+      'Na guia Acuracidade, o painel lê as notas de entrada do Nomus pela data de entrada, nos tipos de movimentação 11, 35 e 111 a 116. A tela Double Check também lista a pré-entrada (tipo 173) enquanto o documento ainda está na Gestão Mesa; esse tipo não entra neste painel. Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
     comoLe:
       'O período padrão é o mês corrente. Ajuste início e fim e clique em Filtrar. Visão real considera só divergência real. Visão geral inclui também a benigna. Cada nota conta uma vez, mesmo com vários itens. O detalhe do dia usa a mesma leitura que está selecionada.',
   },
@@ -54,6 +62,14 @@ const SECOES: SecaoAjuda[] = [
     comoLe:
       'A barra conta notas distintas daquele comprador. O texto ao lado informa quantos pedidos entram na conta. Uma nota com itens de pedidos de dois compradores conta para os dois, por isso a soma das barras pode passar do total de notas. Clique no comprador para abrir os mesmos cards das outras aberturas: campo, natureza, item, valor na NF, valor no pedido, motivo e observação. Em Apontada no vínculo, a nota aparece como Sem divergência e os cards mostram o que divergia na primeira leitura gravada, ou no relato da conferência quando a primeira leitura não guardou o comparativo. Apontadas anteriores a esta gravação só entram se houver aceite, porque o desvínculo antigo não ficou registrado.',
   },
+  {
+    id: 'fisica',
+    titulo: 'Conferência física',
+    oQueE:
+      'A guia conta cada destinação da Mesa a um conferente, pela data em que ela foi atribuída. Uma nova ida do mesmo documento conta de novo. Conferidas e finalizadas são as voltas que o conferente encerrou e devolveu à Mesa, tenha a quantidade batido ou não. A taxa de divergência divide as que voltaram com algum item diferente da nota pelas finalizadas. A 1ª ida é a primeira vez daquele documento; a 2ª ida é o reenvio depois que a Mesa mandou conferir de novo. O lead time é o tempo da destinação até o retorno, em horas: o card mostra a mediana e, ao lado, a média, também separada por ida. Destinação ainda com o conferente entra só no primeiro card. Conferência cancelada fica de fora. A lista do card tem a mesma quantidade do número.',
+    comoLe:
+      'Clique no card para abrir as voltas: documento, ida, conferente, destinação, retorno, lead time e resultado. Clique na linha para abrir o mesmo histórico da conferência, com envio, devolução à Mesa, ação da Mesa e as tentativas de cada item. A taxa abre só as voltas com divergência, que são o numerador. No gráfico, a linha azul-marinho é a destinação do dia e a verde é quantas já finalizaram. Clique na bolinha para abrir o dia; no modo Mês, o mês. A barra do conferente conta destinações e diz em qual das 3 chances da contagem às cegas ele mais acerta a quantidade, com o número de acertos. Item já acertado numa volta anterior não entra de novo. Clique no conferente para abrir a lista dele.',
+  },
 ];
 
 export default function GestaoEntradasAjudaModal({ aberto, onClose }: GestaoEntradasAjudaModalProps) {
@@ -62,8 +78,8 @@ export default function GestaoEntradasAjudaModal({ aberto, onClose }: GestaoEntr
       aberto={aberto}
       onClose={onClose}
       titulo="Como ler Gestão entradas"
-      subtitulo="Volume, conferência, divergências aceitas e compradores."
-      introducao="O painel acompanha a acuracidade das entradas. A visão real, que abre por padrão, ignora divergência benigna. A visão geral inclui benigna e real."
+      subtitulo="Acuracidade da nota e eficiência da conferência física."
+      introducao="A guia Acuracidade acompanha a nota contra o pedido. A visão real, que abre por padrão, ignora divergência benigna. A guia Conferência física acompanha a contagem às cegas: destinação, conferência finalizada, taxa de divergência e lead time."
       secoes={SECOES}
       tituloId="gestao-entradas-ajuda-titulo"
     />

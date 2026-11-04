@@ -8,6 +8,9 @@ import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendD
 import { getPreCompraCotacoes, getPreCompraSugestoes, getPreCompraFornecedores, getPreCompraContatos, getPreCompraPdf } from '../controllers/preCompraController.js';
 import { getSolicitacoesCompraRotina } from '../controllers/solicitacoesCompraRotinaController.js';
 import {
+  getConferenciaFisicaDetalhe,
+  getConferenciaFisicaDocumento,
+  getConferenciaFisicaPainel,
   getGestaoEntradasComprador,
   getGestaoEntradasDia,
   getGestaoEntradasPainel,
@@ -559,6 +562,21 @@ router.get(
   '/double-checkin/dashboard',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
+);
+router.get(
+  '/gestao-entradas/conferencia-fisica/documento/:id',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getConferenciaFisicaDocumento)
+);
+router.get(
+  '/gestao-entradas/conferencia-fisica/detalhe',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getConferenciaFisicaDetalhe)
+);
+router.get(
+  '/gestao-entradas/conferencia-fisica',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getConferenciaFisicaPainel)
 );
 router.get(
   '/gestao-entradas/detalhe',

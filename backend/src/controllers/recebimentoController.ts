@@ -224,7 +224,8 @@ type HistoricoVoltaDto = {
 
 async function montarHistoricosConferencia(
   local: RecebimentoConferenciaLocal,
-  itens: ItemNomusHistorico[]
+  itens: ItemNomusHistorico[],
+  incluirVoltaAberta = false,
 ): Promise<HistoricoVoltaDto[]> {
   const ciclosArquivados = await listarCiclosConferencia(local.id);
   const itensPorId = new Map(itens.map((item) => [item.idItem, item]));
@@ -268,6 +269,17 @@ async function montarHistoricosConferencia(
       status: statusAtual,
       statusLabel: RECEBIMENTO_STATUS_LABEL[statusAtual] ?? statusAtual,
       retornadoEm: local.finalizadoEm,
+      atribuidoEm: local.atribuidoEm,
+      conferenteNome: local.conferenteNome,
+      conferenteLogin: local.conferenteLogin,
+      itens: montarItensHistorico(linhasAtuais),
+    });
+  } else if (incluirVoltaAberta && historicosConferencia.length === 0) {
+    const linhasAtuais = await listarItensContagem(local.id);
+    historicosConferencia.push({
+      status: local.status,
+      statusLabel: RECEBIMENTO_STATUS_LABEL[local.status] ?? local.status,
+      retornadoEm: null,
       atribuidoEm: local.atribuidoEm,
       conferenteNome: local.conferenteNome,
       conferenteLogin: local.conferenteLogin,
@@ -998,7 +1010,15 @@ export async function getRecebimentoDigitacaoHistoricoDocumento(
     res.status(400).json({ error: 'idDocumento inválido.' });
     return;
   }
+  await responderResumoHistoricoConferencia(res, idDocumento);
+}
 
+/** Mesmo resumo do histórico de conferência. `incluirVoltaAberta` cobre documento ainda com o conferente. */
+export async function responderResumoHistoricoConferencia(
+  res: Response,
+  idDocumento: number,
+  opcoes?: { incluirVoltaAberta?: boolean },
+): Promise<void> {
   let local = await obterConferenciaPorDocumento(idDocumento);
   if (!local) {
     res.status(404).json({ error: 'Conferência não encontrada.' });
@@ -1019,7 +1039,12 @@ export async function getRecebimentoDigitacaoHistoricoDocumento(
     if (sincronizado) local = sincronizado;
   }
 
-  const historicosConferencia = await montarHistoricosConferencia(local, itens);
+  const historicosSemAberta = await montarHistoricosConferencia(local, itens);
+  const historicosConferencia =
+    historicosSemAberta.length === 0 && opcoes?.incluirVoltaAberta
+      ? await montarHistoricosConferencia(local, itens, true)
+      : historicosSemAberta;
+  const somenteVoltaAberta = historicosSemAberta.length === 0 && historicosConferencia.length > 0;
   if (historicosConferencia.length === 0) {
     res.status(404).json({ error: 'Esta conferência ainda não foi enviada.' });
     return;
@@ -1040,7 +1065,9 @@ export async function getRecebimentoDigitacaoHistoricoDocumento(
         conferenteEnvioLogin: enviadaAtual
           ? local.conferenteLogin
           : (ultimaVolta?.conferenteLogin ?? local.conferenteLogin),
-        emNovaConferencia: local.status === RECEBIMENTO_STATUS.EM_CONFERENCIA,
+        emNovaConferencia: somenteVoltaAberta
+          ? false
+          : local.status === RECEBIMENTO_STATUS.EM_CONFERENCIA,
       },
       cab
     ),

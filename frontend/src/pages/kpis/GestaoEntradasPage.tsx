@@ -23,6 +23,7 @@ import {
 } from '../../api/gestaoEntradas';
 import GestaoEntradasCompradorModal from './GestaoEntradasCompradorModal';
 import GestaoEntradasAjudaModal from './GestaoEntradasAjudaModal';
+import GestaoEntradasConferenciaFisicaPanel from './GestaoEntradasConferenciaFisicaPanel';
 import GestaoEntradasCardModal, { type RecorteGestaoEntrada } from './GestaoEntradasCardModal';
 import GestaoEntradasDiaModal, {
   GestaoEntradasRankingModal,
@@ -67,6 +68,7 @@ const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
 type Granularidade = 'dia' | 'mes';
+type GuiaGestaoEntradas = 'acuracidade' | 'fisica';
 type EscopoDivergencia = 'reais' | 'geral';
 type ContextoMovimentacao = 'volume' | 'divergencias';
 type SeriePonto = {
@@ -393,6 +395,7 @@ function BolinhaDia({
 }
 
 export default function GestaoEntradasPage() {
+  const [guia, setGuia] = useState<GuiaGestaoEntradas>('acuracidade');
   const [dataInicio, setDataInicio] = useState(inicioMesYmd());
   const [dataFim, setDataFim] = useState(hojeYmd());
   const [granularidade, setGranularidade] = useState<Granularidade>('dia');
@@ -513,19 +516,53 @@ export default function GestaoEntradasPage() {
         <div className="absolute left-[8%] top-0 h-48 w-48 rounded-full bg-violet-600/20 blur-3xl" />
         <div className="absolute right-[12%] top-8 h-40 w-40 rounded-full bg-emerald-500/15 blur-3xl" />
       </div>
-      <CarregandoInformacoesOverlay show={loading} mensagem="Carregando Gestão entradas…" mode="viewport" />
+      <CarregandoInformacoesOverlay
+        show={loading && guia === 'acuracidade'}
+        mensagem="Carregando Gestão entradas…"
+        mode="viewport"
+      />
       <div className="relative mx-auto w-full max-w-[1920px] space-y-4">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <KpiPainelVoltarLink painelId="gestao-entradas" />
             <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Gestão entradas</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Acuracidade das notas de entrada por data de entrada
+              {guia === 'fisica'
+                ? 'Eficiência da conferência física por data de destinação'
+                : 'Acuracidade das notas de entrada por data de entrada'}
             </p>
+            <div className="mt-2 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  guia === 'acuracidade'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                    : 'text-slate-500'
+                }`}
+                onClick={() => setGuia('acuracidade')}
+              >
+                Acuracidade
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  guia === 'fisica'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                    : 'text-slate-500'
+                }`}
+                onClick={() => setGuia('fisica')}
+              >
+                Conferência física
+              </button>
+            </div>
           </div>
           <ComoLerBtn onClick={() => setAjudaAberta(true)} title="Como ler Gestão entradas" />
         </header>
 
+        {guia === 'fisica' ? (
+          <GestaoEntradasConferenciaFisicaPanel />
+        ) : (
+        <>
         <div className={`flex flex-wrap items-end gap-3 px-4 py-3 ${panelSurface}`}>
           <div>
             <label className={labelClass} htmlFor="ge-inicio">
@@ -1077,6 +1114,8 @@ export default function GestaoEntradasPage() {
               />
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
       <GestaoEntradasAjudaModal aberto={ajudaAberta} onClose={() => setAjudaAberta(false)} />
