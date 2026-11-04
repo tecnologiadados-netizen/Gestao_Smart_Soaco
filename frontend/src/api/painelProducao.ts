@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, resolveUploadUrl } from './client';
 
 export interface PainelProducaoFilters {
   setores: string[];
@@ -124,6 +124,12 @@ export interface PainelProducaoColaboradorOrganico {
   cargo: string;
   setor: string;
   matricula: string;
+  tem_foto: boolean;
+}
+
+/** Foto do colaborador do orgânico (imagem servida pelo painel; 404 = sem foto). */
+export function urlFotoColaboradorOrganico(organicoId: string): string {
+  return resolveUploadUrl(`/api/painel-producao/organico-foto/${encodeURIComponent(organicoId)}`);
 }
 
 export type PainelProducaoApuracaoDetalheTipo =

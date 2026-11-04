@@ -11,6 +11,7 @@ import {
   getPainelProducaoAlcancado,
   getPainelProducaoFilters,
   getPainelProducaoOrganicoColaboradores,
+  getPainelProducaoOrganicoFoto,
   getPainelProducaoResponsaveis,
   getPainelProducaoTargets,
   postPainelProducaoMes,
@@ -71,5 +72,6 @@ router.post('/meses', validateCsrf, podeEditarMetas, postPainelProducaoMes);
 router.get('/responsaveis', podeVerFiltros, getPainelProducaoResponsaveis);
 router.put('/responsaveis', validateCsrf, podeEditarMetas, putPainelProducaoResponsaveis);
 router.get('/organico-colaboradores', podeEditarMetas, getPainelProducaoOrganicoColaboradores);
+router.get('/organico-foto/:organicoId', podeVerFiltros, getPainelProducaoOrganicoFoto);
 
 export default router;

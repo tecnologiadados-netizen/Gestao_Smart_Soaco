@@ -27,6 +27,7 @@ import {
   RESPONSAVEL_AREAS,
   listarColaboradoresAtivosOrganico,
   listarResponsaveisVigentes,
+  obterFotoColaborador,
   salvarResponsaveis,
   type ResponsavelArea,
 } from '../services/painelProducao/painelProducaoResponsaveisService.js';
@@ -219,6 +220,27 @@ export async function putPainelProducaoSetorPenalizacao(req: Request, res: Respo
 export async function getPainelProducaoOrganicoColaboradores(_req: Request, res: Response) {
   try {
     res.json({ colaboradores: await listarColaboradoresAtivosOrganico() });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelProducaoOrganicoFoto(req: Request, res: Response) {
+  const organicoId = String(req.params.organicoId ?? '').trim();
+  if (!organicoId) {
+    res.status(400).json({ error: 'Colaborador não informado.' });
+    return;
+  }
+  try {
+    const foto = await obterFotoColaborador(organicoId);
+    if (!foto) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', foto.mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(foto.bytes);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });

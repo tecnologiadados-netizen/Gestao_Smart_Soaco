@@ -3634,8 +3634,48 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .resp-item {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
   line-height: 1.2;
+}
+
+.resp-item-texto,
+.resp-chip-texto,
+.resp-opcao-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.resp-avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e8ecf0;
+  border: 1px solid rgba(10, 22, 40, 0.12);
+}
+
+.resp-avatar.is-sm {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+.resp-avatar.is-md {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+
+.resp-avatar.is-iniciais {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #5a6270;
+}
+
+.resp-avatar.is-sm.is-iniciais {
+  font-size: 0.62rem;
 }
 
 .resp-nome {
@@ -3729,17 +3769,15 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 .resp-chip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.6rem;
   padding: 0.4rem 0.6rem;
   border: 1px solid rgba(255, 174, 0, 0.45);
   border-radius: 8px;
   background: rgba(255, 174, 0, 0.1);
 }
 
-.resp-chip span {
-  display: flex;
-  flex-direction: column;
+.resp-chip-texto {
+  flex: 1;
   font-size: 0.8rem;
 }
 
@@ -3773,8 +3811,8 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .resp-opcoes button {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
   padding: 0.45rem 0.65rem;
   border: 0;
@@ -3833,6 +3871,15 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 
 .painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes {
   border-color: #2d3a50;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-avatar {
+  background: #243044;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-avatar.is-iniciais {
+  color: #c4ccd8;
 }
 
 .painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes button {

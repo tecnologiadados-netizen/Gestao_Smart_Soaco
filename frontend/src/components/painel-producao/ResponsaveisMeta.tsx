@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   fetchPainelProducaoColaboradoresOrganico,
+  urlFotoColaboradorOrganico,
   type PainelProducaoColaboradorOrganico,
   type PainelProducaoResponsavel,
 } from '../../api/painelProducao';
@@ -11,6 +12,49 @@ import { formatMesShort } from '../../utils/painelProducaoFormat';
 function portalTarget(): HTMLElement {
   return (
     document.querySelector<HTMLElement>('.painel-producao-module .dashboard') ?? document.body
+  );
+}
+
+function iniciais(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  const primeira = partes[0]![0] ?? '';
+  const ultima = partes.length > 1 ? (partes[partes.length - 1]![0] ?? '') : '';
+  return `${primeira}${ultima}`.toUpperCase();
+}
+
+/** Foto do orgânico; sem foto (ou falha ao carregar) mostra as iniciais. */
+export function ColaboradorAvatar({
+  organicoId,
+  nome,
+  temFoto = true,
+  tamanho = 'md',
+}: {
+  organicoId: string;
+  nome: string;
+  /** false = já se sabe que não há foto (evita requisição). */
+  temFoto?: boolean;
+  tamanho?: 'sm' | 'md';
+}) {
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => setFalhou(false), [organicoId]);
+  const classe = `resp-avatar is-${tamanho}`;
+  if (!temFoto || falhou || !organicoId) {
+    return (
+      <span className={`${classe} is-iniciais`} aria-hidden="true">
+        {iniciais(nome)}
+      </span>
+    );
+  }
+  return (
+    <img
+      className={classe}
+      src={urlFotoColaboradorOrganico(organicoId)}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFalhou(true)}
+    />
   );
 }
 
@@ -33,8 +77,11 @@ export function ResponsaveisLista({
     <div className="resp-lista">
       {responsaveis.map((r) => (
         <div key={r.organico_id} className="resp-item">
-          <span className="resp-nome">{r.nome}</span>
-          {r.cargo && <span className="resp-cargo">{r.cargo}</span>}
+          <ColaboradorAvatar organicoId={r.organico_id} nome={r.nome} tamanho="sm" />
+          <span className="resp-item-texto">
+            <span className="resp-nome">{r.nome}</span>
+            {r.cargo && <span className="resp-cargo">{r.cargo}</span>}
+          </span>
         </div>
       ))}
       {herdado && (
@@ -167,7 +214,8 @@ export function ResponsaveisPickerModal({
               <ul className="resp-chips">
                 {selecionados.map((s) => (
                   <li key={s.organico_id} className="resp-chip">
-                    <span>
+                    <ColaboradorAvatar organicoId={s.organico_id} nome={s.nome} />
+                    <span className="resp-chip-texto">
                       <strong>{s.nome}</strong>
                       {s.cargo && <small>{s.cargo}</small>}
                     </span>
@@ -207,8 +255,11 @@ export function ResponsaveisPickerModal({
                 filtrados.map((p) => (
                   <li key={p.id} role="option" aria-selected={false}>
                     <button type="button" onClick={() => adicionar(p)} disabled={salvando}>
-                      <strong>{p.nome}</strong>
-                      <small>{[p.cargo, p.setor].filter(Boolean).join(' · ')}</small>
+                      <ColaboradorAvatar organicoId={p.id} nome={p.nome} temFoto={p.tem_foto} />
+                      <span className="resp-opcao-texto">
+                        <strong>{p.nome}</strong>
+                        <small>{[p.cargo, p.setor].filter(Boolean).join(' · ')}</small>
+                      </span>
                     </button>
                   </li>
                 ))

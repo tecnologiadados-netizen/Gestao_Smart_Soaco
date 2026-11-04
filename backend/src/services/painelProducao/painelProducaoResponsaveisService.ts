@@ -1,5 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { listOrganicoColaboradoresParaRnc } from '../../data/qualidadeRepository.js';
+import { getOrganicoFoto } from '../../rh/repositories/organicoRepository.js';
+import { extractImageBytes } from '../../rh/utils/organicoFotoBase64.js';
 import { canonicalizeSetorPainel } from './painelProducaoConstants.js';
 
 export type ResponsavelArea = 'montagem' | 'producao';
@@ -122,9 +124,56 @@ export async function salvarResponsaveis(params: {
   return { responsaveis, definido_em: mes };
 }
 
+function chaveMatricula(matricula: string): string {
+  return String(matricula ?? '').trim().replace(/^0+/, '');
+}
+
 export async function listarColaboradoresAtivosOrganico(): Promise<
-  Array<{ id: string; nome: string; cargo: string; setor: string; matricula: string }>
+  Array<{
+    id: string;
+    nome: string;
+    cargo: string;
+    setor: string;
+    matricula: string;
+    tem_foto: boolean;
+  }>
 > {
-  const ativos = await listOrganicoColaboradoresParaRnc();
-  return ativos.map(({ id, nome, cargo, setor, matricula }) => ({ id, nome, cargo, setor, matricula }));
+  const [ativos, fotos] = await Promise.all([
+    listOrganicoColaboradoresParaRnc(),
+    prisma.rhOrganicoFotos.findMany({
+      select: { colaboradorMatricula: true, colaboradorNome: true },
+    }),
+  ]);
+  const matriculasComFoto = new Set(fotos.map((f) => chaveMatricula(f.colaboradorMatricula)));
+  const nomesComFoto = new Set(fotos.map((f) => f.colaboradorNome.trim()));
+  return ativos.map(({ id, nome, cargo, setor, matricula }) => ({
+    id,
+    nome,
+    cargo,
+    setor,
+    matricula,
+    tem_foto:
+      (matricula !== '' && matriculasComFoto.has(chaveMatricula(matricula))) ||
+      nomesComFoto.has(nome),
+  }));
+}
+
+/** Foto do colaborador (por id do orgânico), no mesmo cadastro de fotos do RH. */
+export async function obterFotoColaborador(
+  organicoId: string,
+): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  const pessoa = await prisma.rhOrganico.findUnique({
+    where: { id: organicoId },
+    select: { matricula: true, nome: true },
+  });
+  if (!pessoa) return null;
+  const matricula = pessoa.matricula.trim() === '—' ? '' : pessoa.matricula.trim();
+  const foto = await getOrganicoFoto({
+    matricula: matricula || undefined,
+    nome: pessoa.nome.trim() || undefined,
+  });
+  if (!foto?.fotoBase64) return null;
+  const { bytes, mimeType } = extractImageBytes(Buffer.from(foto.fotoBase64, 'base64'));
+  if (bytes.length === 0) return null;
+  return { bytes, mimeType: foto.mimeType || mimeType };
 }
