@@ -440,23 +440,27 @@ export interface FiltrosPortaPallets {
 export interface OpcaoEmpresaPortaPalete {
   id: number;
   nome: string;
+  valor: number;
+}
+
+export interface OpcaoComValorPortaPalete {
+  nome: string;
+  valor: number;
 }
 
 export interface OpcaoCidadePortaPalete {
   nome: string;
   uf: string;
-}
-
-export interface OpcaoVendedorPortaPalete {
-  nome: string;
   valor: number;
 }
+
+export type OpcaoVendedorPortaPalete = OpcaoComValorPortaPalete;
 
 export interface OpcoesPortaPallets {
   empresas: OpcaoEmpresaPortaPalete[];
   vendedores: OpcaoVendedorPortaPalete[];
   subgrupos: string[];
-  ufs: string[];
+  ufs: OpcaoComValorPortaPalete[];
   cidades: OpcaoCidadePortaPalete[];
   familias: NoFamiliaPortaPalete[];
   erro?: string;
@@ -556,6 +560,34 @@ export function montarArvoreFamilia(
   };
   ordenar(raizes);
   return raizes;
+}
+
+/** Mantém só os ramos que têm venda no contexto. O pai fica quando algum filho permanece. */
+function podarArvoreFamilia(nos: NoFamiliaPortaPalete[], presentes: Set<string>): NoFamiliaPortaPalete[] {
+  const tem = (no: NoFamiliaPortaPalete): boolean => {
+    for (const cod of presentes) {
+      if (cod === no.classificacao || cod.startsWith(`${no.classificacao}.`)) return true;
+    }
+    return no.filhos.some(tem);
+  };
+  const out: NoFamiliaPortaPalete[] = [];
+  for (const no of nos) {
+    if (!tem(no)) continue;
+    out.push({ ...no, filhos: podarArvoreFamilia(no.filhos, presentes) });
+  }
+  return out;
+}
+
+type DimensaoFiltro = 'empresas' | 'vendedores' | 'subgrupos' | 'ufs' | 'cidades' | 'familias';
+
+/** Tira uma dimensão para a lista dela continuar mostrando as outras opções do mesmo contexto. */
+function semDimensao(filtros: FiltrosPortaPallets, omit: DimensaoFiltro): FiltrosPortaPallets {
+  if (omit === 'empresas') return { ...filtros, empresas: null };
+  if (omit === 'vendedores') return { ...filtros, vendedores: [] };
+  if (omit === 'subgrupos') return { ...filtros, subgrupos: [] };
+  if (omit === 'ufs') return { ...filtros, ufs: [] };
+  if (omit === 'cidades') return { ...filtros, cidades: [] };
+  return { ...filtros, familias: [] };
 }
 
 function passaFiltro(row: Record<string, unknown>, filtros: FiltrosPortaPallets): boolean {
@@ -934,17 +966,50 @@ async function baseFiltrada(refresh: boolean, filtros?: FiltrosPortaPallets): Pr
   return materializar(await carregarBase(refresh), filtros ?? FILTROS_PADRAO);
 }
 
-/** Soma o valor vendido de cada pessoa no período e ordena do maior para o menor. */
-function vendedoresPorValor(rows: Record<string, unknown>[]): OpcaoVendedorPortaPalete[] {
+function empresasPorValor(rows: Record<string, unknown>[]): OpcaoEmpresaPortaPalete[] {
+  const soma = new Map<number, OpcaoEmpresaPortaPalete>();
+  for (const row of rows) {
+    const id = num(row.idEmpresa);
+    if (id <= 0) continue;
+    const atual = soma.get(id) ?? { id, nome: str(row.empresa) || `Empresa ${id}`, valor: 0 };
+    const nome = str(row.empresa);
+    if (nome) atual.nome = nome;
+    atual.valor += num(row.valorVendido);
+    soma.set(id, atual);
+  }
+  return [...soma.values()]
+    .map((e) => ({ ...e, valor: round2(e.valor) }))
+    .filter((e) => e.valor > 0)
+    .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR') || a.id - b.id);
+}
+
+/** Soma o valor vendido de cada rótulo e ordena do maior para o menor. */
+function opcoesPorValor(rows: Record<string, unknown>[], campo: string): OpcaoComValorPortaPalete[] {
   const soma = new Map<string, number>();
   for (const row of rows) {
-    const nome = str(row.vendedor);
+    const nome = str(row[campo]);
     if (!nome || nome === 'Não informado') continue;
     soma.set(nome, (soma.get(nome) ?? 0) + num(row.valorVendido));
   }
   return [...soma.entries()]
     .map(([nome, valor]) => ({ nome, valor: round2(valor) }))
     .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+function cidadesPorValor(rows: Record<string, unknown>[]): OpcaoCidadePortaPalete[] {
+  const soma = new Map<string, OpcaoCidadePortaPalete>();
+  for (const row of rows) {
+    const nome = str(row.cidade);
+    if (!nome || nome === 'Não informado') continue;
+    const uf = str(row.uf);
+    const chave = `${uf}\0${nome}`;
+    const atual = soma.get(chave) ?? { nome, uf, valor: 0 };
+    atual.valor += num(row.valorVendido);
+    soma.set(chave, atual);
+  }
+  return [...soma.values()]
+    .map((c) => ({ ...c, valor: round2(c.valor) }))
+    .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR') || a.uf.localeCompare(b.uf, 'pt-BR'));
 }
 
 function distintos(rows: Record<string, unknown>[], campo: string): string[] {
@@ -958,36 +1023,29 @@ function distintos(rows: Record<string, unknown>[], campo: string): string[] {
 
 export async function obterPortaPalletsOpcoes(
   refresh = false,
-  recorte?: RecortePortaPallets
+  recorte?: RecortePortaPallets,
+  filtros?: FiltrosPortaPallets
 ): Promise<OpcoesPortaPallets> {
   try {
     const bruto = await carregarBase(refresh);
     const { desde, ate } = recorteEfetivo(recorte);
+    const aplicados = filtros ?? FILTROS_PADRAO;
     const pedidosNoPeriodo = bruto.pedidosRaw.filter((row) => dataNoRecorte(str(row.dataEmissao), desde, ate));
-    const linhas = [...bruto.propostasRaw, ...bruto.pedidosRaw];
-    const empresas = new Map<number, string>();
-    for (const row of linhas) {
-      const id = num(row.idEmpresa);
-      if (id > 0 && !empresas.has(id)) empresas.set(id, str(row.empresa) || `Empresa ${id}`);
-    }
-    const cidades = new Map<string, OpcaoCidadePortaPalete>();
-    for (const row of linhas) {
-      const nome = str(row.cidade);
-      if (!nome) continue;
-      const uf = str(row.uf);
-      cidades.set(`${uf}\0${nome}`, { nome, uf });
+    const noContexto = (omit: DimensaoFiltro) =>
+      pedidosNoPeriodo.filter((row) => passaFiltro(row, semDimensao(aplicados, omit)));
+    const familiasCtx = noContexto('familias');
+    const codigosFamilia = new Set<string>();
+    for (const row of familiasCtx) {
+      const cod = str(row.classificacaoFamilia);
+      if (cod) codigosFamilia.add(cod);
     }
     return {
-      empresas: [...empresas.entries()]
-        .map(([id, nome]) => ({ id, nome }))
-        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.id - b.id),
-      vendedores: vendedoresPorValor(pedidosNoPeriodo),
-      subgrupos: distintos(linhas, 'subgrupo1'),
-      ufs: distintos(linhas, 'uf'),
-      cidades: [...cidades.values()].sort(
-        (a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.uf.localeCompare(b.uf, 'pt-BR')
-      ),
-      familias: bruto.familias,
+      empresas: empresasPorValor(noContexto('empresas')),
+      vendedores: opcoesPorValor(noContexto('vendedores'), 'vendedor'),
+      subgrupos: distintos(noContexto('subgrupos'), 'subgrupo1').filter((nome) => nome !== 'Não informado'),
+      ufs: opcoesPorValor(noContexto('ufs'), 'uf'),
+      cidades: cidadesPorValor(noContexto('cidades')),
+      familias: podarArvoreFamilia(bruto.familias, codigosFamilia),
     };
   } catch (err) {
     return {

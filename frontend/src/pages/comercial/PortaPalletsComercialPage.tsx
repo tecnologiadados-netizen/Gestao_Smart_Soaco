@@ -70,13 +70,59 @@ function chaveFiltros(f: FiltrosPainel): string {
   return [q.empresas, q.vendedores ?? '', q.subgrupos ?? '', q.ufs ?? '', q.cidades ?? '', q.familias ?? ''].join('§');
 }
 
-function vendedoresNoPeriodo(valor: string, lista: string[]): string {
+function soPresentes(valor: string, lista: string[], separador = '|'): string {
   const validos = new Set(lista);
   return valor
-    .split('|')
+    .split(separador)
     .map((s) => s.trim())
     .filter((nome) => validos.has(nome))
-    .join('|');
+    .join(separador);
+}
+
+function codigosFamilia(nos: OpcoesPortaPallets['familias']): Set<string> {
+  const codigos = new Set<string>();
+  const walk = (no: OpcoesPortaPallets['familias'][number]) => {
+    codigos.add(no.classificacao);
+    no.filhos.forEach(walk);
+  };
+  nos.forEach(walk);
+  return codigos;
+}
+
+function encaixarFiltros(f: FiltrosPainel, data: OpcoesPortaPallets): FiltrosPainel {
+  const empresas = soPresentes(
+    f.empresas,
+    data.empresas.map((e) => String(e.id)),
+    ','
+  );
+  const vendedores = soPresentes(
+    f.vendedores,
+    data.vendedores.map((v) => v.nome)
+  );
+  const subgrupos = soPresentes(f.subgrupos, data.subgrupos);
+  const ufs = soPresentes(
+    f.ufs,
+    data.ufs.map((u) => u.nome)
+  );
+  const cidades = soPresentes(
+    f.cidades,
+    data.cidades.map((c) => c.nome)
+  );
+  const familias =
+    !f.familias.trim() || f.familias.trim() === 'nenhuma'
+      ? f.familias
+      : soPresentes(f.familias, [...codigosFamilia(data.familias)]);
+  if (
+    empresas === f.empresas &&
+    vendedores === f.vendedores &&
+    subgrupos === f.subgrupos &&
+    ufs === f.ufs &&
+    cidades === f.cidades &&
+    familias === f.familias
+  ) {
+    return f;
+  }
+  return { ...f, empresas, vendedores, subgrupos, ufs, cidades, familias };
 }
 const DATA_MIN = '2018-01-01';
 
@@ -187,21 +233,15 @@ export default function PortaPalletsComercialPage() {
     void carregar(desde, ate, filtros, false);
   }, [carregar, desde, ate, filtros]);
 
+  const contexto = chaveFiltros(filtros);
   useEffect(() => {
     let ativo = true;
-    void obterPortaPalletsOpcoes({ desde, ate })
+    void obterPortaPalletsOpcoes({ desde, ate, ...filtrosQuery(filtros) })
       .then((data) => {
         if (!ativo) return;
         setOpcoes(data);
-        const ajustar = (f: FiltrosPainel): FiltrosPainel => {
-          const vendedores = vendedoresNoPeriodo(
-            f.vendedores,
-            data.vendedores.map((v) => v.nome)
-          );
-          return vendedores === f.vendedores ? f : { ...f, vendedores };
-        };
-        setDraftFiltros(ajustar);
-        setFiltros(ajustar);
+        setDraftFiltros((f) => encaixarFiltros(f, data));
+        setFiltros((f) => encaixarFiltros(f, data));
       })
       .catch(() => {
         if (ativo) setOpcoes(null);
@@ -209,13 +249,19 @@ export default function PortaPalletsComercialPage() {
     return () => {
       ativo = false;
     };
-  }, [desde, ate]);
+    // Recarrega as listas quando o período ou qualquer filtro aplicado muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, ate, contexto]);
 
-  const cidadesOpcoes = useMemo(() => {
+  const cidadesVisiveis = useMemo(() => {
     const ufs = draftFiltros.ufs.split('|').map((s) => s.trim()).filter(Boolean);
     const lista = opcoes?.cidades ?? [];
     const filtradas = ufs.length ? lista.filter((c) => ufs.includes(c.uf)) : lista;
-    return [...new Set(filtradas.map((c) => c.nome))];
+    const soma = new Map<string, number>();
+    for (const c of filtradas) soma.set(c.nome, (soma.get(c.nome) ?? 0) + c.valor);
+    return [...soma.entries()]
+      .map(([nome, valor]) => ({ nome, valor }))
+      .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [draftFiltros.ufs, opcoes]);
 
   const filtrosParaAplicar = (f: FiltrosPainel): FiltrosPainel => {
@@ -250,8 +296,12 @@ export default function PortaPalletsComercialPage() {
   const atualizar = useCallback(() => {
     detalheCacheRef.current.clear();
     void carregar(desde, ate, filtros, true);
-    void obterPortaPalletsOpcoes({ desde, ate, refresh: true })
-      .then(setOpcoes)
+    void obterPortaPalletsOpcoes({ desde, ate, refresh: true, ...filtrosQuery(filtros) })
+      .then((data) => {
+        setOpcoes(data);
+        setDraftFiltros((f) => encaixarFiltros(f, data));
+        setFiltros((f) => encaixarFiltros(f, data));
+      })
       .catch(() => setOpcoes(null));
   }, [ate, carregar, desde, filtros]);
 
@@ -399,14 +449,19 @@ export default function PortaPalletsComercialPage() {
             <MultiSelectWithSearch
               label="Empresa"
               placeholder="Todas"
-              options={(opcoes?.empresas ?? [{ id: 1, nome: 'Só Aço' }]).map((e) => String(e.id))}
+              options={(opcoes?.empresas ?? [{ id: 1, nome: 'Só Aço', valor: 0 }]).map((e) => String(e.id))}
               labelByValue={empresasRotulo}
+              metricByValue={
+                opcoes ? Object.fromEntries(opcoes.empresas.map((e) => [String(e.id), e.valor])) : undefined
+              }
+              formatMetric={(n) => formatMoeda(n)}
               value={draftFiltros.empresas}
               onChange={(v) => setDraftFiltros((f) => ({ ...f, empresas: v }))}
               labelClass={FILTRO_LABEL_CLASS}
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="empresas"
               minWidth="180px"
+              dropdownMinWidthPx={520}
               optionsLoading={!opcoes}
               dropdownPortal
               dropdownZIndex={220}
@@ -447,7 +502,9 @@ export default function PortaPalletsComercialPage() {
             <MultiSelectWithSearch
               label="UF"
               placeholder="Todas"
-              options={opcoes?.ufs ?? []}
+              options={(opcoes?.ufs ?? []).map((u) => u.nome)}
+              metricByValue={Object.fromEntries((opcoes?.ufs ?? []).map((u) => [u.nome, u.valor]))}
+              formatMetric={(n) => formatMoeda(n)}
               value={draftFiltros.ufs}
               onChange={(v) => setDraftFiltros((f) => ({ ...f, ufs: v }))}
               labelClass={FILTRO_LABEL_CLASS}
@@ -455,6 +512,7 @@ export default function PortaPalletsComercialPage() {
               optionLabel="UFs"
               valueSeparator="|"
               minWidth="110px"
+              dropdownMinWidthPx={320}
               optionsLoading={!opcoes}
               dropdownPortal
               dropdownZIndex={220}
@@ -462,7 +520,9 @@ export default function PortaPalletsComercialPage() {
             <MultiSelectWithSearch
               label="Cidade"
               placeholder="Todas"
-              options={cidadesOpcoes}
+              options={cidadesVisiveis.map((c) => c.nome)}
+              metricByValue={Object.fromEntries(cidadesVisiveis.map((c) => [c.nome, c.valor]))}
+              formatMetric={(n) => formatMoeda(n)}
               value={draftFiltros.cidades}
               onChange={(v) => setDraftFiltros((f) => ({ ...f, cidades: v }))}
               labelClass={FILTRO_LABEL_CLASS}
@@ -470,6 +530,7 @@ export default function PortaPalletsComercialPage() {
               optionLabel="cidades"
               valueSeparator="|"
               minWidth="180px"
+              dropdownMinWidthPx={420}
               optionsLoading={!opcoes}
               dropdownPortal
               dropdownZIndex={220}

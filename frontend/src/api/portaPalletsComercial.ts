@@ -198,11 +198,11 @@ export interface NoFamiliaPortaPalete {
 }
 
 export interface OpcoesPortaPallets {
-  empresas: { id: number; nome: string }[];
+  empresas: { id: number; nome: string; valor: number }[];
   vendedores: { nome: string; valor: number }[];
   subgrupos: string[];
-  ufs: string[];
-  cidades: { nome: string; uf: string }[];
+  ufs: { nome: string; valor: number }[];
+  cidades: { nome: string; uf: string; valor: number }[];
   familias: NoFamiliaPortaPalete[];
 }
 

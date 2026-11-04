@@ -105,7 +105,7 @@ export async function getPortaPalletsAuditoriaMensal(req: Request, res: Response
 
 export async function getPortaPalletsOpcoes(req: Request, res: Response): Promise<void> {
   try {
-    const data = await obterPortaPalletsOpcoes(flagRefresh(req), recorteQuery(req));
+    const data = await obterPortaPalletsOpcoes(flagRefresh(req), recorteQuery(req), filtrosQuery(req));
     if (data.erro) {
       res.status(503).json({ error: data.erro });
       return;
