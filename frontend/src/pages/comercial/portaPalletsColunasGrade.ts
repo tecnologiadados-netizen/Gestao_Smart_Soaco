@@ -61,7 +61,7 @@ export const COLUNAS_CLIENTES_FUNIL: ColunaGrade<LinhaClienteFunil>[] = [
     texto: (r) => (r.primeiroPedidoEmpresa ? formatData(r.primeiroPedidoEmpresa) : 'Nunca comprou'),
     valor: (r) => r.primeiroPedidoEmpresa,
   },
-  { id: 'novo', label: 'Novo', texto: (r) => simNao(r.novo) },
+  { id: 'novo', label: 'Lead novo', texto: (r) => simNao(r.novo) },
   {
     id: 'propostas',
     label: 'Propostas',

@@ -267,7 +267,7 @@ export interface LinhaClienteMes {
   codigosProposta: string;
   /** Datas de abertura dessas propostas (ISO), na mesma ordem. */
   datasProposta: string;
-  /** Mesma regra de cliente novo do funil (clienteNovo), no recorte do detalhe. */
+  /** true quando o pedido de porta-palete do recorte é a primeira compra na empresa. */
   novo: boolean;
   qtdPedidos: number;
   valor: number;
@@ -403,6 +403,8 @@ type CacheBase = {
   vinculos: VinculoPropostaPedido[];
   /** Primeiro pedido do cliente nas empresas do filtro, de qualquer produto (ISO). */
   primeiroPedidoEmpresa: Map<number, string>;
+  /** Primeira proposta de porta-palete do cliente, em qualquer filtro (ISO). */
+  primeiraPropostaCliente: Map<number, string>;
 };
 
 type CacheBruto = {
@@ -626,7 +628,21 @@ function materializar(bruto: CacheBruto, filtros: FiltrosPortaPallets): CacheBas
     pedidos,
     vinculos,
     primeiroPedidoEmpresa,
+    primeiraPropostaCliente: mapaPrimeiraProposta(bruto.propostasRaw),
   };
+}
+
+/** Menor data de abertura de proposta de porta-palete de cada cliente, antes dos filtros da tela. */
+function mapaPrimeiraProposta(rows: Record<string, unknown>[]): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const row of rows) {
+    const id = num(row.idCliente);
+    const data = str(row.dataAbertura);
+    if (id <= 0 || !data) continue;
+    const atual = out.get(id);
+    if (!atual || data < atual) out.set(id, data);
+  }
+  return out;
 }
 
 function num(v: unknown): number {
@@ -1290,12 +1306,12 @@ function conversoesDoMes(propostas: LinhaPropostaItem[], desde: string, ate: str
 }
 
 /**
- * Cliente novo = nunca comprou nada da empresa até o contato: nenhum pedido de qualquer produto
- * (pedido de estoque e item cancelado não contam) antes da data do contato.
+ * Lead novo = não há proposta de porta-palete anterior ao primeiro contato deste recorte.
+ * `primeiraProposta` é a menor data de abertura já vista para a pessoa (qualquer vendedor ou empresa).
  */
-export function clienteNovo(idCliente: number, contato: string, primeiroPedidoEmpresa: string): boolean {
+export function leadNovo(idCliente: number, contato: string, primeiraProposta: string): boolean {
   if (idCliente <= 0 || !contato) return false;
-  return !primeiroPedidoEmpresa || primeiroPedidoEmpresa >= contato;
+  return !primeiraProposta || primeiraProposta >= contato;
 }
 
 /**
@@ -1308,8 +1324,15 @@ export function clientesDoFunil(
   vinculos: VinculoPropostaPedido[],
   desde: string,
   ate: string,
-  primeiroPedidoEmpresa: Map<number, string> = new Map()
+  primeiroPedidoEmpresa: Map<number, string> = new Map(),
+  primeiraPropostaCliente: Map<number, string> = new Map()
 ): LinhaClienteFunil[] {
+  const primeiraProposta = new Map(primeiraPropostaCliente);
+  for (const item of propostas) {
+    if (item.idCliente <= 0 || !item.dataAbertura) continue;
+    const atual = primeiraProposta.get(item.idCliente);
+    if (!atual || item.dataAbertura < atual) primeiraProposta.set(item.idCliente, item.dataAbertura);
+  }
   const primeiraPropostaRecorte = new Map<number, string>();
   const cadastro = new Map<number, string>();
   for (const item of propostas) {
@@ -1355,7 +1378,7 @@ export function clientesDoFunil(
         dataCadastro,
         primeiroContato: contato,
         primeiroPedidoEmpresa: pedidoEmpresa,
-        novo: clienteNovo(idCliente, contato, pedidoEmpresa),
+        novo: leadNovo(idCliente, contato, primeiraProposta.get(idCliente) ?? ''),
         qtdPropostas: linha.propostas.size,
         qtdPedidos: linha.pedidos.size,
         valorVendido: round2(linha.valor),
@@ -1471,9 +1494,18 @@ export function montarFunil(
   totais: MesPortaPallets,
   desde: string,
   ate: string,
-  primeiroPedidoEmpresa: Map<number, string> = new Map()
+  primeiroPedidoEmpresa: Map<number, string> = new Map(),
+  primeiraPropostaCliente: Map<number, string> = new Map()
 ): FunilPortaPallets {
-  const clientes = clientesDoFunil(propostas, pedidos, vinculos, desde, ate, primeiroPedidoEmpresa);
+  const clientes = clientesDoFunil(
+    propostas,
+    pedidos,
+    vinculos,
+    desde,
+    ate,
+    primeiroPedidoEmpresa,
+    primeiraPropostaCliente
+  );
   const gerados = pedidosGeradosPelasPropostas(propostas, pedidos, vinculos, desde, ate);
   return {
     propostas: totais.qtdPropostas,
@@ -1566,7 +1598,8 @@ function montarMensal(
     totaisBase,
     desde,
     ate,
-    base.primeiroPedidoEmpresa
+    base.primeiroPedidoEmpresa,
+    base.primeiraPropostaCliente
   );
   const meses = mesesBase.map((m) => {
     const r = recorteDoMes(m.mes, desde, ate);
@@ -1609,7 +1642,15 @@ export async function obterPortaPalletsAuditoriaMensal(
     const { meses, totais } = montarMensal(base, desde, ate);
     const ordem = [...meses].sort((a, b) => b.mes.localeCompare(a.mes)).map((m) => m.mes);
     const clientesFunil = new Map(
-      clientesDoFunil(base.propostas, base.pedidos, base.vinculos, desde, ate, base.primeiroPedidoEmpresa).map(
+      clientesDoFunil(
+        base.propostas,
+        base.pedidos,
+        base.vinculos,
+        desde,
+        ate,
+        base.primeiroPedidoEmpresa,
+        base.primeiraPropostaCliente
+      ).map(
         (c) => [c.idCliente, c]
       )
     );
@@ -1732,7 +1773,8 @@ export async function obterPortaPalletsDetalhe(
         base.vinculos,
         desde,
         ate,
-        base.primeiroPedidoEmpresa
+        base.primeiroPedidoEmpresa,
+        base.primeiraPropostaCliente
       );
       const filtro: Record<typeof indicador, (c: LinhaClienteFunil) => boolean> = {
         clientes_total: () => true,

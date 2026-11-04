@@ -997,10 +997,10 @@ function Num({
     conversao: 'Conversão',
     tempo: 'Tempo médio',
     pedidos_gerados: 'Pedidos gerados',
-    clientes_com_pedido: 'Clientes que fecharam negócio',
-    clientes_total: 'Clientes ao todo',
-    clientes_novos: 'Clientes novos',
-    novos_com_pedido: 'Novos que fecharam',
+    clientes_com_pedido: 'Leads que fecharam negócio',
+    clientes_total: 'Leads ao todo',
+    clientes_novos: 'Leads novos',
+    novos_com_pedido: 'Leads novos que fecharam',
   };
   const vazio = texto === '—' || texto === '0' || texto === 'R$ 0,00';
   const cor = vazio

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   agregarMeses,
-  clienteNovo,
+  leadNovo,
   familiaCobre,
   filtrosPortaPalletsDeQuery,
   montarArvoreFamilia,
@@ -113,13 +113,13 @@ describe('agregarMeses porta-pallets', () => {
     expect(totais.qtdPrimeiraCompra).toBe(0);
   });
 
-  it('cliente novo: nenhum pedido na empresa antes do contato', () => {
-    expect(clienteNovo(1, '2024-01-10', '')).toBe(true);
-    expect(clienteNovo(1, '2024-01-10', '2024-01-10')).toBe(true);
-    expect(clienteNovo(1, '2024-01-10', '2024-02-01')).toBe(true);
-    expect(clienteNovo(1, '2024-01-10', '2024-01-09')).toBe(false);
-    expect(clienteNovo(1, '', '')).toBe(false);
-    expect(clienteNovo(-5, '2024-01-10', '')).toBe(false);
+  it('lead novo: nenhuma proposta de porta-palete antes do contato', () => {
+    expect(leadNovo(1, '2024-01-10', '')).toBe(true);
+    expect(leadNovo(1, '2024-01-10', '2024-01-10')).toBe(true);
+    expect(leadNovo(1, '2024-01-10', '2024-02-01')).toBe(true);
+    expect(leadNovo(1, '2024-01-10', '2024-01-09')).toBe(false);
+    expect(leadNovo(1, '', '')).toBe(false);
+    expect(leadNovo(-5, '2024-01-10', '')).toBe(false);
   });
 
   it('monta o funil só com as propostas do recorte e os pedidos gerados por elas', () => {
@@ -155,7 +155,7 @@ describe('agregarMeses porta-pallets', () => {
     expect(funil.tempoMedioDias).toBe(4);
     expect(funil.clientesTotal).toBe(4);
     expect(funil.clientesComPedido).toBe(2);
-    expect(funil.clientesNovos).toBe(2);
+    expect(funil.clientesNovos).toBe(3);
     expect(funil.novosComPedido).toBe(1);
     const gerados = pedidosGeradosPelasPropostas(propostas, pedidos, vinculos, '2024-01', '2024-01', true);
     const pd10 = gerados.find((g) => g.idPedido === 10);

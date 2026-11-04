@@ -45,7 +45,7 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       'Valor',
       'Virou pedido',
       'Pedidos gerados',
-      'Cliente novo?',
+      'Lead novo?',
       'Criação do cliente',
       'Dias para criar pedido',
     ],
@@ -209,7 +209,7 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
     'Cód. interno do cliente é o Cód. interno do cadastro de Pessoas no Nomus (todo cliente tem), para distinguir filiais com a mesma razão social.',
   ]);
   abaConf.addRow([
-    'Cliente novo? (aba Propostas) usa a regra do funil: cliente novo é quem nunca comprou nada da empresa (nenhum pedido de qualquer produto) antes da primeira proposta de porta-pallet do período. 1ª compra (aba Clientes) = o pedido de porta-pallet do mês é a primeira compra do cliente na empresa. Criação do cliente = data da linha Criação no Histórico de modificações do Nomus (não é a Data do início do relacionamento).',
+    'Lead novo? (aba Propostas) usa a regra do funil: lead novo é quem não tem proposta de porta-palete (família 95) anterior à primeira proposta dele no período. Proposta rejeitada também conta. 1ª compra (aba Clientes) = o pedido de porta-pallet do mês é a primeira compra do cliente na empresa. Criação do cliente = data da linha Criação no Histórico de modificações do Nomus (não é a Data do início do relacionamento).',
   ]);
   abaConf.addRow([
     'No total, Pedidos gerados e Clientes contam cada pedido/cliente uma vez no recorte: o mesmo pedido ligado a propostas de meses diferentes, ou o mesmo cliente comprando em vários meses, aparece em cada mês nas abas.',
