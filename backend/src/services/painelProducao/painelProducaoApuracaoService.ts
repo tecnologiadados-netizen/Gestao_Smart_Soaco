@@ -26,6 +26,11 @@ import {
   STATUS_ITEM_TERMINAL_SQL,
 } from './painelProducaoPedidosAtendidosSql.js';
 import { canonicalizeSetorPainel, SETOR_PESO } from './painelProducaoConstants.js';
+import {
+  chaveResponsaveis,
+  listarResponsaveisVigentes,
+  type ResponsavelMeta,
+} from './painelProducaoResponsaveisService.js';
 
 export const NIVEL_NAO_ATINGIDO = 'Não atingida';
 /** Setores da área Produção — mesma regra indireta (parcelas por montagem). */
@@ -119,6 +124,9 @@ export type ApuracaoMetaSetor = {
   valor_bruto?: number;
   parcelas_penalizadas?: number;
   elegivel_minimo_setores?: boolean;
+  /** Montagem: responsável do Cadastro de Metas; produção: colaboradores vinculados na apuração. */
+  responsaveis?: ResponsavelMeta[];
+  responsaveis_definidos_em?: string | null;
 };
 
 export type ApuracaoDetalheLinha = {
@@ -699,7 +707,15 @@ export async function getApuracaoMetas(mes: string): Promise<ApuracaoMetaSetor[]
   const linhasProducao = SETORES_PRODUCAO.map((setor) =>
     resumoSetorProducao(mes, setor, parcelas),
   );
-  return [...linhasMontagem, ...linhasProducao];
+  const responsaveis = await listarResponsaveisVigentes(mes);
+  return [...linhasMontagem, ...linhasProducao].map((linha) => {
+    const vigente = responsaveis.get(chaveResponsaveis(linha.area, linha.setor));
+    return {
+      ...linha,
+      responsaveis: vigente?.responsaveis ?? [],
+      responsaveis_definidos_em: vigente?.definido_em ?? null,
+    };
+  });
 }
 
 /** @deprecated use getApuracaoMetas */

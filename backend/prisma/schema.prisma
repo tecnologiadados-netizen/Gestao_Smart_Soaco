@@ -2164,6 +2164,23 @@ model PainelProducaoMeta {
   @@map("painel_producao_meta")
 }
 
+/// Responsáveis (orgânico) por setor da apuração de metas. Vale do mês gravado em diante,
+/// até um mês posterior ter definição própria. Nome/cargo ficam congelados no vínculo.
+model PainelProducaoResponsavel {
+  id               Int      @id @default(autoincrement())
+  mesAno           String   @map("mes_ano")
+  /// "montagem" (1 responsável) ou "producao" (1 ou mais colaboradores).
+  area             String
+  setor            String
+  /// [{ organico_id, nome, cargo }]; "[]" = sem responsável a partir deste mês.
+  responsaveisJson String   @default("[]") @map("responsaveis_json")
+  atualizadoPor    String?  @map("atualizado_por")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([mesAno, area, setor])
+  @@map("painel_producao_responsavel")
+}
+
 /// Meses cadastrados no painel de produção.
 model PainelProducaoMes {
   mesAno   String   @id @map("mes_ano")

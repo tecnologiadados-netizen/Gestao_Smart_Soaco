@@ -97,6 +97,33 @@ export interface PainelProducaoApuracaoRow {
   parcelas_penalizadas?: number;
   elegivel_minimo_setores?: boolean;
   considerar_penalizacoes?: boolean;
+  /** Montagem: responsável do Cadastro de Metas; produção: colaboradores vinculados na apuração. */
+  responsaveis?: PainelProducaoResponsavel[];
+  /** Mês (YYYY-MM) em que a definição vigente foi gravada; null = nunca definido. */
+  responsaveis_definidos_em?: string | null;
+}
+
+export type PainelProducaoResponsavelArea = 'montagem' | 'producao';
+
+export interface PainelProducaoResponsavel {
+  organico_id: string;
+  nome: string;
+  cargo: string;
+}
+
+export interface PainelProducaoResponsaveisSetor {
+  area: PainelProducaoResponsavelArea;
+  setor: string;
+  responsaveis: PainelProducaoResponsavel[];
+  definido_em: string | null;
+}
+
+export interface PainelProducaoColaboradorOrganico {
+  id: string;
+  nome: string;
+  cargo: string;
+  setor: string;
+  matricula: string;
 }
 
 export type PainelProducaoApuracaoDetalheTipo =
@@ -237,6 +264,44 @@ export async function fetchPainelProducaoApuracaoDetalhe(
   const params = new URLSearchParams({ mes, tipo, setor });
   const res = await apiFetch(`/api/painel-producao/apuracao/detalhe?${params}`);
   return parseJson(res);
+}
+
+export async function fetchPainelProducaoResponsaveis(
+  mes: string,
+): Promise<PainelProducaoResponsaveisSetor[]> {
+  const res = await apiFetch(`/api/painel-producao/responsaveis?mes=${encodeURIComponent(mes)}`);
+  return parseJson(res);
+}
+
+export async function savePainelProducaoResponsaveis(payload: {
+  mes: string;
+  area: PainelProducaoResponsavelArea;
+  setor: string;
+  organico_ids: string[];
+}): Promise<PainelProducaoResponsaveisSetor> {
+  const res = await apiFetch('/api/painel-producao/responsaveis', {
+    method: 'PUT',
+    body: payload,
+  });
+  return parseJson(res);
+}
+
+let colaboradoresOrganicoCache: Promise<PainelProducaoColaboradorOrganico[]> | null = null;
+
+/** Colaboradores ativos do orgânico (cache da sessão; recarrega após falha). */
+export function fetchPainelProducaoColaboradoresOrganico(): Promise<
+  PainelProducaoColaboradorOrganico[]
+> {
+  if (!colaboradoresOrganicoCache) {
+    colaboradoresOrganicoCache = apiFetch('/api/painel-producao/organico-colaboradores')
+      .then((res) => parseJson<{ colaboradores: PainelProducaoColaboradorOrganico[] }>(res))
+      .then((data) => data.colaboradores ?? [])
+      .catch((err: unknown) => {
+        colaboradoresOrganicoCache = null;
+        throw err;
+      });
+  }
+  return colaboradoresOrganicoCache;
 }
 
 export async function savePainelProducaoTarget(payload: {

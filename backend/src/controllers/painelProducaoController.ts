@@ -23,6 +23,13 @@ import {
   salvarFaixasDesconto,
   type FaixaDescontoInput,
 } from '../services/painelProducao/painelProducaoFaixasService.js';
+import {
+  RESPONSAVEL_AREAS,
+  listarColaboradoresAtivosOrganico,
+  listarResponsaveisVigentes,
+  salvarResponsaveis,
+  type ResponsavelArea,
+} from '../services/painelProducao/painelProducaoResponsaveisService.js';
 
 function parseMesAnoBody(mesAno: string): Date {
   const parts = mesAno.split('-');
@@ -206,6 +213,70 @@ export async function putPainelProducaoSetorPenalizacao(req: Request, res: Respo
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelProducaoOrganicoColaboradores(_req: Request, res: Response) {
+  try {
+    res.json({ colaboradores: await listarColaboradoresAtivosOrganico() });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelProducaoResponsaveis(req: Request, res: Response) {
+  const mes = String(req.query.mes ?? '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Parâmetro mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  try {
+    const vigentes = await listarResponsaveisVigentes(mes);
+    const itens = [...vigentes.entries()].map(([chave, valor]) => {
+      const [area, ...resto] = chave.split('::');
+      return { area, setor: resto.join('::'), ...valor };
+    });
+    res.json(itens);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function putPainelProducaoResponsaveis(req: Request, res: Response) {
+  const mes = String(req.body?.mes ?? '').trim();
+  const area = String(req.body?.area ?? '').trim() as ResponsavelArea;
+  const setor = String(req.body?.setor ?? '').trim();
+  const ids = req.body?.organico_ids;
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: 'Campo mes (YYYY-MM) é obrigatório.' });
+    return;
+  }
+  if (!RESPONSAVEL_AREAS.includes(area)) {
+    res.status(400).json({ error: 'Campo area deve ser "montagem" ou "producao".' });
+    return;
+  }
+  if (!setor) {
+    res.status(400).json({ error: 'Campo setor é obrigatório.' });
+    return;
+  }
+  if (!Array.isArray(ids)) {
+    res.status(400).json({ error: 'Campo organico_ids deve ser uma lista.' });
+    return;
+  }
+  try {
+    const result = await salvarResponsaveis({
+      mes,
+      area,
+      setor,
+      organicoIds: ids.map((id: unknown) => String(id ?? '')),
+      usuario: req.user?.login ?? null,
+    });
+    res.json({ area, setor, ...result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
   }
 }
 

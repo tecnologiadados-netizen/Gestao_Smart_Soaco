@@ -3613,3 +3613,239 @@ button.kpi-card-clickable:hover .kpi-click-hint {
   border-color: var(--gold);
   background: #1a2436;
 }
+
+/* ===== Responsáveis (orgânico) — Cadastro de Metas e Apuração ===== */
+
+.resp-celula {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 13rem;
+}
+
+.resp-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.resp-item {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.resp-nome {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.resp-cargo {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.resp-herdado {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.resp-vazio {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.resp-editar-btn {
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-dark);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resp-editar-btn:hover {
+  border-color: var(--gold);
+}
+
+.apuracao-setor-responsavel {
+  margin-top: 0.3rem;
+  font-weight: 400;
+}
+
+.apuracao-table td.apuracao-colaboradores {
+  text-align: left;
+}
+
+.apuracao-tooltip.resp-modal {
+  width: min(560px, 100%);
+  max-height: min(82vh, 640px);
+}
+
+.resp-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.85rem;
+  overflow-y: auto;
+}
+
+.resp-modal-secao {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.resp-modal-rotulo {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.resp-modal-nota {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.resp-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resp-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(255, 174, 0, 0.45);
+  border-radius: 8px;
+  background: rgba(255, 174, 0, 0.1);
+}
+
+.resp-chip span {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+}
+
+.resp-chip small {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.resp-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.resp-busca {
+  width: 100%;
+  text-align: left;
+}
+
+.resp-opcoes {
+  max-height: 15rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid #e8ecf0;
+  border-radius: 8px;
+}
+
+.resp-opcoes button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-bottom: 1px solid #f0f2f5;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resp-opcoes button:hover:not(:disabled) {
+  background: rgba(255, 174, 0, 0.12);
+}
+
+.resp-opcoes small {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.resp-opcoes-estado {
+  padding: 0.7rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.resp-modal-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-top: 1px solid #e8ecf0;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-editar-btn {
+  background: rgba(26, 35, 50, 0.92);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e8edf4;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-editar-btn:hover {
+  border-color: rgba(255, 174, 0, 0.45);
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-cargo,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-herdado,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-vazio,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-modal-rotulo,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-modal-nota,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-chip small,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes small,
+.painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes-estado {
+  color: #9aa3b2;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes {
+  border-color: #2d3a50;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-opcoes button {
+  border-bottom-color: #252f42;
+  color: #e8edf4;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-chip {
+  border-color: rgba(255, 174, 0, 0.4);
+  background: rgba(255, 174, 0, 0.12);
+  color: #e8edf4;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .resp-modal-acoes {
+  border-top-color: #2d3a50;
+}

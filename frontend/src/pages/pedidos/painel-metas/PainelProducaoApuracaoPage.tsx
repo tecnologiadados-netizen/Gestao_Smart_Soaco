@@ -4,6 +4,7 @@ import {
   fetchPainelProducaoApuracao,
   fetchPainelProducaoApuracaoDetalhe,
   fetchPainelProducaoFilters,
+  savePainelProducaoResponsaveis,
   type PainelProducaoApuracaoArea,
   type PainelProducaoApuracaoDetalhe,
   type PainelProducaoApuracaoDetalheTipo,
@@ -17,6 +18,12 @@ import { exportarApuracaoDetalheExcel } from '../../../utils/painelProducaoExcel
 import { exportarApuracaoMetasPdf } from '../../../utils/painelProducaoApuracaoPdf';
 import LoaderCirculo from '../../../components/LoaderCirculo';
 import { useDuracaoMinima } from '../../../hooks/useDuracaoMinima';
+import { useAuth } from '../../../contexts/AuthContext';
+import { podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
+import {
+  ResponsaveisCelula,
+  ResponsaveisLista,
+} from '../../../components/painel-producao/ResponsaveisMeta';
 
 function formatNumero(valor: number, maxDecimals = 2): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -1044,6 +1051,8 @@ function CelulaMetaNiveis({
 }
 
 export default function PainelProducaoApuracaoPage() {
+  const { hasPermission } = useAuth();
+  const podeEditarResponsaveis = podeEditarPainelMetas(hasPermission);
   const [meses, setMeses] = useState<string[]>([]);
   const [mes, setMes] = useState('');
   const [area, setArea] = useState<PainelProducaoApuracaoArea>('montagem');
@@ -1120,6 +1129,26 @@ export default function PainelProducaoApuracaoPage() {
     }
   }
 
+  async function salvarColaboradoresProducao(setor: string, organicoIds: string[]) {
+    const salvo = await savePainelProducaoResponsaveis({
+      mes,
+      area: 'producao',
+      setor,
+      organico_ids: organicoIds,
+    });
+    setRows((prev) =>
+      prev.map((row) =>
+        row.area === 'producao' && row.setor === setor
+          ? {
+              ...row,
+              responsaveis: salvo.responsaveis,
+              responsaveis_definidos_em: salvo.definido_em,
+            }
+          : row,
+      ),
+    );
+  }
+
   async function baixarPdfGrade() {
     if (exportandoPdf || loading || rowsFiltradas.length === 0) return;
     setExportandoPdf(true);
@@ -1187,8 +1216,8 @@ export default function PainelProducaoApuracaoPage() {
                 </h2>
                 <p>
                   {area === 'montagem'
-                    ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam os setores de produção.'
-                    : 'Setores de produção (Perfiladeiras, Corte e Dobra, Solda e Pintura): valor indireto conforme níveis atingidos pela montagem. Clique no valor a pagar para o memorial.'}
+                    ? 'Todos os setores de montagem ativos. Os setores com cadastro de níveis incompleto são exibidos, mas não alimentam os setores de produção. O responsável de cada setor é vinculado no Cadastro de Metas.'
+                    : 'Setores de produção (Perfiladeiras, Corte e Dobra, Solda e Pintura): valor indireto conforme níveis atingidos pela montagem. Clique no valor a pagar para o memorial. Os colaboradores vinculados valem do mês em diante, até serem alterados.'}
                 </p>
               </div>
               <button
@@ -1232,6 +1261,13 @@ export default function PainelProducaoApuracaoPage() {
                               Níveis incompletos
                             </small>
                           )}
+                          <div className="apuracao-setor-responsavel">
+                            <ResponsaveisLista
+                              responsaveis={row.responsaveis ?? []}
+                              definidoEm={row.responsaveis_definidos_em}
+                              mes={mes}
+                            />
+                          </div>
                         </td>
                         <CelulaComDetalhe
                           mes={mes}
@@ -1316,6 +1352,7 @@ export default function PainelProducaoApuracaoPage() {
                   <thead>
                     <tr>
                       <th>Setor</th>
+                      <th>Colaboradores</th>
                       <th>Setores com meta</th>
                       <th>Bronze</th>
                       <th>Prata</th>
@@ -1330,6 +1367,18 @@ export default function PainelProducaoApuracaoPage() {
                     {rowsFiltradas.map((row) => (
                       <tr key={`${row.setor}-${row.mes}`}>
                         <td className="apuracao-setor">{row.setor}</td>
+                        <td className="apuracao-colaboradores">
+                          <ResponsaveisCelula
+                            responsaveis={row.responsaveis ?? []}
+                            definidoEm={row.responsaveis_definidos_em}
+                            mes={mes}
+                            podeEditar={podeEditarResponsaveis}
+                            multiplo
+                            titulo={`Colaboradores — ${row.setor}`}
+                            subtitulo={`A partir de ${formatMesLabel(mes)}`}
+                            onSalvar={(ids) => salvarColaboradoresProducao(row.setor, ids)}
+                          />
+                        </td>
                         <td>{formatNumero(row.setores_atingiram_meta ?? 0, 0)}</td>
                         <CelulaContextoProducao
                           row={row}
@@ -1387,7 +1436,7 @@ export default function PainelProducaoApuracaoPage() {
                     ))}
                     {!loading && rowsFiltradas.length === 0 && !error && (
                       <tr>
-                        <td colSpan={9} className="apuracao-empty">
+                        <td colSpan={10} className="apuracao-empty">
                           Nenhum dado de produção para o mês.
                         </td>
                       </tr>

@@ -14,7 +14,13 @@ const PDF = {
 
 const MARGIN = { left: 8, right: 8, bottom: 10, top: 8 };
 /** Larguras proporcionais — tabela ocupa a largura útil (igual compras). */
-const COL_RATIOS = [0.22, 0.16, 0.16, 0.18, 0.14, 0.14] as const;
+const COL_RATIOS = [0.15, 0.25, 0.12, 0.12, 0.13, 0.11, 0.12] as const;
+
+function textoResponsaveis(row: PainelProducaoApuracaoRow): string {
+  const lista = row.responsaveis ?? [];
+  if (lista.length === 0) return '—';
+  return lista.map((r) => (r.cargo ? `${r.nome} — ${r.cargo}` : r.nome)).join('\n');
+}
 
 function formatNumero(valor: number, maxDecimals = 2): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -139,7 +145,7 @@ function desenharCabecalhoApuracaoPdf(
   doc.setFontSize(6.2);
   doc.setTextColor(...PDF.muted);
   const regras =
-    'Recorte da validação: meta quantitativa, realizado, atingimento quantitativo, meta atingida e valor a pagar.';
+    'Recorte da validação: responsável, meta quantitativa, realizado, atingimento quantitativo, meta atingida e valor a pagar.';
   const regrasLinhas = doc.splitTextToSize(regras, col3W - 0.5) as string[];
   const regrasLineH = 2.8;
   regrasLinhas.forEach((linha, i) => {
@@ -217,6 +223,7 @@ export async function exportarApuracaoMetasPdf(opts: ExportarApuracaoPdfOpts): P
   const head = [
     [
       'Setor',
+      'Responsável',
       'Meta quantitativa',
       'Realizado',
       'Atingimento quantitativo',
@@ -229,6 +236,7 @@ export async function exportarApuracaoMetasPdf(opts: ExportarApuracaoPdfOpts): P
     const unidade = row.unidade || 'un';
     return [
       row.setor,
+      textoResponsaveis(row),
       `${formatNumero(row.meta_quantitativa)} ${unidade}`,
       `${formatNumero(row.producao_realizada)} ${unidade}`,
       `${formatNumero(row.percentual_meta_quantitativa)}%`,
@@ -269,11 +277,12 @@ export async function exportarApuracaoMetasPdf(opts: ExportarApuracaoPdfOpts): P
     },
     columnStyles: {
       0: { cellWidth: colWidths[0], halign: 'left', fontStyle: 'bold' },
-      1: { cellWidth: colWidths[1], halign: 'center' },
+      1: { cellWidth: colWidths[1], halign: 'left', fontSize: 8 },
       2: { cellWidth: colWidths[2], halign: 'center' },
       3: { cellWidth: colWidths[3], halign: 'center' },
       4: { cellWidth: colWidths[4], halign: 'center' },
-      5: { cellWidth: colWidths[5], halign: 'right', fontStyle: 'bold' },
+      5: { cellWidth: colWidths[5], halign: 'center' },
+      6: { cellWidth: colWidths[6], halign: 'right', fontStyle: 'bold' },
     },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) {

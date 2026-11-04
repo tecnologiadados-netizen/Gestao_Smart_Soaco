@@ -6,13 +6,17 @@ import {
   fetchPainelProducaoAlcancado,
   fetchPainelProducaoFaixasDesconto,
   fetchPainelProducaoFilters,
+  fetchPainelProducaoResponsaveis,
   fetchPainelProducaoTargets,
   savePainelProducaoFaixasDesconto,
+  savePainelProducaoResponsaveis,
   savePainelProducaoSetorPenalizacao,
   savePainelProducaoTarget,
   type PainelProducaoAlcancadoSetor,
   type PainelProducaoFaixaDesconto,
+  type PainelProducaoResponsaveisSetor,
 } from '../../../api/painelProducao';
+import { ResponsaveisCelula } from '../../../components/painel-producao/ResponsaveisMeta';
 import { formatMesLabel } from '../../../utils/painelProducaoFormat';
 import { podeEditarFaixasDesconto, podeEditarPainelMetas } from '../../../utils/painelProducaoPermissoes';
 import LoaderCirculo from '../../../components/LoaderCirculo';
@@ -183,6 +187,9 @@ export default function PainelProducaoMetasPage() {
   const [alcancadoPorSetor, setAlcancadoPorSetor] = useState<
     Record<string, PainelProducaoAlcancadoSetor>
   >({});
+  const [responsaveisPorSetor, setResponsaveisPorSetor] = useState<
+    Record<string, PainelProducaoResponsaveisSetor>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -222,11 +229,17 @@ export default function PainelProducaoMetasPage() {
       setError(null);
       setSuccess(null);
       try {
-        const [rows, faixasCarregadas] = await Promise.all([
+        const [rows, faixasCarregadas, responsaveis] = await Promise.all([
           fetchPainelProducaoTargets(mes),
           fetchPainelProducaoFaixasDesconto(mes),
+          fetchPainelProducaoResponsaveis(mes),
         ]);
         if (cancelled) return;
+        const respMap: Record<string, PainelProducaoResponsaveisSetor> = {};
+        for (const item of responsaveis) {
+          if (item.area === 'montagem') respMap[item.setor] = item;
+        }
+        setResponsaveisPorSetor(respMap);
         const linhaMap: Record<string, LinhaMeta> = {};
         const semMap: Record<string, boolean> = {};
         const penalMap: Record<string, boolean> = {};
@@ -315,6 +328,22 @@ export default function PainelProducaoMetasPage() {
     } finally {
       setSavingPenalizacaoSetor(null);
     }
+  }
+
+  async function salvarResponsavelSetor(setor: string, organicoIds: string[]) {
+    const salvo = await savePainelProducaoResponsaveis({
+      mes,
+      area: 'montagem',
+      setor,
+      organico_ids: organicoIds,
+    });
+    setResponsaveisPorSetor((prev) => ({ ...prev, [setor]: salvo }));
+    setError(null);
+    setSuccess(
+      salvo.responsaveis.length > 0
+        ? `Responsável de ${setor} vinculado a partir de ${formatMesLabel(mes)}.`
+        : `${setor} ficou sem responsável a partir de ${formatMesLabel(mes)}.`,
+    );
   }
 
   function iniciarEdicaoFaixas() {
@@ -678,6 +707,7 @@ export default function PainelProducaoMetasPage() {
                   <tr>
                     <th rowSpan={2} className="targets-th-expand" aria-label="Expandir" />
                     <th rowSpan={2}>Setor</th>
+                    <th rowSpan={2}>Responsável</th>
                     <th rowSpan={2}>Não haverá meta</th>
                     <th colSpan={3} className="targets-group">
                       Meta (quantidade)
@@ -703,7 +733,8 @@ export default function PainelProducaoMetasPage() {
                       noMeta || alcancado == null
                         ? null
                         : identificarNivelAtingido(alcancado.producao, linha);
-                    const colSpan = 8 + (podeEditar ? 1 : 0);
+                    const colSpan = 9 + (podeEditar ? 1 : 0);
+                    const responsavel = responsaveisPorSetor[setor];
                     return (
                       <Fragment key={setor}>
                       <tr
@@ -747,6 +778,18 @@ export default function PainelProducaoMetasPage() {
                           >
                             {setor}
                           </button>
+                        </td>
+                        <td className="targets-cell-responsavel">
+                          <ResponsaveisCelula
+                            responsaveis={responsavel?.responsaveis ?? []}
+                            definidoEm={responsavel?.definido_em}
+                            mes={mes}
+                            podeEditar={podeEditar}
+                            multiplo={false}
+                            titulo={`Responsável — ${setor}`}
+                            subtitulo={`A partir de ${formatMesLabel(mes)}`}
+                            onSalvar={(ids) => salvarResponsavelSetor(setor, ids)}
+                          />
                         </td>
                         <td>
                           <label className="targets-checkbox-label">
@@ -1084,7 +1127,7 @@ export default function PainelProducaoMetasPage() {
           <p className="targets-hint">
             {guia === 'metas'
               ? podeEditar
-                ? 'A meta do painel é a do nível Aço. O valor a pagar de cada nível fica na expansão da linha. A coluna Alcançado mostra a produção do mês e o maior nível batido (Bronze, Prata ou Aço).'
+                ? 'A meta do painel é a do nível Aço. O valor a pagar de cada nível fica na expansão da linha. A coluna Alcançado mostra a produção do mês e o maior nível batido (Bronze, Prata ou Aço). O responsável (ativo no orgânico) vale do mês vinculado em diante, até ser alterado.'
                 : 'Visualização das metas de produção por setor e nível. Expanda a linha para ver o valor a pagar e o nível alcançado.'
               : podeEditarFaixas
                 ? 'A apuração da montagem usa automaticamente as faixas cadastradas para este mês. Use Editar faixas para alterar.'
