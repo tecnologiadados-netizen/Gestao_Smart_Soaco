@@ -1,6 +1,11 @@
 import { prisma } from '../../config/prisma.js';
 import { getNomusPool, nomusQueryWithRetry } from '../../config/nomusDb.js';
-import { getDashboard, getProducaoResumoApuracao, warmupPainelProducaoCaches } from './painelProducaoDashboardService.js';
+import {
+  getDashboard,
+  getProducaoRealizadaMovimentos,
+  getProducaoResumoApuracao,
+  warmupPainelProducaoCaches,
+} from './painelProducaoDashboardService.js';
 import {
   getConsiderarPenalizacoes,
   getMetaNiveis,
@@ -20,7 +25,7 @@ import {
   STATUS_ITEM_ATENDIDO_SQL,
   STATUS_ITEM_TERMINAL_SQL,
 } from './painelProducaoPedidosAtendidosSql.js';
-import { canonicalizeSetorPainel } from './painelProducaoConstants.js';
+import { canonicalizeSetorPainel, SETOR_PESO } from './painelProducaoConstants.js';
 
 export const NIVEL_NAO_ATINGIDO = 'Não atingida';
 /** Setores da área Produção — mesma regra indireta (parcelas por montagem). */
@@ -129,6 +134,8 @@ export type ApuracaoDetalheLinha = {
   usuario?: string;
   anexo_assinatura_path?: string | null;
   anexo_assinatura_nome?: string | null;
+  data_movimento?: string | null;
+  movimento?: string;
 };
 
 export type ParcelaProducaoDetalhe = {
@@ -148,6 +155,9 @@ export type ApuracaoDetalhePayload = {
   mes: string;
   setor: string;
   tipo: ApuracaoDetalheTipo;
+  /** "movimentos_producao": lançamentos de produção (Realizado em "un"), total em unidades. */
+  formato?: 'movimentos_producao';
+  unidade?: string;
   titulo: string;
   total: number;
   linhas: ApuracaoDetalheLinha[];
@@ -708,6 +718,28 @@ export async function getApuracaoDetalhe(
   setor: string,
 ): Promise<ApuracaoDetalhePayload> {
   if (tipo === 'producao_realizada') {
+    if (!SETOR_PESO.has(setor)) {
+      const { total, movimentos } = await getProducaoRealizadaMovimentos(setor, mes);
+      return {
+        mes,
+        setor,
+        tipo,
+        formato: 'movimentos_producao',
+        unidade: 'un',
+        titulo: 'Produção realizada (entradas em produtos acabados)',
+        total,
+        linhas: movimentos.map((m) => ({
+          pedido: '',
+          cliente: '',
+          codigo_produto: m.codigo_produto,
+          descricao: m.descricao_produto,
+          quantidade: m.quantidade,
+          data_movimento: formatDateTimeBr(m.data_movimento),
+          movimento: m.movimento,
+          usuario: m.usuario,
+        })),
+      };
+    }
     const dashboard = (await getDashboard(setor, mes)) as {
       unidade?: string;
       producao?: number;

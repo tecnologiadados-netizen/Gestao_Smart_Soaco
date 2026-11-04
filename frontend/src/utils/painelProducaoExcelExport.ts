@@ -114,6 +114,10 @@ function ajustarLarguras(sheet: ExcelJS.Worksheet, widths: number[]): void {
 export async function exportarApuracaoDetalheExcel(
   detalhe: PainelProducaoApuracaoDetalhe,
 ): Promise<void> {
+  if (detalhe.formato === 'movimentos_producao') {
+    await exportarMovimentosProducaoExcel(detalhe);
+    return;
+  }
   const mostraAlteracao =
     detalhe.tipo === 'alteracoes' || detalhe.tipo === 'alteracoes_ruptura';
   const mostraStatus =
@@ -241,6 +245,75 @@ export async function exportarApuracaoDetalheExcel(
   const setorSlug = slugArquivo(detalhe.setor || 'setor');
   const tipoSlug = slugArquivo(detalhe.tipo || 'detalhe');
   await baixarWorkbook(workbook, `apuracao-${tipoSlug}-${setorSlug}-${mesSlug}.xlsx`);
+}
+
+/** Lançamentos de produção que compõem o Realizado (setores em "un"). */
+async function exportarMovimentosProducaoExcel(
+  detalhe: PainelProducaoApuracaoDetalhe,
+): Promise<void> {
+  const unidade = detalhe.unidade ?? 'un';
+  const headers = ['Data', 'Produto', 'Descrição', 'Movimento', 'Usuário', 'Quantidade'];
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Gestão Smart';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Produção realizada', {
+    views: [{ state: 'frozen', ySplit: 0 }],
+  });
+
+  const headerRow = aplicarCabecalhoDocumento(sheet, {
+    titulo: detalhe.titulo || 'Produção realizada',
+    metadados: [
+      { rotulo: 'Setor', valor: detalhe.setor || '—' },
+      { rotulo: 'Mês', valor: detalhe.mes || '—' },
+      {
+        rotulo: 'Resumo',
+        valor: `${detalhe.total} ${unidade} · ${detalhe.linhas.length} lançamentos`,
+      },
+    ],
+    colCount: headers.length,
+  });
+
+  const colHeaderRow = headerRow + 1;
+  headers.forEach((h, i) => {
+    sheet.getCell(colHeaderRow, i + 1).value = h;
+  });
+  estilizarCabecalhoColunas(sheet, colHeaderRow, headers.length);
+
+  detalhe.linhas.forEach((linha, index) => {
+    const rowNumber = colHeaderRow + 1 + index;
+    [
+      linha.data_movimento ?? '',
+      linha.codigo_produto,
+      linha.descricao,
+      linha.movimento ?? '',
+      linha.usuario ?? '',
+      linha.quantidade ?? '',
+    ].forEach((v, i) => {
+      sheet.getCell(rowNumber, i + 1).value = v;
+    });
+    estilizarLinhaDados(sheet, rowNumber, headers.length, index % 2 === 1);
+    sheet.getCell(rowNumber, 6).alignment = { vertical: 'middle', horizontal: 'right' };
+  });
+
+  const totalRow = colHeaderRow + 1 + detalhe.linhas.length;
+  sheet.getCell(totalRow, 1).value = 'Total';
+  sheet.getCell(totalRow, 6).value = detalhe.total;
+  sheet.getCell(totalRow, 1).font = { name: 'Calibri', size: 10, bold: true };
+  sheet.getCell(totalRow, 6).font = { name: 'Calibri', size: 10, bold: true };
+  sheet.getCell(totalRow, 6).alignment = { vertical: 'middle', horizontal: 'right' };
+
+  const lastDataRow = colHeaderRow + Math.max(detalhe.linhas.length, 1);
+  sheet.autoFilter = {
+    from: { row: colHeaderRow, column: 1 },
+    to: { row: lastDataRow, column: headers.length },
+  };
+  sheet.views = [{ state: 'frozen', ySplit: colHeaderRow }];
+  ajustarLarguras(sheet, [18, 12, 52, 40, 24, 12]);
+
+  const mesSlug = slugArquivo(detalhe.mes || 'mes');
+  const setorSlug = slugArquivo(detalhe.setor || 'setor');
+  await baixarWorkbook(workbook, `apuracao-producao-realizada-${setorSlug}-${mesSlug}.xlsx`);
 }
 
 /** Exporta o popover de pedidos contabilizados no dashboard (unidade pedidos). */

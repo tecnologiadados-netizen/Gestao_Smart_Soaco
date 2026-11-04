@@ -79,6 +79,76 @@ function ApuracaoDetalheTabela({
 
   const colSpan = mostraAlteracao ? 9 : mostraStatus ? 7 : mostraDocSaida ? 6 : 5;
 
+  if (detalhe.formato === 'movimentos_producao') {
+    const unidade = detalhe.unidade ?? 'un';
+    return (
+      <div className="apuracao-tooltip-body">
+        <div className="apuracao-tooltip-header">
+          <strong>{detalhe.titulo}</strong>
+          <div className="apuracao-tooltip-header-actions">
+            <span>
+              {formatNumero(detalhe.total)} {unidade} · {formatNumero(detalhe.linhas.length, 0)}{' '}
+              lançamentos
+            </span>
+            <button
+              type="button"
+              className="apuracao-tooltip-export"
+              onClick={() => void baixarExcel()}
+              disabled={detalhe.linhas.length === 0 || exportando}
+              title="Baixar dados em Excel"
+            >
+              {exportando ? 'Gerando…' : 'Excel'}
+            </button>
+          </div>
+        </div>
+        <div className="apuracao-tooltip-scroll">
+          <table className="apuracao-tooltip-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Produto</th>
+                <th>Descrição</th>
+                <th>Movimento</th>
+                <th>Usuário</th>
+                <th>Quantidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detalhe.linhas.map((linha, index) => (
+                <tr key={`${linha.codigo_produto}-${linha.data_movimento ?? ''}-${index}`}>
+                  <td>{linha.data_movimento ?? '—'}</td>
+                  <td>{linha.codigo_produto}</td>
+                  <td className="apuracao-tooltip-desc">{linha.descricao}</td>
+                  <td>{linha.movimento ?? '—'}</td>
+                  <td>{linha.usuario ?? '—'}</td>
+                  <td className="apuracao-tooltip-qtde">
+                    {linha.quantidade == null ? '—' : formatNumero(linha.quantidade)}
+                  </td>
+                </tr>
+              ))}
+              {detalhe.linhas.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>Nenhum registro.</td>
+                </tr>
+              ) : (
+                <tr className="is-atingido">
+                  <td colSpan={5}>
+                    <strong>Total</strong>
+                  </td>
+                  <td className="apuracao-tooltip-qtde">
+                    <strong>
+                      {formatNumero(detalhe.total)} {unidade}
+                    </strong>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="apuracao-tooltip-body">
       <div className="apuracao-tooltip-header">
@@ -741,6 +811,7 @@ function CelulaComDetalhe({
   className,
   children,
   cacheRef,
+  wide = false,
 }: {
   mes: string;
   setor: string;
@@ -749,6 +820,7 @@ function CelulaComDetalhe({
   className?: string;
   children: ReactNode;
   cacheRef: MutableRefObject<Map<string, PainelProducaoApuracaoDetalhe>>;
+  wide?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -820,7 +892,7 @@ function CelulaComDetalhe({
           createPortal(
             <div className="apuracao-tooltip-overlay" onClick={close}>
               <div
-                className="apuracao-tooltip"
+                className={`apuracao-tooltip${wide ? ' is-wide' : ''}`}
                 role="dialog"
                 aria-label="Detalhe da apuração"
                 onClick={(event) => event.stopPropagation()}
@@ -1196,13 +1268,14 @@ export default function PainelProducaoApuracaoPage() {
                           mes={mes}
                           cacheRef={detalheCacheRef}
                         />
-                        {row.unidade === 'pedidos' ? (
+                        {row.unidade === 'pedidos' || row.unidade === 'un' ? (
                           <CelulaComDetalhe
                             mes={mes}
                             setor={row.setor}
                             tipo="producao_realizada"
                             valor={row.producao_realizada}
                             cacheRef={detalheCacheRef}
+                            wide={row.unidade === 'un'}
                           >
                             {formatNumero(row.producao_realizada)} {row.unidade}
                           </CelulaComDetalhe>

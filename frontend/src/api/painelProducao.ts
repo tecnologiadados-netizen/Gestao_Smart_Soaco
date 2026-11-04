@@ -120,6 +120,8 @@ export interface PainelProducaoApuracaoDetalheLinha {
   usuario?: string;
   anexo_assinatura_path?: string | null;
   anexo_assinatura_nome?: string | null;
+  data_movimento?: string | null;
+  movimento?: string;
 }
 
 export interface PainelProducaoApuracaoParcelaProducao {
@@ -139,6 +141,9 @@ export interface PainelProducaoApuracaoDetalhe {
   mes: string;
   setor: string;
   tipo: PainelProducaoApuracaoDetalheTipo;
+  /** "movimentos_producao": lançamentos de produção do Realizado em "un"; total em unidades. */
+  formato?: 'movimentos_producao';
+  unidade?: string;
   titulo: string;
   total: number;
   linhas: PainelProducaoApuracaoDetalheLinha[];

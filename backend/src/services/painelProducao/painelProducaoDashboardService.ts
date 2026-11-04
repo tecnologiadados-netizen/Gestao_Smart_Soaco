@@ -28,17 +28,45 @@ import {
 } from './painelProducaoTargetsService.js';
 import { SQL_PEDIDOS_ATENDIDOS_POR_DOC_SAIDA } from './painelProducaoPedidosAtendidosSql.js';
 
+/** Grade (SQL_PRODUCAO_PA) e modal (SQL_PRODUCAO_PA_DETALHE) devem compartilhar joins, filtro e sinal. */
+const SQL_PRODUCAO_PA_JOINS = `
+FROM movimentacaoproducao mp
+LEFT JOIN setorestoque ss ON mp.idSetorEstoqueSaida = ss.id
+LEFT JOIN setorestoque se ON mp.idSetorEstoqueEntrada = se.id`;
+
+const SQL_PRODUCAO_PA_WHERE = `
+WHERE mp.idTipoMovimentacao = 18
+  AND ((se.id = 28) OR (ss.id = 23 AND se.id = 5))
+  AND mp.data >= ? AND mp.data < ?`;
+
+const SQL_PRODUCAO_PA_QTDE = 'CASE WHEN se.id = 28 THEN mp.qtde * (-1) ELSE mp.qtde END';
+
 const SQL_PRODUCAO_PA = `
 SELECT
     mp.idProduto AS id_produto,
     DATE(mp.data) AS dt,
-    CASE WHEN se.id = 28 THEN mp.qtde * (-1) ELSE mp.qtde END AS quantidade
-FROM movimentacaoproducao mp
-LEFT JOIN setorestoque ss ON mp.idSetorEstoqueSaida = ss.id
-LEFT JOIN setorestoque se ON mp.idSetorEstoqueEntrada = se.id
-WHERE mp.idTipoMovimentacao = 18
-  AND ((se.id = 28) OR (ss.id = 23 AND se.id = 5))
-  AND mp.data >= ? AND mp.data < ?
+    ${SQL_PRODUCAO_PA_QTDE} AS quantidade
+${SQL_PRODUCAO_PA_JOINS}
+${SQL_PRODUCAO_PA_WHERE}
+`;
+
+const SQL_PRODUCAO_PA_DETALHE = `
+SELECT
+    mp.id AS id_movimentacao,
+    mp.idProduto AS id_produto,
+    DATE(mp.data) AS dt,
+    mp.data AS data_movimento,
+    ${SQL_PRODUCAO_PA_QTDE} AS quantidade,
+    p.nome AS codigo_produto,
+    p.descricao AS descricao_produto,
+    TRIM(ss.nome) AS setor_saida,
+    TRIM(se.nome) AS setor_entrada,
+    u.nome AS usuario
+${SQL_PRODUCAO_PA_JOINS}
+LEFT JOIN produto p ON p.id = mp.idProduto
+LEFT JOIN usuario u ON u.id = mp.idUsuario
+${SQL_PRODUCAO_PA_WHERE}
+ORDER BY mp.data ASC, mp.id ASC
 `;
 
 const SQL_GOND_VENDAS = `
@@ -341,6 +369,61 @@ export async function getProducaoResumoApuracao(
   };
   dashboardCache.set(cacheKey, payload);
   return payload;
+}
+
+export type MovimentoProducaoRealizada = {
+  id_movimentacao: number;
+  data_movimento: Date | string | null;
+  codigo_produto: string;
+  descricao_produto: string;
+  movimento: string;
+  usuario: string;
+  quantidade: number;
+};
+
+/**
+ * Lançamentos de produção (setores em "un") que compõem o Realizado da grade.
+ * Mesmos joins/filtro/sinal de SQL_PRODUCAO_PA e mesmo mapa de setor de sumRows.
+ */
+export async function getProducaoRealizadaMovimentos(
+  setor: string,
+  mes: string,
+): Promise<{ unidade: string; total: number; movimentos: MovimentoProducaoRealizada[] }> {
+  const pool = getNomusPool();
+  if (!pool) {
+    throw new Error('Conexão Nomus não configurada (NOMUS_DB_URL).');
+  }
+  const mesDt = parseMes(mes);
+  const fim = monthEnd(mesDt);
+  if (SETOR_PESO.has(setor)) {
+    return { unidade: usesPedidos(setor, mesDt) ? 'pedidos' : 'kg', total: 0, movimentos: [] };
+  }
+
+  const setorMap = await getSetorMap(pool);
+  const [rows] = await pool.query<RowDataPacket[]>(SQL_PRODUCAO_PA_DETALHE, [mesDt, fim]);
+  const movimentos: MovimentoProducaoRealizada[] = [];
+  let total = 0;
+  for (const r of rows) {
+    if (rowSetor(setorMap, Number(r.id_produto)) !== setor) continue;
+    const dt = normalizeDt(r.dt);
+    if (dt < mesDt || dt >= fim) continue;
+    const quantidade = Number(r.quantidade ?? 0);
+    total += quantidade;
+    const saida = String(r.setor_saida ?? '').replace(/\s+/g, ' ').trim();
+    const entrada = String(r.setor_entrada ?? '').replace(/\s+/g, ' ').trim();
+    movimentos.push({
+      id_movimentacao: Number(r.id_movimentacao),
+      data_movimento: r.data_movimento ?? null,
+      codigo_produto: String(r.codigo_produto ?? '').trim() || '—',
+      descricao_produto: String(r.descricao_produto ?? '').trim() || '—',
+      movimento: quantidade < 0
+        ? `Estorno (entrada em ${entrada || 'estoque não controlado'})`
+        : `${saida || '—'} → ${entrada || '—'}`,
+      usuario: String(r.usuario ?? '').trim() || '—',
+      quantidade,
+    });
+  }
+  return { unidade: 'un', total: Math.round(total * 100) / 100, movimentos };
 }
 
 export type ProducaoAlcancadoSetor = {
