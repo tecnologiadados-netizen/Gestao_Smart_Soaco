@@ -29,6 +29,9 @@ cadastro_pessoa AS (
 )`;
 
 const SQL_DATA_CADASTRO = `DATE_FORMAT(COALESCE(cp.dataCriacaoHistorico, pec.dataCriacao), '%Y-%m-%d')`;
+/** Pessoa jurídica usa cnpjCpf; pessoa física usa cpf, com cnpjCpf de reserva. */
+const SQL_CNPJ =
+  "COALESCE(NULLIF(TRIM(IF(pec.tipoPessoa = 1, pec.cnpjCpf, COALESCE(NULLIF(TRIM(pec.cpf), ''), pec.cnpjCpf))), ''), '')";
 
 const SQL_VENDA = `
 venda AS (
@@ -40,6 +43,7 @@ venda AS (
     CASE WHEN p.idCliente IS NULL THEN -p.id ELSE p.idCliente END AS idCliente,
     COALESCE(NULLIF(TRIM(pec.nomeRazaoSocial), ''), NULLIF(TRIM(pec.nome), ''), '—') AS cliente,
     COALESCE(CAST(pec.id AS CHAR), '') AS codigoCliente,
+    ${SQL_CNPJ} AS cnpj,
     ${SQL_DATA_CADASTRO} AS dataCadastroCliente,
     ip.id AS idItem,
     CASE WHEN ip.idItemProposta IS NULL THEN 0 ELSE 1 END AS deProposta,
@@ -163,6 +167,7 @@ proposta_item AS (
     CASE WHEN prp.idCliente IS NULL THEN -(1000000000 + prp.id) ELSE prp.idCliente END AS idCliente,
     COALESCE(NULLIF(TRIM(pec.nomeRazaoSocial), ''), NULLIF(TRIM(pec.nome), ''), '—') AS cliente,
     COALESCE(CAST(pec.id AS CHAR), '') AS codigoCliente,
+    ${SQL_CNPJ} AS cnpj,
     ${SQL_DATA_CADASTRO} AS dataCadastroCliente,
     prp.idEmpresa AS idEmpresa,
     COALESCE(NULLIF(TRIM(emp.nomeFantasia), ''), NULLIF(TRIM(emp.nome), ''), 'Não informado') AS empresa,
@@ -219,6 +224,8 @@ export interface LinhaPropostaItem {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
@@ -243,6 +250,8 @@ export interface LinhaPedidoItem {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
@@ -257,6 +266,9 @@ export interface LinhaClienteMes {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  /** Vendedores dos pedidos do cliente no recorte, separados por vírgula. */
+  vendedor: string;
   /** Data de criação do cadastro (histórico Criação / dataCriacao). */
   dataCadastroCliente: string;
   /** Pedidos do recorte/mês que entram no indicador, separados por vírgula. */
@@ -277,6 +289,9 @@ export interface LinhaClienteFunil {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  /** Vendedores das propostas do cliente no recorte, separados por vírgula. */
+  vendedor: string;
   dataCadastro: string;
   /** Primeira proposta do cliente no recorte. */
   primeiroContato: string;
@@ -308,6 +323,8 @@ export interface LinhaPedidoGerado {
   dataEmissao: string;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   propostasOrigem: string;
   valorVendido: number;
   contaNaVenda: boolean;
@@ -350,6 +367,8 @@ export interface LinhaConversaoMes {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   valor: number;
   convertida: boolean;
   codigosPedido: string;
@@ -639,6 +658,24 @@ function str(v: unknown): string {
   return String(v);
 }
 
+function formatarDocumento(valor: string): string {
+  const d = valor.replace(/\D/g, '');
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  return valor.trim();
+}
+
+function textoVendedor(valor: string): string {
+  const s = valor.trim();
+  return s || 'Não informado';
+}
+
+function juntarVendedores(nomes: Iterable<string>): string {
+  const unicos = [...new Set([...nomes].map((n) => n.trim()).filter(Boolean))];
+  unicos.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return unicos.join(', ') || 'Não informado';
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -736,6 +773,8 @@ function mapProposta(row: Record<string, unknown>, diasPorProposta: Map<number, 
     idCliente: num(row.idCliente),
     cliente: str(row.cliente) || '—',
     codigoCliente: str(row.codigoCliente),
+    cnpj: formatarDocumento(str(row.cnpj)),
+    vendedor: textoVendedor(str(row.vendedor)),
     dataCadastroCliente: str(row.dataCadastroCliente),
     codigoProduto: str(row.codigoProduto),
     descricaoProduto: str(row.descricaoProduto),
@@ -810,6 +849,8 @@ function enriquecerPedidos(rows: Record<string, unknown>[], primeiroPedidoEmpres
       idCliente,
       cliente: str(row.cliente) || '—',
       codigoCliente: str(row.codigoCliente),
+      cnpj: formatarDocumento(str(row.cnpj)),
+      vendedor: textoVendedor(str(row.vendedor)),
       dataCadastroCliente: str(row.dataCadastroCliente),
       codigoProduto: str(row.codigoProduto),
       descricaoProduto: str(row.descricaoProduto),
@@ -896,7 +937,7 @@ async function carregarBase(refresh: boolean): Promise<CacheBruto> {
     const [propostasRaw] = await queryNomus<Record<string, unknown>[]>(
       com(
         `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_PROPOSTA}
-         SELECT idItem, idProposta, codigoProposta, dataAbertura, mes, idCliente, cliente, codigoCliente, dataCadastroCliente,
+         SELECT idItem, idProposta, codigoProposta, dataAbertura, mes, idCliente, cliente, codigoCliente, cnpj, dataCadastroCliente,
                 idEmpresa, empresa, vendedor, subgrupo1, uf, cidade, classificacaoFamilia,
                 codigoProduto, descricaoProduto,
                 valor, statusItem, motivoRejeicao, observacaoProposta, codigosPedido, dataPrimeiroPedido
@@ -906,7 +947,7 @@ async function carregarBase(refresh: boolean): Promise<CacheBruto> {
     const [pedidosRaw] = await queryNomus<Record<string, unknown>[]>(
       com(
         `WITH ${SQL_CADASTRO_PESSOA}, ${SQL_MOVIMENTO}, ${SQL_VENDA}
-         SELECT idItem, idPedido, codigoPedido, dataEmissao, mes, idCliente, cliente, codigoCliente, dataCadastroCliente, deProposta,
+         SELECT idItem, idPedido, codigoPedido, dataEmissao, mes, idCliente, cliente, codigoCliente, cnpj, dataCadastroCliente, deProposta,
                 codigoPropostaItem,
                 idEmpresa, empresa, vendedor, subgrupo1, uf, cidade, classificacaoFamilia,
                 codigoProduto, descricaoProduto, valorVendido
@@ -1189,6 +1230,8 @@ function clientesDoMes(
     idCliente: number;
     cliente: string;
     codigoCliente: string;
+    cnpj: string;
+    vendedores: Set<string>;
     dataCadastroCliente: string;
     pedidos: Map<number, { codigo: string; data: string }>;
     propostas: Map<string, string>;
@@ -1203,12 +1246,16 @@ function clientesDoMes(
       idCliente: item.idCliente,
       cliente: item.cliente,
       codigoCliente: item.codigoCliente,
+      cnpj: item.cnpj,
+      vendedores: new Set<string>(),
       dataCadastroCliente: item.dataCadastroCliente,
       pedidos: new Map(),
       propostas: new Map(),
       novo: false,
       valor: 0,
     };
+    if (!atual.cnpj && item.cnpj) atual.cnpj = item.cnpj;
+    if (item.vendedor) atual.vendedores.add(item.vendedor);
     atual.valor += item.valorVendido;
     if (item.primeiraCompra) atual.novo = true;
     if (!atual.dataCadastroCliente && item.dataCadastroCliente) atual.dataCadastroCliente = item.dataCadastroCliente;
@@ -1236,6 +1283,8 @@ function clientesDoMes(
         idCliente: a.idCliente,
         cliente: a.cliente,
         codigoCliente: a.codigoCliente,
+        cnpj: a.cnpj,
+        vendedor: juntarVendedores(a.vendedores),
         dataCadastroCliente: a.dataCadastroCliente,
         codigosPedido: pedidosOrd.map((p) => p.codigo).join(', '),
         datasPedido: pedidosOrd.map((p) => p.data).join(', '),
@@ -1260,6 +1309,8 @@ function conversoesDoMes(propostas: LinhaPropostaItem[], desde: string, ate: str
       idCliente: item.idCliente,
       cliente: item.cliente,
       codigoCliente: item.codigoCliente,
+      cnpj: item.cnpj,
+      vendedor: item.vendedor,
       valor: 0,
       convertida: item.propostaConvertida,
       codigosPedido: '',
@@ -1320,17 +1371,35 @@ export function clientesDoFunil(
     if (!atual || item.dataAbertura < atual) primeiraPropostaRecorte.set(item.idCliente, item.dataAbertura);
   }
 
-  type Acc = { cliente: string; codigoCliente: string; propostas: Set<number>; pedidos: Set<number>; valor: number };
+  type Acc = {
+    cliente: string;
+    codigoCliente: string;
+    cnpj: string;
+    vendedores: Set<string>;
+    propostas: Set<number>;
+    pedidos: Set<number>;
+    valor: number;
+  };
   const porCliente = new Map<number, Acc>();
-  const acc = (id: number, cliente: string, codigoCliente: string): Acc => {
-    const atual = porCliente.get(id) ?? { cliente, codigoCliente, propostas: new Set(), pedidos: new Set(), valor: 0 };
+  const acc = (id: number, cliente: string, codigoCliente: string, cnpj: string, vendedor: string): Acc => {
+    const atual = porCliente.get(id) ?? {
+      cliente,
+      codigoCliente,
+      cnpj,
+      vendedores: new Set<string>(),
+      propostas: new Set(),
+      pedidos: new Set(),
+      valor: 0,
+    };
+    if (!atual.cnpj && cnpj) atual.cnpj = cnpj;
+    if (vendedor) atual.vendedores.add(vendedor);
     porCliente.set(id, atual);
     return atual;
   };
   const clienteDaProposta = new Map<number, number>();
   for (const item of propostas) {
     if (!dataNoRecorte(item.dataAbertura, desde, ate)) continue;
-    acc(item.idCliente, item.cliente, item.codigoCliente).propostas.add(item.idProposta);
+    acc(item.idCliente, item.cliente, item.codigoCliente, item.cnpj, item.vendedor).propostas.add(item.idProposta);
     clienteDaProposta.set(item.idProposta, item.idCliente);
   }
   const valorPorPedido = new Map<number, number>();
@@ -1353,6 +1422,8 @@ export function clientesDoFunil(
         idCliente,
         cliente: linha.cliente,
         codigoCliente: linha.codigoCliente,
+        cnpj: linha.cnpj,
+        vendedor: juntarVendedores(linha.vendedores),
         dataCadastro,
         primeiroContato: contato,
         primeiroPedidoEmpresa: pedidoEmpresa,
@@ -1381,15 +1452,18 @@ export function pedidosGeradosPelasPropostas(
   /** Inclui os itens de porta-pallet. A soma deles é o valor vendido da linha. */
   comItens = false
 ): LinhaPedidoGerado[] {
-  const propostasRecorte = new Map<number, { codigo: string; cliente: string; codigoCliente: string }>();
+  const propostasRecorte = new Map<number, { codigo: string; cliente: string; codigoCliente: string; cnpj: string; vendedor: string }>();
   for (const item of propostas) {
     if (!dataNoRecorte(item.dataAbertura, desde, ate)) continue;
     propostasRecorte.set(item.idProposta, {
       codigo: item.codigoProposta,
       cliente: item.cliente,
       codigoCliente: item.codigoCliente,
+      cnpj: item.cnpj,
+      vendedor: item.vendedor,
     });
   }
+  const dadosPedido = new Map(pedidos.map((p) => [p.idPedido, { cnpj: p.cnpj, vendedor: p.vendedor }]));
   const itensPorPedido = new Map<number, ItemPedidoGerado[]>();
   for (const item of pedidos) {
     const lista = itensPorPedido.get(item.idPedido) ?? [];
@@ -1412,6 +1486,8 @@ export function pedidosGeradosPelasPropostas(
       dataEmissao: v.dataEmissao,
       cliente: origem.cliente,
       codigoCliente: origem.codigoCliente,
+      cnpj: dadosPedido.get(v.idPedido)?.cnpj || origem.cnpj,
+      vendedor: dadosPedido.get(v.idPedido)?.vendedor || origem.vendedor,
       propostasOrigem: '',
       valorVendido: round2((itensPorPedido.get(v.idPedido) ?? []).reduce((s, i) => s + i.valorVendido, 0)),
       contaNaVenda: itensPorPedido.has(v.idPedido),

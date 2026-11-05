@@ -40,7 +40,8 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       'Mês',
       'Proposta',
       'Abertura',
-      'Cód. interno do cliente',
+      'CNPJ',
+      'Vendedor',
       'Cliente',
       'Valor',
       'Virou pedido',
@@ -49,14 +50,15 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       'Criação do cliente',
       'Dias para criar pedido',
     ],
-    [11, 16, 12, 16, 40, 16, 13, 26, 14, 17, 17]
+    [11, 16, 12, 20, 22, 40, 16, 13, 26, 14, 17, 17]
   );
   for (const r of dados.propostas) {
     const row = abaPropostas.addRow([
       labelMes(r.mes),
       r.codigoProposta,
       formatData(r.dataAbertura),
-      r.codigoCliente,
+      r.cnpj,
+      r.vendedor,
       r.cliente,
       r.valor,
       simNao(r.convertida),
@@ -65,8 +67,8 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       r.dataCadastroCliente ? formatData(r.dataCadastroCliente) : '',
       r.convertida ? r.dias : null,
     ]);
-    row.getCell(6).numFmt = MOEDA;
-    row.getCell(11).numFmt = '0.0';
+    row.getCell(7).numFmt = MOEDA;
+    row.getCell(12).numFmt = '0.0';
   }
 
   const abaPedidos = wb.addWorksheet('Pedidos gerados');
@@ -76,24 +78,26 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       'Mês da proposta',
       'Pedido',
       'Emissão',
-      'Cód. interno do cliente',
+      'CNPJ',
+      'Vendedor',
       'Cliente',
       'Propostas de origem',
       'Valor vendido',
     ],
-    [15, 16, 12, 16, 40, 26, 16]
+    [15, 16, 12, 20, 22, 40, 26, 16]
   );
   for (const r of dados.pedidosGerados) {
     const row = abaPedidos.addRow([
       labelMes(r.mes),
       r.codigoPedido,
       formatData(r.dataEmissao),
-      r.codigoCliente,
+      r.cnpj,
+      r.vendedor,
       r.cliente,
       r.propostasOrigem,
       r.valorVendido,
     ]);
-    row.getCell(7).numFmt = MOEDA;
+    row.getCell(8).numFmt = MOEDA;
   }
 
   const abaClientes = wb.addWorksheet('Clientes');
@@ -101,7 +105,8 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
     abaClientes,
     [
       'Mês',
-      'Cód. interno do cliente',
+      'CNPJ',
+      'Vendedor',
       'Cliente',
       'Criação do cliente',
       'Proposta',
@@ -112,12 +117,13 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       'Valor vendido',
       '1ª compra',
     ],
-    [11, 16, 40, 17, 18, 16, 18, 16, 14, 16, 11]
+    [11, 20, 22, 40, 17, 18, 16, 18, 16, 14, 16, 11]
   );
   for (const r of dados.clientes) {
     const row = abaClientes.addRow([
       labelMes(r.mes),
-      r.codigoCliente,
+      r.cnpj,
+      r.vendedor,
       r.cliente,
       r.dataCadastroCliente ? formatData(r.dataCadastroCliente) : '',
       r.codigosProposta,
@@ -136,7 +142,7 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
       r.valor,
       simNao(r.primeiraCompra),
     ]);
-    row.getCell(10).numFmt = MOEDA;
+    row.getCell(11).numFmt = MOEDA;
   }
 
   const abaConf = wb.addWorksheet('Conferência');
@@ -163,18 +169,18 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
     const row = abaConf.addRow([
       labelMes(m.mes),
       { formula: `COUNTIFS(Propostas!A:A,A${n})`, result: m.qtdPropostas },
-      { formula: `SUMIFS(Propostas!F:F,Propostas!A:A,A${n})`, result: m.valorPropostas },
+      { formula: `SUMIFS(Propostas!G:G,Propostas!A:A,A${n})`, result: m.valorPropostas },
       { formula: `COUNTIFS('Pedidos gerados'!A:A,A${n})`, result: m.qtdPedidosGerados },
-      { formula: `SUMIFS('Pedidos gerados'!G:G,'Pedidos gerados'!A:A,A${n})`, result: m.valorPedidosGerados },
+      { formula: `SUMIFS('Pedidos gerados'!H:H,'Pedidos gerados'!A:A,A${n})`, result: m.valorPedidosGerados },
       { formula: `IF(D${n}>0,E${n}/D${n},"")`, result: ticket },
       { formula: `COUNTIFS(Clientes!A:A,A${n})`, result: m.qtdClientes },
-      { formula: `COUNTIFS(Clientes!A:A,A${n},Clientes!K:K,"Sim")`, result: m.qtdPrimeiraCompra },
+      { formula: `COUNTIFS(Clientes!A:A,A${n},Clientes!L:L,"Sim")`, result: m.qtdPrimeiraCompra },
       {
-        formula: `IF(B${n}>0,COUNTIFS(Propostas!A:A,A${n},Propostas!G:G,"Sim")/B${n},"")`,
+        formula: `IF(B${n}>0,COUNTIFS(Propostas!A:A,A${n},Propostas!H:H,"Sim")/B${n},"")`,
         result: m.taxaConversao ?? '',
       },
       {
-        formula: `IFERROR(AVERAGEIFS(Propostas!K:K,Propostas!A:A,A${n},Propostas!G:G,"Sim"),"")`,
+        formula: `IFERROR(AVERAGEIFS(Propostas!L:L,Propostas!A:A,A${n},Propostas!H:H,"Sim"),"")`,
         result: m.tempoMedioDias ?? '',
       },
     ]);
@@ -206,7 +212,7 @@ export async function exportarAuditoriaMensalXlsx(dados: AuditoriaMensalPortaPal
     'Cada mês é recalculado pelas fórmulas a partir das abas Propostas, Pedidos gerados e Clientes.',
   ]);
   abaConf.addRow([
-    'Cód. interno do cliente é o Cód. interno do cadastro de Pessoas no Nomus (todo cliente tem), para distinguir filiais com a mesma razão social.',
+    'CNPJ é o documento do cadastro de Pessoas no Nomus. Vendedor é quem está no documento: na proposta, o da proposta; no pedido, o do pedido.',
   ]);
   abaConf.addRow([
     'Lead novo? (aba Propostas) usa a regra do funil: lead novo é quem não tem proposta de porta-palete (família 95) anterior à primeira proposta dele no período. Proposta rejeitada também conta. 1ª compra (aba Clientes) = o pedido de porta-pallet do mês é a primeira compra do cliente na empresa. Criação do cliente = data da linha Criação no Histórico de modificações do Nomus (não é a Data do início do relacionamento).',

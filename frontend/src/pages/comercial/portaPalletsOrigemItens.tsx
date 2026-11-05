@@ -11,7 +11,8 @@ export type PropostaAgrupada = {
   codigoProposta: string;
   dataAbertura: string;
   mes: string;
-  codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   cliente: string;
   valor: number;
   observacaoProposta: string;
@@ -44,7 +45,8 @@ export function agruparPropostas(rows: LinhaPropostaItem[]): PropostaAgrupada[] 
         codigoProposta: item.codigoProposta,
         dataAbertura: item.dataAbertura,
         mes: item.mes,
-        codigoCliente: item.codigoCliente,
+        cnpj: item.cnpj,
+        vendedor: item.vendedor,
         cliente: item.cliente,
         valor: 0,
         observacaoProposta: item.observacaoProposta,
@@ -172,7 +174,8 @@ function colunasProposta(compacta: boolean, abrir: (row: PropostaAgrupada) => vo
     { id: 'mes', label: 'Mês', texto: (r) => labelMes(r.mes), valor: (r) => r.mes },
     proposta,
     abertura,
-    { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+    { id: 'cnpj', label: 'CNPJ', texto: (r) => r.cnpj || '—' },
+    { id: 'vendedor', label: 'Vendedor', texto: (r) => r.vendedor || '—' },
     { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
     valor,
     {
@@ -240,7 +243,8 @@ function colunasPedido(
   return [
     pedido,
     emissao,
-    { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+    { id: 'cnpj', label: 'CNPJ', texto: (r) => r.cnpj || '—' },
+    { id: 'vendedor', label: 'Vendedor', texto: (r) => r.vendedor || '—' },
     { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
     origem,
     valor,
