@@ -40,6 +40,7 @@ const podeVerFiltros = requirePermission(
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_TV_VER,
   PERMISSOES.PCP_PAINEL_APURACAO_VER,
+  PERMISSOES.PCP_PAINEL_FATURAMENTO_VER,
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
   PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
@@ -47,6 +48,10 @@ const podeVerFiltros = requirePermission(
 const podeVerDashboard = requirePermission(
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_TV_VER,
+  PERMISSOES.PCP_TOTAL,
+);
+const podeVerFaturamento = requirePermission(
+  PERMISSOES.PCP_PAINEL_FATURAMENTO_VER,
   PERMISSOES.PCP_TOTAL,
 );
 const podeVerApuracao = requirePermission(
@@ -63,9 +68,9 @@ const podeVerTargets = requirePermission(
 
 router.get('/filters', podeVerFiltros, getPainelProducaoFilters);
 router.get('/dashboard', podeVerDashboard, getPainelProducaoDashboard);
-router.get('/faturamento', podeVerDashboard, getPainelFaturamento);
-router.get('/faturamento/linhas', podeVerDashboard, getPainelFaturamentoLinhas);
-router.get('/faturamento/dia', podeVerDashboard, getPainelFaturamentoDia);
+router.get('/faturamento', podeVerFaturamento, getPainelFaturamento);
+router.get('/faturamento/linhas', podeVerFaturamento, getPainelFaturamentoLinhas);
+router.get('/faturamento/dia', podeVerFaturamento, getPainelFaturamentoDia);
 router.get('/apuracao', podeVerApuracao, getPainelProducaoApuracao);
 router.get('/apuracao/detalhe', podeVerApuracao, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);

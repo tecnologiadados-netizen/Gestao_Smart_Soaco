@@ -148,6 +148,7 @@ export const PERMISSOES = {
   PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
   PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
   PCP_PAINEL_APURACAO_VER: 'pcp.painel_apuracao.ver',
+  PCP_PAINEL_FATURAMENTO_VER: 'pcp.painel_faturamento.ver',
   PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
   PCP_PAINEL_METAS_FAIXAS_EDITAR: 'pcp.painel_metas.faixas_editar',
 
@@ -339,6 +340,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_TV_VER,
   PERMISSOES.PCP_PAINEL_APURACAO_VER,
+  PERMISSOES.PCP_PAINEL_FATURAMENTO_VER,
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
   PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
 
@@ -534,6 +536,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.PCP_PAINEL_GERENCIAL_VER]: 'Painel Metas — Painel Gerencial',
   [PERMISSOES.PCP_PAINEL_TV_VER]: 'Painel Metas — Painel TV',
   [PERMISSOES.PCP_PAINEL_APURACAO_VER]: 'Painel Metas — Apuração das metas',
+  [PERMISSOES.PCP_PAINEL_FATURAMENTO_VER]: 'Painel Metas — Faturamento',
   [PERMISSOES.PCP_PAINEL_METAS_EDITAR]: 'Painel Metas — cadastrar/editar metas',
   [PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR]: 'Painel Metas — editar faixas de desconto',
 

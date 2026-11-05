@@ -17,6 +17,11 @@ export const PERMISSOES_ACESSO_PAINEL_APURACAO: CodigoPermissao[] = [
   PERMISSOES.PCP_TOTAL,
 ];
 
+export const PERMISSOES_ACESSO_PAINEL_FATURAMENTO: CodigoPermissao[] = [
+  PERMISSOES.PCP_PAINEL_FATURAMENTO_VER,
+  PERMISSOES.PCP_TOTAL,
+];
+
 export const PERMISSOES_ACESSO_PAINEL_METAS: CodigoPermissao[] = [
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
@@ -32,6 +37,7 @@ export const PERMISSOES_ACESSO_PAINEL_METAS_QUALQUER: CodigoPermissao[] = [
   PERMISSOES.PCP_PAINEL_GERENCIAL_VER,
   PERMISSOES.PCP_PAINEL_TV_VER,
   PERMISSOES.PCP_PAINEL_APURACAO_VER,
+  PERMISSOES.PCP_PAINEL_FATURAMENTO_VER,
   PERMISSOES.PCP_PAINEL_METAS_EDITAR,
   PERMISSOES.PCP_PAINEL_METAS_FAIXAS_EDITAR,
   PERMISSOES.PCP_TOTAL,
@@ -47,6 +53,10 @@ export function podeVerPainelTv(hasPermission: (c: CodigoPermissao) => boolean):
 
 export function podeVerPainelApuracao(hasPermission: (c: CodigoPermissao) => boolean): boolean {
   return PERMISSOES_ACESSO_PAINEL_APURACAO.some((p) => hasPermission(p));
+}
+
+export function podeVerPainelFaturamento(hasPermission: (c: CodigoPermissao) => boolean): boolean {
+  return PERMISSOES_ACESSO_PAINEL_FATURAMENTO.some((p) => hasPermission(p));
 }
 
 export function podeEditarPainelMetas(hasPermission: (c: CodigoPermissao) => boolean): boolean {

@@ -141,6 +141,7 @@ export const PERMISSOES = {
   PCP_PAINEL_GERENCIAL_VER: 'pcp.painel_gerencial.ver',
   PCP_PAINEL_TV_VER: 'pcp.painel_tv.ver',
   PCP_PAINEL_APURACAO_VER: 'pcp.painel_apuracao.ver',
+  PCP_PAINEL_FATURAMENTO_VER: 'pcp.painel_faturamento.ver',
   PCP_PAINEL_METAS_EDITAR: 'pcp.painel_metas.editar',
   PCP_PAINEL_METAS_FAIXAS_EDITAR: 'pcp.painel_metas.faixas_editar',
 

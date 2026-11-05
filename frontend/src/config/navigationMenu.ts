@@ -11,6 +11,7 @@ import {
 import {
   podeAcessarCadastroMetas,
   podeVerPainelApuracao,
+  podeVerPainelFaturamento,
   podeVerPainelGerencial,
   podeVerPainelTv,
 } from '../utils/painelProducaoPermissoes';
@@ -580,7 +581,7 @@ export function filterPcpMenuChildren(
         return podeAcessarCadastroMetas(hasPermission);
       }
       if (c.to === '/pedidos/painel-metas/apuracao') return podeVerPainelApuracao(hasPermission);
-      if (c.to === '/pedidos/painel-metas/faturamento') return podeVerPainelGerencial(hasPermission);
+      if (c.to === '/pedidos/painel-metas/faturamento') return podeVerPainelFaturamento(hasPermission);
       return true;
     });
   }
