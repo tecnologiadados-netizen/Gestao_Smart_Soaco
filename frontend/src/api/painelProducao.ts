@@ -356,6 +356,73 @@ export async function savePainelProducaoFaixasDesconto(payload: {
   return parseJson(res);
 }
 
+export interface FaturamentoValores {
+  faturado: number;
+  desconto: number;
+  devolvido: number;
+  liquido: number;
+}
+
+export interface FaturamentoDia extends FaturamentoValores {
+  dia: string;
+}
+
+export interface FaturamentoMesResumo extends FaturamentoValores {
+  mes: string;
+}
+
+export interface FaturamentoConsulta {
+  mes: string;
+  ini: string;
+  fim: string;
+  disponivel: { ini: string; fim: string };
+  dias: FaturamentoDia[];
+  meses: FaturamentoMesResumo[];
+  totais: FaturamentoValores;
+}
+
+export interface FaturamentoDocumento extends FaturamentoValores {
+  tipo: 'faturamento' | 'devolucao';
+  numero: string;
+  documento: string;
+  pedido: string;
+}
+
+export async function fetchPainelFaturamento(ini: string, fim: string): Promise<FaturamentoConsulta> {
+  const res = await apiFetch(
+    `/api/painel-producao/faturamento?ini=${encodeURIComponent(ini)}&fim=${encodeURIComponent(fim)}`
+  );
+  return parseJson(res);
+}
+
+export interface FaturamentoLinha extends FaturamentoValores {
+  dataEmissao: string;
+  nf: string;
+  documento: string;
+  idTipoMovimentacao: number;
+  tipoMovimentacao: string;
+  numeroPedido: string;
+  codigoProduto: string;
+  produto: string;
+}
+
+export async function fetchPainelFaturamentoLinhas(
+  ini: string,
+  fim: string
+): Promise<{ ini: string; fim: string; linhas: FaturamentoLinha[] }> {
+  const res = await apiFetch(
+    `/api/painel-producao/faturamento/linhas?ini=${encodeURIComponent(ini)}&fim=${encodeURIComponent(fim)}`
+  );
+  return parseJson(res);
+}
+
+export async function fetchPainelFaturamentoDia(
+  dia: string
+): Promise<{ dia: string; documentos: FaturamentoDocumento[] }> {
+  const res = await apiFetch(`/api/painel-producao/faturamento/dia?dia=${encodeURIComponent(dia)}`);
+  return parseJson(res);
+}
+
 export async function insertPainelProducaoMes(): Promise<{ mes: string; meses: string[] }> {
   const res = await apiFetch('/api/painel-producao/meses', { method: 'POST' });
   return parseJson(res);

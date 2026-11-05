@@ -24,6 +24,12 @@ import {
   type FaixaDescontoInput,
 } from '../services/painelProducao/painelProducaoFaixasService.js';
 import {
+  consultarFaturamento,
+  consultarFaturamentoDia,
+  consultarFaturamentoLinhas,
+  parsePeriodo,
+} from '../data/painelFaturamentoRepository.js';
+import {
   RESPONSAVEL_AREAS,
   listarColaboradoresAtivosOrganico,
   listarResponsaveisVigentes,
@@ -339,5 +345,51 @@ export async function putPainelProducaoFaixasDesconto(req: Request, res: Respons
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });
+  }
+}
+
+export async function getPainelFaturamento(req: Request, res: Response) {
+  const ini = String(req.query.ini ?? '').trim();
+  const fim = String(req.query.fim ?? '').trim();
+  if (!parsePeriodo(ini, fim)) {
+    res.status(400).json({ error: 'Informe ini e fim (AAAA-MM-DD), com o início até o fim.' });
+    return;
+  }
+  try {
+    res.json(await consultarFaturamento(ini, fim));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelFaturamentoLinhas(req: Request, res: Response) {
+  const ini = String(req.query.ini ?? '').trim();
+  const fim = String(req.query.fim ?? '').trim();
+  if (!parsePeriodo(ini, fim)) {
+    res.status(400).json({ error: 'Informe ini e fim (AAAA-MM-DD), com o início até o fim.' });
+    return;
+  }
+  try {
+    const linhas = await consultarFaturamentoLinhas(ini, fim);
+    res.json({ ini, fim, linhas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+}
+
+export async function getPainelFaturamentoDia(req: Request, res: Response) {
+  const dia = String(req.query.dia ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+    res.status(400).json({ error: 'Parâmetro dia (AAAA-MM-DD) é obrigatório.' });
+    return;
+  }
+  try {
+    const documentos = await consultarFaturamentoDia(dia);
+    res.json({ dia, documentos });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
   }
 }

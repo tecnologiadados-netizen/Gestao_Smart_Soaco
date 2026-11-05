@@ -76,6 +76,7 @@ export const PCP_MENU: NavMenuEntry[] = [
       { kind: 'link', to: '/pedidos/painel-metas/tv', label: 'Painel TV' },
       { kind: 'link', to: '/pedidos/painel-metas/metas', label: 'Metas' },
       { kind: 'link', to: '/pedidos/painel-metas/apuracao', label: 'Apuração metas' },
+      { kind: 'link', to: '/pedidos/painel-metas/faturamento', label: 'Faturamento' },
     ],
   },
 ];
@@ -262,6 +263,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/painel-metas/tv': 'Painel TV',
   '/pedidos/painel-metas/metas': 'Metas',
   '/pedidos/painel-metas/apuracao': 'Apuração metas',
+  '/pedidos/painel-metas/faturamento': 'Faturamento',
   '/heatmap': 'Roteirizador',
   '/mind-maps': 'Fluxos Decisórios',
   '/compras': 'Compras',
@@ -578,6 +580,7 @@ export function filterPcpMenuChildren(
         return podeAcessarCadastroMetas(hasPermission);
       }
       if (c.to === '/pedidos/painel-metas/apuracao') return podeVerPainelApuracao(hasPermission);
+      if (c.to === '/pedidos/painel-metas/faturamento') return podeVerPainelGerencial(hasPermission);
       return true;
     });
   }
