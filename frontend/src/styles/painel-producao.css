@@ -3896,3 +3896,143 @@ button.kpi-card-clickable:hover .kpi-click-hint {
 .painel-producao-module[data-theme='dark'] .dashboard .resp-modal-acoes {
   border-top-color: #2d3a50;
 }
+
+.faturamento-page {
+  min-height: 100%;
+}
+
+.faturamento-data {
+  min-width: 9.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1.5px solid #e3e8ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #1a1a2e;
+  font-size: 0.9rem;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .faturamento-data {
+  background: #1a2332;
+  border-color: #2d3a50;
+  color: #e8edf4;
+}
+
+.faturamento-chart-card {
+  padding-bottom: 0.75rem;
+}
+
+.faturamento-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.faturamento-chart {
+  height: 260px;
+}
+
+.faturamento-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.faturamento-kpis .kpi-value {
+  font-size: clamp(1.15rem, 1.6vw, 1.55rem);
+}
+
+.fat-kpi-faturado .kpi-accent { background: linear-gradient(180deg, #4c6ef5 0%, #364fc7 100%); }
+.fat-kpi-desconto .kpi-accent { background: linear-gradient(180deg, #ffae00 0%, #e09a00 100%); }
+.fat-kpi-devolvido .kpi-accent { background: linear-gradient(180deg, #e74c3c 0%, #c0392b 100%); }
+.fat-kpi-liquido .kpi-accent { background: linear-gradient(180deg, #2ecc71 0%, #27ae60 100%); }
+
+.faturamento-table {
+  min-width: 0;
+}
+
+.faturamento-table th:not(:first-child),
+.faturamento-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.faturamento-row {
+  cursor: pointer;
+}
+
+.faturamento-seta {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.55rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  vertical-align: 0.05rem;
+  opacity: 0.7;
+}
+
+.faturamento-seta.is-open {
+  transform: rotate(45deg);
+  vertical-align: 0.15rem;
+}
+
+.faturamento-row:hover td,
+.faturamento-row.is-open td {
+  background: rgba(255, 174, 0, 0.08);
+}
+
+.faturamento-detalhe > td {
+  padding: 0.35rem 0.75rem 0.85rem 1.5rem;
+  background: rgba(10, 22, 40, 0.03);
+}
+
+.faturamento-movimentos {
+  background: transparent;
+}
+
+.faturamento-movimentos th,
+.faturamento-movimentos td {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .faturamento-detalhe > td {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.faturamento-liquido {
+  font-weight: 700;
+}
+
+.faturamento-table tfoot td {
+  font-weight: 800;
+  border-top: 2px solid #e8ecf0;
+  background: #fafbfc;
+}
+
+.faturamento-loading {
+  display: flex;
+  justify-content: center;
+  padding: 2.5rem 0;
+}
+
+.faturamento-erro {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #c0392b;
+  font-size: 0.9rem;
+}
+
+.painel-producao-module[data-theme='dark'] .dashboard .faturamento-table tfoot td {
+  background: #151d2b;
+  border-top-color: #2d3a50;
+}
+
+@media (max-width: 1100px) {
+  .faturamento-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+}

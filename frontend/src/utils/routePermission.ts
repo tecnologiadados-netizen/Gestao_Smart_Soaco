@@ -92,6 +92,7 @@ export const ROTA_PERMISSAO: Record<string, CodigoPermissao[]> = {
     ...PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   ],
   '/pedidos/painel-metas/apuracao': PERMISSOES_ACESSO_PAINEL_APURACAO,
+  '/pedidos/painel-metas/faturamento': PERMISSOES_ACESSO_PAINEL_GERENCIAL,
   '/heatmap': [PERMISSOES.HEATMAP_VER],
   '/mind-maps': PERMISSOES_ACESSO_FLUXOS,
   '/compras': [
@@ -227,6 +228,7 @@ export const ROTAS_ORDEM = [
   '/pedidos/painel-metas/gerencial',
   '/pedidos/painel-metas/metas',
   '/pedidos/painel-metas/apuracao',
+  '/pedidos/painel-metas/faturamento',
   '/heatmap',
   '/mind-maps',
   '/compras',

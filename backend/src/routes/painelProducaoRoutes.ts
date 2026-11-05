@@ -19,6 +19,9 @@ import {
   putPainelProducaoFaixasDesconto,
   putPainelProducaoResponsaveis,
   putPainelProducaoSetorPenalizacao,
+  getPainelFaturamento,
+  getPainelFaturamentoDia,
+  getPainelFaturamentoLinhas,
 } from '../controllers/painelProducaoController.js';
 
 const router = Router();
@@ -60,6 +63,9 @@ const podeVerTargets = requirePermission(
 
 router.get('/filters', podeVerFiltros, getPainelProducaoFilters);
 router.get('/dashboard', podeVerDashboard, getPainelProducaoDashboard);
+router.get('/faturamento', podeVerDashboard, getPainelFaturamento);
+router.get('/faturamento/linhas', podeVerDashboard, getPainelFaturamentoLinhas);
+router.get('/faturamento/dia', podeVerDashboard, getPainelFaturamentoDia);
 router.get('/apuracao', podeVerApuracao, getPainelProducaoApuracao);
 router.get('/apuracao/detalhe', podeVerApuracao, getPainelProducaoApuracaoDetalhe);
 router.get('/targets', podeVerTargets, getPainelProducaoTargets);

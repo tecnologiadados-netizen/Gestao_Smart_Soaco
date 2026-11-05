@@ -58,6 +58,7 @@ import PainelProducaoGerencialPage from './pages/pedidos/painel-metas/PainelProd
 import PainelProducaoTvPage from './pages/pedidos/painel-metas/PainelProducaoTvPage';
 import PainelProducaoMetasPage from './pages/pedidos/painel-metas/PainelProducaoMetasPage';
 import PainelProducaoApuracaoPage from './pages/pedidos/painel-metas/PainelProducaoApuracaoPage';
+import PainelFaturamentoPage from './pages/pedidos/painel-metas/PainelFaturamentoPage';
 import PedidosEncerradosPage from './pages/pedidos/PedidosEncerradosPage';
 import DecomposicaoPage from './pages/pedidos/decomposicao/DecomposicaoPage';
 import GondolasPortaPaletesPage from './pages/pedidos/gondolas/GondolasPortaPaletesPage';
@@ -140,6 +141,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'pedidos/painel-metas/tv', element: <ErrorBoundary><PainelProducaoTvPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/metas', element: <ErrorBoundary><PainelProducaoMetasPage /></ErrorBoundary> },
   { path: 'pedidos/painel-metas/apuracao', element: <ErrorBoundary><PainelProducaoApuracaoPage /></ErrorBoundary> },
+  { path: 'pedidos/painel-metas/faturamento', element: <ErrorBoundary><PainelFaturamentoPage /></ErrorBoundary> },
   { path: 'suporte', element: <ErrorBoundary><SuportePage /></ErrorBoundary> },
   { path: 'suporte/configuracao', element: <ErrorBoundary><SuporteConfigPage /></ErrorBoundary> },
   { path: 'suporte/amigaco-alucinacoes', element: <ErrorBoundary><AmigacoAlucinacoesPage /></ErrorBoundary> },
