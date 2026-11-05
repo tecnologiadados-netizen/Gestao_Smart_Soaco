@@ -224,7 +224,7 @@ export default function FiltroArvoreFamilia({
   };
 
   return (
-    <div className="relative min-w-[220px] shrink-0" ref={ref}>
+    <div className="relative w-full min-w-0" ref={ref}>
       <label className={labelClass}>Família</label>
       <div className={`${inputClass} flex w-full items-center gap-1`}>
         <button type="button" className="min-w-0 flex-1 truncate bg-transparent py-0 text-left" onClick={() => setAberto((v) => !v)}>

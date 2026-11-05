@@ -445,7 +445,7 @@ export default function PortaPalletsComercialPage() {
               Filtrar
             </button>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
             <MultiSelectWithSearch
               label="Empresa"
               placeholder="Todas"
@@ -460,7 +460,8 @@ export default function PortaPalletsComercialPage() {
               labelClass={FILTRO_LABEL_CLASS}
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="empresas"
-              minWidth="180px"
+              fillContainer
+              minWidth="0"
               dropdownMinWidthPx={520}
               optionsLoading={!opcoes}
               dropdownPortal
@@ -478,7 +479,8 @@ export default function PortaPalletsComercialPage() {
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="vendedores"
               valueSeparator="|"
-              minWidth="200px"
+              fillContainer
+              minWidth="0"
               dropdownMinWidthPx={460}
               optionsLoading={!opcoes}
               dropdownPortal
@@ -494,7 +496,8 @@ export default function PortaPalletsComercialPage() {
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="subgrupos"
               valueSeparator="|"
-              minWidth="180px"
+              fillContainer
+              minWidth="0"
               optionsLoading={!opcoes}
               dropdownPortal
               dropdownZIndex={220}
@@ -511,7 +514,8 @@ export default function PortaPalletsComercialPage() {
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="UFs"
               valueSeparator="|"
-              minWidth="110px"
+              fillContainer
+              minWidth="0"
               dropdownMinWidthPx={320}
               optionsLoading={!opcoes}
               dropdownPortal
@@ -529,7 +533,8 @@ export default function PortaPalletsComercialPage() {
               inputClass={FILTRO_INPUT_CLASS}
               optionLabel="cidades"
               valueSeparator="|"
-              minWidth="180px"
+              fillContainer
+              minWidth="0"
               dropdownMinWidthPx={420}
               optionsLoading={!opcoes}
               dropdownPortal
