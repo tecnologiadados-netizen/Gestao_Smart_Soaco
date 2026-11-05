@@ -152,6 +152,7 @@ function toText(value: unknown): string | null {
 function mapConta(row: RowConta): ContaFinanceira {
   return {
     codigo: row.codigo,
+    dataEmissao: toIso(row.dataEmissao),
     dataVencimento: toIso(row.dataVencimento),
     dataAgendamento: toIso(row.dataAgendamento),
     classificacao: row.classificacao,
@@ -270,7 +271,7 @@ function mapBaixado(row: RowConta): Recebimento {
 
 const CACHE_KEY_GLOBAL = "dashboard:indicadores-globais:v11";
 const CACHE_KEY_SAUDE_EMPRESA = "dashboard:saude-quadro-receber-empresa:v3";
-const CACHE_KEY_DETALHE = "dashboard:detalhe:v6";
+const CACHE_KEY_DETALHE = "dashboard:detalhe:v7";
 const CACHE_TTL_MS = 300_000;
 
 function empresaCacheSuffix(empresaId?: number | null): string {

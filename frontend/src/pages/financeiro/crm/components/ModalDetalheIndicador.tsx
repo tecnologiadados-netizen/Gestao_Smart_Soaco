@@ -166,8 +166,8 @@ function linhasCsvContas(
   return [
     [
       "Código",
+      "Data de emissão",
       "Vencimento",
-      "Agendamento",
       "Classificação",
       "Classificação código",
       "Empresa",
@@ -183,8 +183,8 @@ function linhasCsvContas(
     ],
     ...contas.map((conta) => [
       conta.codigo,
+      dataSerialExcel(conta.dataEmissao),
       dataSerialExcel(conta.dataVencimento),
-      dataSerialExcel(conta.dataAgendamento),
       formatText(conta.nomeClassificacao),
       formatText(conta.classificacao),
       formatText(conta.empresa),
@@ -649,7 +649,7 @@ export default function ModalDetalheIndicador({
               destaque={destaque === "default" ? undefined : destaque}
               variant="modal"
               ocultarRodape
-              storageKey="crm-contas-modal-col-widths-v2"
+              storageKey="crm-contas-modal-col-widths-v3"
               defaultColumnWidths={CONTAS_MODAL_COLUMN_WIDTHS}
               preencherLargura
             />

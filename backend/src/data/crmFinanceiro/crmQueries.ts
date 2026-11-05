@@ -422,11 +422,13 @@ LEFT JOIN formapagamento fp ON fp.id = af.idFormaPagamento
 LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida
 LEFT JOIN nfe nfee ON nfee.idDocumentoEstoque = af.idDocumentoEntrada
 LEFT JOIN nfse ON nfse.idDocumentoServico = af.idDocumentoSaida
+LEFT JOIN documentoestoque des ON des.id = af.idDocumentoSaida
 LEFT JOIN documentoestoque dee ON dee.id = af.idDocumentoEntrada
 `;
 
 const SELECT_COLS_CONTAS_DETALHE = `
   af.id AS codigo,
+  IFNULL(dee.dataEmissao, des.dataEmissao) AS dataEmissao,
   af.dataVencimento AS dataVencimento,
   af.dataAgendamento AS dataAgendamento,
   cf.classificacao AS classificacao,
@@ -650,6 +652,7 @@ export function buildTitulosDescontadoContasQuery(
   const sql = `
     SELECT
       af.id AS codigo,
+      IFNULL(dee.dataEmissao, des.dataEmissao) AS dataEmissao,
       af.dataVencimento AS dataVencimento,
       af.dataAgendamento AS dataAgendamento,
       cf.classificacao AS classificacao,

@@ -325,8 +325,8 @@ function baixadosPdfRow(row: Recebimento): string[] {
 function contasHeaders(situacao: "atraso" | "emDia"): string[] {
   return [
     "Código",
+    "Data de emissão",
     "Vencimento",
-    "Agendamento",
     "Classificação",
     "Empresa",
     "Conta bancária",
@@ -356,8 +356,8 @@ function contasRow(row: ContaFinanceira, situacao: "atraso" | "emDia"): string[]
 
   return [
     String(row.codigo),
+    formatDate(row.dataEmissao),
     vencimento,
-    formatDate(row.dataAgendamento),
     classificacao,
     row.empresa ?? "—",
     row.contaBancaria ?? "—",
