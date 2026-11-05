@@ -564,22 +564,6 @@ export function montarArvoreFamilia(
   return raizes;
 }
 
-/** Mantém só os ramos que têm venda no contexto. O pai fica quando algum filho permanece. */
-function podarArvoreFamilia(nos: NoFamiliaPortaPalete[], presentes: Set<string>): NoFamiliaPortaPalete[] {
-  const tem = (no: NoFamiliaPortaPalete): boolean => {
-    for (const cod of presentes) {
-      if (cod === no.classificacao || cod.startsWith(`${no.classificacao}.`)) return true;
-    }
-    return no.filhos.some(tem);
-  };
-  const out: NoFamiliaPortaPalete[] = [];
-  for (const no of nos) {
-    if (!tem(no)) continue;
-    out.push({ ...no, filhos: podarArvoreFamilia(no.filhos, presentes) });
-  }
-  return out;
-}
-
 type DimensaoFiltro = 'empresas' | 'vendedores' | 'subgrupos' | 'ufs' | 'cidades' | 'familias';
 
 /** Tira uma dimensão para a lista dela continuar mostrando as outras opções do mesmo contexto. */
@@ -1049,19 +1033,13 @@ export async function obterPortaPalletsOpcoes(
     const pedidosNoPeriodo = bruto.pedidosRaw.filter((row) => dataNoRecorte(str(row.dataEmissao), desde, ate));
     const noContexto = (omit: DimensaoFiltro) =>
       pedidosNoPeriodo.filter((row) => passaFiltro(row, semDimensao(aplicados, omit)));
-    const familiasCtx = noContexto('familias');
-    const codigosFamilia = new Set<string>();
-    for (const row of familiasCtx) {
-      const cod = str(row.classificacaoFamilia);
-      if (cod) codigosFamilia.add(cod);
-    }
     return {
       empresas: empresasPorValor(noContexto('empresas')),
       vendedores: opcoesPorValor(noContexto('vendedores'), 'vendedor'),
       subgrupos: distintos(noContexto('subgrupos'), 'subgrupo1').filter((nome) => nome !== 'Não informado'),
       ufs: opcoesPorValor(noContexto('ufs'), 'uf'),
       cidades: cidadesPorValor(noContexto('cidades')),
-      familias: podarArvoreFamilia(bruto.familias, codigosFamilia),
+      familias: bruto.familias,
     };
   } catch (err) {
     return {
