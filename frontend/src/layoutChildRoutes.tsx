@@ -77,7 +77,6 @@ import DigitacaoConferenciaPage from './pages/recebimento/DigitacaoConferenciaPa
 import { qualidadeRoutes } from './modules/qualidade/qualidadeRoutes';
 import { rhRoutes } from './modules/rh/rhRoutes';
 import { pdvRoutes } from './modules/pdv/pdvRoutes';
-import PainelComercialPage from './pages/comercial/PainelComercialPage';
 import HistoricoVendasPage from './pages/comercial/HistoricoVendasPage';
 import RfvClientesPage from './pages/comercial/RfvClientesPage';
 import ComissionamentoPage from './pages/comercial/ComissionamentoPage';
@@ -175,7 +174,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
-  { path: 'comercial/painel', element: <ErrorBoundary><PainelComercialPage /></ErrorBoundary> },
+  { path: 'comercial/painel', element: <Navigate to="/kpis/comercial" replace /> },
   { path: 'comercial/historico-vendas', element: <ErrorBoundary><HistoricoVendasPage /></ErrorBoundary> },
   { path: 'comercial/classificacao-rfv', element: <ErrorBoundary><RfvClientesPage /></ErrorBoundary> },
   { path: 'comercial/comissionamento', element: <ErrorBoundary><ComissionamentoPage /></ErrorBoundary> },

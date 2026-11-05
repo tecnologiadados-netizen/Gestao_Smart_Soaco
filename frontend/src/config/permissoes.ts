@@ -29,7 +29,6 @@ export const PERMISSOES = {
   COMPRAS_SOLICITACOES_VER: 'compras.solicitacoes.ver',
   PRECIFICACAO_VER: 'precificacao.ver',
   PRECIFICACAO_GERAR: 'precificacao.gerar',
-  COMERCIAL_PAINEL_VER: 'comercial.painel.ver',
   COMERCIAL_HISTORICO_VENDAS_VER: 'comercial.historico_vendas.ver',
   COMERCIAL_RFV_VER: 'comercial.rfv.ver',
   COMERCIAL_COMISSIONAMENTO_VER: 'comercial.comissionamento.ver',

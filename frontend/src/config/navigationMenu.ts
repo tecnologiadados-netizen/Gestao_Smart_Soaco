@@ -301,7 +301,6 @@ export const PATH_LABELS: Record<string, string> = {
   '/financeiro/dashboard': 'Dashboard Financeiro',
   '/financeiro/carteira-financeira': 'Carteira Financeira',
   '/financeiro/painel-financeiro-comercial': 'Financeiro-Comercial',
-  '/comercial/painel': 'Painel Comercial',
   '/comercial/historico-vendas': 'Histórico de Vendas',
   '/comercial/classificacao-rfv': 'Classificação RFV',
   '/comercial/porta-pallets': 'Indicadores de porta-pallets',

@@ -60,14 +60,6 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     permissoes: [PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER],
   },
   {
-    id: 'painel-comercial',
-    pastaId: 'comercial',
-    label: 'Painel Comercial',
-    capaTitulo: 'PAINEL COMERCIAL',
-    to: '/comercial/painel',
-    permissoes: [PERMISSOES.COMERCIAL_PAINEL_VER],
-  },
-  {
     id: 'historico-vendas',
     pastaId: 'comercial',
     label: 'Histórico de Vendas',
@@ -173,10 +165,6 @@ export const PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO: CodigoPermissao[] =
 /** Permissões da rota do painel Cobertura de Estoque. */
 export const PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE: CodigoPermissao[] =
   getKpiPainel('cobertura-estoque')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER];
-
-/** Permissões da rota do Painel Comercial. */
-export const PERMISSOES_ACESSO_PAINEL_COMERCIAL_KPI: CodigoPermissao[] =
-  getKpiPainel('painel-comercial')?.permissoes ?? [PERMISSOES.COMERCIAL_PAINEL_VER];
 
 /** Permissões da rota do Histórico de Vendas. */
 export const PERMISSOES_ACESSO_PAINEL_HISTORICO_VENDAS: CodigoPermissao[] =

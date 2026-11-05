@@ -1,16 +1,9 @@
 import type { Request, Response } from 'express';
 import {
-  listarPainelComercialVendasDetalhe,
-  obterPainelComercialVendasAnalytics,
-  obterPainelComercialVendasDrill,
-  type DrillContexto,
-  type FiltrosPainelComercialVendas,
-} from '../data/painelComercialVendasRepository.js';
-import {
   obterHistoricoVendasAnalytics,
   obterHistoricoVendasDrill,
   obterHistoricoVendasSerieFatia,
-  type DrillContexto as HistoricoDrillContexto,
+  type DrillContexto,
   type FiltrosHistoricoVendas,
 } from '../data/historicoVendasRepository.js';
 import { obterRfvClientesAnalytics, type FiltrosRfvClientes } from '../data/rfvClientesRepository.js';
@@ -41,11 +34,11 @@ function getStrQuery(req: Request, key: string): string | undefined {
   return s ? s : undefined;
 }
 
-function parseFiltros(req: Request): FiltrosPainelComercialVendas {
+function parseFiltros(req: Request): FiltrosHistoricoVendas {
   return {
     dataIni: getStrQuery(req, 'dataIni') ?? '',
     dataFim: getStrQuery(req, 'dataFim') ?? '',
-    comparacaoBase: (getStrQuery(req, 'comparacaoBase') as FiltrosPainelComercialVendas['comparacaoBase']) ?? undefined,
+    comparacaoBase: (getStrQuery(req, 'comparacaoBase') as FiltrosHistoricoVendas['comparacaoBase']) ?? undefined,
     grupoProduto: getStrQuery(req, 'grupoProduto'),
     subgrupo1: getStrQuery(req, 'subgrupo1'),
     subgrupo2: getStrQuery(req, 'subgrupo2'),
@@ -57,10 +50,6 @@ function parseFiltros(req: Request): FiltrosPainelComercialVendas {
     produto: getStrQuery(req, 'produto'),
     pd: getStrQuery(req, 'pd'),
   };
-}
-
-function parseFiltrosHistorico(req: Request): FiltrosHistoricoVendas {
-  return parseFiltros(req) as FiltrosHistoricoVendas;
 }
 
 function parseCtx(req: Request): DrillContexto {
@@ -93,52 +82,9 @@ function parseCtx(req: Request): DrillContexto {
   return { dim, where: Object.keys(where).length ? where : undefined };
 }
 
-function parseCtxHistorico(req: Request): HistoricoDrillContexto {
-  return parseCtx(req) as HistoricoDrillContexto;
-}
-
-export async function getPainelComercialVendasAnalytics(req: Request, res: Response): Promise<void> {
-  try {
-    const filtros = parseFiltros(req);
-    const data = await obterPainelComercialVendasAnalytics(filtros);
-    res.json(data);
-  } catch (err) {
-    console.error('getPainelComercialVendasAnalytics', err);
-    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
-  }
-}
-
-export async function getPainelComercialVendasDrill(req: Request, res: Response): Promise<void> {
-  try {
-    const filtros = parseFiltros(req);
-    const ctx = parseCtx(req);
-    const data = await obterPainelComercialVendasDrill(filtros, ctx);
-    res.json({ items: data });
-  } catch (err) {
-    console.error('getPainelComercialVendasDrill', err);
-    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
-  }
-}
-
-export async function getPainelComercialVendasDetalhe(req: Request, res: Response): Promise<void> {
-  try {
-    const filtros = parseFiltros(req);
-    const ctx = parseCtx(req);
-    const data = await listarPainelComercialVendasDetalhe(filtros, ctx);
-    if (data.erro) {
-      res.status(503).json({ error: data.erro });
-      return;
-    }
-    res.json({ rows: data.rows });
-  } catch (err) {
-    console.error('getPainelComercialVendasDetalhe', err);
-    res.status(503).json({ error: 'Serviço temporariamente indisponível.' });
-  }
-}
-
 export async function getHistoricoVendasAnalytics(req: Request, res: Response): Promise<void> {
   try {
-    const filtros = parseFiltrosHistorico(req);
+    const filtros = parseFiltros(req);
     const data = await obterHistoricoVendasAnalytics(filtros);
     res.json(data);
   } catch (err) {
@@ -149,8 +95,8 @@ export async function getHistoricoVendasAnalytics(req: Request, res: Response): 
 
 export async function getHistoricoVendasDrill(req: Request, res: Response): Promise<void> {
   try {
-    const filtros = parseFiltrosHistorico(req);
-    const ctx = parseCtxHistorico(req);
+    const filtros = parseFiltros(req);
+    const ctx = parseCtx(req);
     const data = await obterHistoricoVendasDrill(filtros, ctx);
     res.json({ items: data });
   } catch (err) {
@@ -161,8 +107,8 @@ export async function getHistoricoVendasDrill(req: Request, res: Response): Prom
 
 export async function getHistoricoVendasSerieFatia(req: Request, res: Response): Promise<void> {
   try {
-    const filtros = parseFiltrosHistorico(req);
-    const ctx = parseCtxHistorico(req);
+    const filtros = parseFiltros(req);
+    const ctx = parseCtx(req);
     const data = await obterHistoricoVendasSerieFatia(filtros, { where: ctx.where });
     if (data.erro) {
       res.status(400).json({ error: data.erro, serieMensal: [] });
@@ -177,7 +123,7 @@ export async function getHistoricoVendasSerieFatia(req: Request, res: Response):
 
 export async function getRfvClientesAnalytics(req: Request, res: Response): Promise<void> {
   try {
-    const filtros = parseFiltrosHistorico(req) as FiltrosRfvClientes;
+    const filtros = parseFiltros(req) as FiltrosRfvClientes;
     const data = await obterRfvClientesAnalytics(filtros);
     res.json(data);
   } catch (err) {

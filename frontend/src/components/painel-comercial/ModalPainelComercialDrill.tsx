@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
-import { obterPainelComercialVendasDrill, type DrillDim, type FiltrosPainelComercialVendas } from '../../api/painelComercialVendas';
+import type { DrillDim, FiltrosHistoricoVendas } from '../../api/historicoVendas';
 import { formatMoeda, formatNumero } from './painelComercialUtils';
 
 export type DrillItem = { key: string; label: string; valor: number; qtde: number; pedidos: number };
@@ -37,13 +37,13 @@ export default function ModalPainelComercialDrill({
   modalId: string;
   titulo: string;
   subtitulo?: string;
-  filtros: FiltrosPainelComercialVendas;
+  filtros: FiltrosHistoricoVendas;
   dim: DrillDim;
   where?: DrillWhere;
   onClose: () => void;
   onItemClick: (item: DrillItem) => void;
-  loadDrill?: (
-    filtros: FiltrosPainelComercialVendas,
+  loadDrill: (
+    filtros: FiltrosHistoricoVendas,
     params: { dim: DrillDim } & DrillWhere
   ) => Promise<{ items: DrillItem[] }>;
   itemClickTitle?: string;
@@ -57,8 +57,7 @@ export default function ModalPainelComercialDrill({
     setLoading(true);
     setErro(null);
     try {
-      const fetchFn = loadDrill ?? obterPainelComercialVendasDrill;
-      const res = await fetchFn(filtros, { dim, ...where });
+      const res = await loadDrill(filtros, { dim, ...where });
       setDados(res.items ?? []);
     } catch (e) {
       setDados([]);

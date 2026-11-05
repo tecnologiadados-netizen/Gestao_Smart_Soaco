@@ -1,7 +1,5 @@
 import { PERMISSOES, type CodigoPermissao } from '../config/permissoes.js';
 
-export const PERMISSOES_ACESSO_COMERCIAL_PAINEL: CodigoPermissao[] = [PERMISSOES.COMERCIAL_PAINEL_VER];
-
 export const PERMISSOES_ACESSO_COMERCIAL_HISTORICO_VENDAS: CodigoPermissao[] = [
   PERMISSOES.COMERCIAL_HISTORICO_VENDAS_VER,
 ];
