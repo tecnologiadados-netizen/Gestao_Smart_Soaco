@@ -26,6 +26,8 @@ export interface LinhaPedidoGerado {
   dataEmissao: string;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   propostasOrigem: string;
   valorVendido: number;
   contaNaVenda: boolean;
@@ -60,6 +62,8 @@ export interface LinhaClienteFunil {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastro: string;
   primeiroContato: string;
   primeiroPedidoEmpresa: string;
@@ -104,6 +108,8 @@ export interface LinhaPropostaItem {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
@@ -127,6 +133,8 @@ export interface LinhaPedidoItem {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastroCliente: string;
   codigoProduto: string;
   descricaoProduto: string;
@@ -140,6 +148,8 @@ export interface LinhaClienteMes {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   dataCadastroCliente: string;
   codigosPedido: string;
   datasPedido: string;
@@ -157,6 +167,8 @@ export interface LinhaConversaoMes {
   idCliente: number;
   cliente: string;
   codigoCliente: string;
+  cnpj: string;
+  vendedor: string;
   valor: number;
   convertida: boolean;
   codigosPedido: string;

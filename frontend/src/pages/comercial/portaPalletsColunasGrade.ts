@@ -17,12 +17,19 @@ function diasValor(v: number | null): number {
   return v == null ? Number.NaN : v;
 }
 
+function colunasCnpjVendedor<T extends { cnpj: string; vendedor: string }>(): ColunaGrade<T>[] {
+  return [
+    { id: 'cnpj', label: 'CNPJ', texto: (r) => r.cnpj || '—' },
+    { id: 'vendedor', label: 'Vendedor', texto: (r) => r.vendedor || '—' },
+  ];
+}
+
 export const COLUNAS_PEDIDOS: ColunaGrade<LinhaPedidoItem>[] = [
   { id: 'mes', label: 'Mês', texto: (r) => labelMes(r.mes), valor: (r) => r.mes },
   { id: 'pedido', label: 'Pedido', texto: (r) => r.codigoPedido },
   { id: 'proposta', label: 'Proposta', texto: (r) => r.propostasVinculadas || '—' },
   { id: 'emissao', label: 'Emissão', tipo: 'data', texto: (r) => dataTexto(r.dataEmissao), valor: (r) => r.dataEmissao },
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+  ...colunasCnpjVendedor<LinhaPedidoItem>(),
   { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
   { id: 'produto', label: 'Produto', texto: (r) => r.codigoProduto },
   { id: 'descricao', label: 'Descrição', texto: (r) => r.descricaoProduto, className: 'max-w-[260px] truncate' },
@@ -38,7 +45,7 @@ export const COLUNAS_PEDIDOS: ColunaGrade<LinhaPedidoItem>[] = [
 ];
 
 export const COLUNAS_CLIENTES_FUNIL: ColunaGrade<LinhaClienteFunil>[] = [
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+  ...colunasCnpjVendedor<LinhaClienteFunil>(),
   { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
   {
     id: 'cadastro',
@@ -98,7 +105,7 @@ function datasLista(isos: string): string {
 }
 
 export const COLUNAS_CLIENTES_MES: ColunaGrade<LinhaClienteMes>[] = [
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+  ...colunasCnpjVendedor<LinhaClienteMes>(),
   { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
   {
     id: 'cadastro',
@@ -155,7 +162,7 @@ export const COLUNAS_CLIENTES_MES: ColunaGrade<LinhaClienteMes>[] = [
 export const COLUNAS_CONVERSAO: ColunaGrade<LinhaConversaoMes>[] = [
   { id: 'proposta', label: 'Proposta', texto: (r) => r.codigoProposta },
   { id: 'abertura', label: 'Abertura', tipo: 'data', texto: (r) => dataTexto(r.dataAbertura), valor: (r) => r.dataAbertura },
-  { id: 'codigoCliente', label: 'Cód. interno', texto: (r) => r.codigoCliente || '—' },
+  ...colunasCnpjVendedor<LinhaConversaoMes>(),
   { id: 'cliente', label: 'Cliente', texto: (r) => r.cliente },
   { id: 'valor', label: 'Valor', tipo: 'moeda', texto: (r) => formatMoeda(r.valor), valor: (r) => r.valor, total: true },
   { id: 'convertida', label: 'Convertida', texto: (r) => simNao(r.convertida) },

@@ -38,6 +38,7 @@ export interface IndicadorClassificacao {
 
 export interface ContaFinanceira {
   codigo: number;
+  dataEmissao: string | null;
   dataVencimento: string | null;
   dataAgendamento: string | null;
   classificacao: string | null;

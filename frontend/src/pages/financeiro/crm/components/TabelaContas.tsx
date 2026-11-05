@@ -14,8 +14,8 @@ import CabecalhoSecaoCrm from "./CabecalhoSecaoCrm";
 
 const COLUMN_IDS = [
   "codigo",
+  "dataEmissao",
   "dataVencimento",
-  "dataAgendamento",
   "classificacao",
   "empresa",
   "contaBancaria",
@@ -33,8 +33,8 @@ type ColumnId = (typeof COLUMN_IDS)[number];
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
+  dataEmissao: 96,
   dataVencimento: 96,
-  dataAgendamento: 96,
   classificacao: 168,
   empresa: 132,
   contaBancaria: 156,
@@ -50,8 +50,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
 
 export const CONTAS_MODAL_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
+  dataEmissao: 100,
   dataVencimento: 100,
-  dataAgendamento: 100,
   classificacao: 180,
   empresa: 140,
   contaBancaria: 170,
@@ -101,14 +101,14 @@ type ColunaDef = {
 function buildColunas(isAtraso: boolean): Record<ColumnId, ColunaDef> {
   return {
     codigo: { id: "codigo", label: "Código", wrap: false },
+    dataEmissao: {
+      id: "dataEmissao",
+      label: "Data de\nemissão",
+      wrap: false,
+    },
     dataVencimento: {
       id: "dataVencimento",
       label: "Vencimento",
-      wrap: false,
-    },
-    dataAgendamento: {
-      id: "dataAgendamento",
-      label: "Agendamento",
       wrap: false,
     },
     classificacao: {
@@ -171,10 +171,8 @@ function ContaRow({
   return (
     <tr className={index % 2 === 0 ? "table-row-even" : "table-row-odd"}>
       <td className={`${td} cell-nowrap font-mono text-xs`}>{row.codigo}</td>
+      <td className={`${td} cell-nowrap`}>{formatDate(row.dataEmissao)}</td>
       <td className={`${td} cell-nowrap`}>{formatDate(row.dataVencimento)}</td>
-      <td className={`${td} cell-nowrap`}>
-        {formatDate(row.dataAgendamento)}
-      </td>
       <td className={`${td} cell-wrap`}>
         <span className="block font-medium text-slate-800 dark:text-slate-100">
           {row.nomeClassificacao ?? "—"}
@@ -234,7 +232,7 @@ export default function TabelaContas({
   dados,
   destaque,
   scrollClassName = "table-crm-scroll-y",
-  storageKey = "crm-contas-col-widths-v2",
+  storageKey = "crm-contas-col-widths-v3",
   defaultColumnWidths = DEFAULT_COLUMN_WIDTHS,
   preencherLargura = false,
   variant = "default",
@@ -260,13 +258,13 @@ export default function TabelaContas({
         id: "codigo",
         getValue: (row: ContaFinanceira) => row.codigo,
       },
+      dataEmissao: {
+        id: "dataEmissao",
+        getValue: (row: ContaFinanceira) => row.dataEmissao,
+      },
       dataVencimento: {
         id: "dataVencimento",
         getValue: (row: ContaFinanceira) => row.dataVencimento,
-      },
-      dataAgendamento: {
-        id: "dataAgendamento",
-        getValue: (row: ContaFinanceira) => row.dataAgendamento,
       },
       classificacao: {
         id: "classificacao",

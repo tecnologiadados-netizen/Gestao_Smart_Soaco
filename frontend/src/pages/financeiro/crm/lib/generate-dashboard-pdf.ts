@@ -61,6 +61,7 @@ const BAIXADOS_COLUMN_IDS = [
 
 /** Colunas da tabela de recebimentos/pagamentos no PDF (sem as removidas por espaço). */
 const BAIXADOS_PDF_COLUMN_IDS = [
+  "dataEmissao",
   "dataVencimento",
   "dataRecebimento",
   "formaPagamento",
@@ -70,7 +71,6 @@ const BAIXADOS_PDF_COLUMN_IDS = [
   "comentariosAgendamento",
   "comentariosLancamento",
   "nfeOrigem",
-  "dataEmissao",
   "totalDias",
   "valorAteVencimento",
   "valorBaixado",
@@ -79,16 +79,18 @@ const BAIXADOS_PDF_COLUMN_IDS = [
 ] as const;
 
 const BAIXADOS_PDF_COL_IDX = {
-  dataVencimento: 0,
-  comentariosAgendamento: 6,
-  comentariosLancamento: 7,
-  dataEmissao: 9,
+  dataEmissao: 0,
+  dataVencimento: 1,
+  dataRecebimento: 2,
+  comentariosAgendamento: 7,
+  comentariosLancamento: 8,
   totalDias: 10,
   valorJuros: 14,
 } as const;
 
 /** Proporções relativas das colunas de recebimentos/pagamentos no PDF. */
 const BAIXADOS_PDF_COLUMN_WIDTHS_MM: readonly number[] = [
+  10, // dataEmissao
   13, // dataVencimento
   10, // dataRecebimento
   9, // formaPagamento
@@ -98,7 +100,6 @@ const BAIXADOS_PDF_COLUMN_WIDTHS_MM: readonly number[] = [
   8, // comentariosAgendamento
   8, // comentariosLancamento
   8, // nfeOrigem
-  10, // dataEmissao
   7, // totalDias
   14, // valorAteVencimento
   14, // valorBaixado
@@ -325,8 +326,8 @@ function baixadosPdfRow(row: Recebimento): string[] {
 function contasHeaders(situacao: "atraso" | "emDia"): string[] {
   return [
     "Código",
+    "Data de emissão",
     "Vencimento",
-    "Agendamento",
     "Classificação",
     "Empresa",
     "Conta bancária",
@@ -356,8 +357,8 @@ function contasRow(row: ContaFinanceira, situacao: "atraso" | "emDia"): string[]
 
   return [
     String(row.codigo),
+    formatDate(row.dataEmissao),
     vencimento,
-    formatDate(row.dataAgendamento),
     classificacao,
     row.empresa ?? "—",
     row.contaBancaria ?? "—",
@@ -972,9 +973,9 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
       applyZebra(data);
 
       const isDataOuValor =
-        data.column.index === BAIXADOS_PDF_COL_IDX.dataVencimento ||
-        data.column.index === 1 ||
         data.column.index === BAIXADOS_PDF_COL_IDX.dataEmissao ||
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataVencimento ||
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataRecebimento ||
         data.column.index >= 11;
 
       if (isDataOuValor) {
@@ -983,9 +984,9 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
       }
 
       if (
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataEmissao ||
         data.column.index === BAIXADOS_PDF_COL_IDX.dataVencimento ||
-        data.column.index === 1 ||
-        data.column.index === BAIXADOS_PDF_COL_IDX.dataEmissao
+        data.column.index === BAIXADOS_PDF_COL_IDX.dataRecebimento
       ) {
         data.cell.styles.halign = "left";
       }
