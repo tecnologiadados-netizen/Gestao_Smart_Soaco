@@ -11,7 +11,6 @@ import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import {
-  formatDataPrevisao,
   formatLeadTimeDias,
   formatMoedaDash,
   getCampoPedido,
@@ -22,7 +21,7 @@ import {
 
 const PAGE_SIZE = 50;
 
-type ColId = 'tipof' | 'pd' | 'cliente' | 'rota' | 'saldo' | 'lead_time' | 'cod' | 'produto' | 'previsao' | 'status';
+type ColId = 'tipof' | 'pd' | 'cliente' | 'rota' | 'saldo' | 'lead_time';
 
 const COL_LABELS: Record<ColId, string> = {
   tipof: 'TipoF',
@@ -31,16 +30,13 @@ const COL_LABELS: Record<ColId, string> = {
   rota: 'Rota',
   saldo: 'Saldo Pendente',
   lead_time: 'Lead time',
-  cod: 'Cód.',
-  produto: 'Produto',
-  previsao: 'Previsão',
-  status: 'Status',
 };
 
 const LAYOUT_COLS: Record<'aging' | 'lead_time' | 'full', ColId[]> = {
   aging: ['tipof', 'pd', 'cliente', 'rota', 'saldo'],
   lead_time: ['tipof', 'pd', 'cliente', 'rota', 'lead_time'],
-  full: ['pd', 'cod', 'cliente', 'produto', 'rota', 'previsao', 'status', 'saldo'],
+  /** KPI / concentração: só PD, cliente e saldo (sem Cód., Produto, Rota, Previsão, Status). */
+  full: ['pd', 'cliente', 'saldo'],
 };
 
 type Props = {
@@ -86,14 +82,6 @@ function textoCelula(p: Pedido, colId: string): string {
       return formatMoedaDash(getValorPendentePedido(p));
     case 'lead_time':
       return formatLeadTimeDias(getLeadTimeDiasPedido(p));
-    case 'cod':
-      return getCampoPedido(p, ['Cod', 'cod']);
-    case 'produto':
-      return String(p.produto ?? '—');
-    case 'previsao':
-      return formatDataPrevisao(String(p.previsao_entrega_atualizada ?? ''));
-    case 'status':
-      return getCampoPedido(p, ['Status', 'status']);
     default:
       return '—';
   }
@@ -104,10 +92,6 @@ function valorOrdenacao(p: Pedido, colId: string): string | number {
   if (colId === 'lead_time') {
     const dias = getLeadTimeDiasPedido(p);
     return dias ?? Number.MAX_SAFE_INTEGER;
-  }
-  if (colId === 'previsao') {
-    const t = new Date(String(p.previsao_entrega_atualizada ?? '')).getTime();
-    return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
   }
   return textoCelula(p, colId as ColId);
 }
@@ -284,25 +268,13 @@ export default function ModalDashEntregasDetalhe({ open, filtro, onClose }: Prop
                       const align = ['saldo', 'lead_time'].includes(colId)
                         ? 'text-right tabular-nums font-medium'
                         : '';
-                      const truncate = ['cliente', 'produto', 'rota', 'tipof'].includes(colId)
+                      const truncate = ['cliente', 'rota', 'tipof'].includes(colId)
                         ? 'max-w-[160px] truncate'
                         : '';
                       const val = textoCelula(p, colId);
                       return (
                         <td key={colId} className={`px-3 py-2 text-xs ${align} ${truncate}`} title={val}>
-                          {colId === 'status' ? (
-                            <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                val.toLowerCase() === 'atrasado'
-                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              }`}
-                            >
-                              {val}
-                            </span>
-                          ) : (
-                            val
-                          )}
+                          {val}
                         </td>
                       );
                     })}
