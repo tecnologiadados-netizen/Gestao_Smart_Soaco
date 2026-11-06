@@ -15,6 +15,7 @@ import CabecalhoSecaoCrm from "./CabecalhoSecaoCrm";
 const COLUMN_IDS = [
   "codigo",
   "dataEmissao",
+  "dataCompetencia",
   "dataVencimento",
   "classificacao",
   "empresa",
@@ -34,6 +35,7 @@ type ColumnId = (typeof COLUMN_IDS)[number];
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
   dataEmissao: 96,
+  dataCompetencia: 96,
   dataVencimento: 96,
   classificacao: 168,
   empresa: 132,
@@ -51,6 +53,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnId, number> = {
 export const CONTAS_MODAL_COLUMN_WIDTHS: Record<ColumnId, number> = {
   codigo: 80,
   dataEmissao: 100,
+  dataCompetencia: 100,
   dataVencimento: 100,
   classificacao: 180,
   empresa: 140,
@@ -104,6 +107,11 @@ function buildColunas(isAtraso: boolean): Record<ColumnId, ColunaDef> {
     dataEmissao: {
       id: "dataEmissao",
       label: "Data de\nemissão",
+      wrap: false,
+    },
+    dataCompetencia: {
+      id: "dataCompetencia",
+      label: "Competência",
       wrap: false,
     },
     dataVencimento: {
@@ -172,6 +180,7 @@ function ContaRow({
     <tr className={index % 2 === 0 ? "table-row-even" : "table-row-odd"}>
       <td className={`${td} cell-nowrap font-mono text-xs`}>{row.codigo}</td>
       <td className={`${td} cell-nowrap`}>{formatDate(row.dataEmissao)}</td>
+      <td className={`${td} cell-nowrap`}>{formatDate(row.dataCompetencia)}</td>
       <td className={`${td} cell-nowrap`}>{formatDate(row.dataVencimento)}</td>
       <td className={`${td} cell-wrap`}>
         <span className="block font-medium text-slate-800 dark:text-slate-100">
@@ -232,7 +241,7 @@ export default function TabelaContas({
   dados,
   destaque,
   scrollClassName = "table-crm-scroll-y",
-  storageKey = "crm-contas-col-widths-v3",
+  storageKey = "crm-contas-col-widths-v4",
   defaultColumnWidths = DEFAULT_COLUMN_WIDTHS,
   preencherLargura = false,
   variant = "default",
@@ -261,6 +270,10 @@ export default function TabelaContas({
       dataEmissao: {
         id: "dataEmissao",
         getValue: (row: ContaFinanceira) => row.dataEmissao,
+      },
+      dataCompetencia: {
+        id: "dataCompetencia",
+        getValue: (row: ContaFinanceira) => row.dataCompetencia,
       },
       dataVencimento: {
         id: "dataVencimento",
