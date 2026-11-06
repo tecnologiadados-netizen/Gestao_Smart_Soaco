@@ -65,7 +65,7 @@ export function DocumentoEntradaSearchField({
       });
       setResultados(lista);
     } catch {
-      setErro("Não foi possível buscar documentos de entrada.");
+      setErro("Não foi possível buscar documentos.");
       setResultados([]);
     } finally {
       setCarregando(false);
@@ -120,7 +120,7 @@ export function DocumentoEntradaSearchField({
   const hint =
     termo.trim().length > 0 &&
     termo.trim().length < DOCUMENTOS_ENTRADA_MIN_SEARCH_CHARS
-      ? `Digite pelo menos ${DOCUMENTOS_ENTRADA_MIN_SEARCH_CHARS} caracteres para refinar (ex.: DE% ou %540).`
+      ? `Digite pelo menos ${DOCUMENTOS_ENTRADA_MIN_SEARCH_CHARS} caracteres para refinar (ex.: DE%, 191% ou %540).`
       : null;
 
   return (
@@ -168,7 +168,7 @@ export function DocumentoEntradaSearchField({
               setAberto(true);
             }}
             onFocus={() => setAberto(true)}
-            placeholder="Busque o documento DE..."
+            placeholder="Busque DE… ou compra de serviço…"
             disabled={disabled}
             className="pl-9"
             required={required}
@@ -195,7 +195,7 @@ export function DocumentoEntradaSearchField({
             <p className="px-3 py-4 text-sm text-muted-foreground">{hint}</p>
           ) : resultados.length === 0 ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">
-              Nenhum documento de entrada encontrado para este fornecedor.
+              Nenhum documento de entrada ou compra de serviço encontrado para este fornecedor.
             </p>
           ) : (
             <ul>
