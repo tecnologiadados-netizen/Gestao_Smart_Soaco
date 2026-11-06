@@ -14,11 +14,22 @@ import {
   concluirRessupAlmoxAnalise,
   listarRessupAlmoxAnalises,
   obterRessupAlmoxAnalise,
+  obterRessupAlmoxPreEntradaDetalhe,
+  obterRessupAlmoxPipelineDocumento,
   type RessupAlmoxAnalisePayloadV1,
   type RessupAlmoxAnaliseListItem,
   type RessupAlmoxPcPendLinha,
   type RessupEmpenhoPedidoResultado,
 } from '../../api/compras';
+import type {
+  DetalheAcompanhamento,
+  DocumentoAcompanhamento,
+  EtapaAcompanhamento,
+} from '../../api/acompanhamentoSolicitacao';
+import MateriaisAChegarDetalheModal from '../compras/MateriaisAChegarDetalheModal';
+import MateriaisAChegarDocumentoModal, {
+  type AlvoDocumento,
+} from '../compras/MateriaisAChegarDocumentoModal';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import ModalClassificarGrade, { type ColunaClassificavel } from '../../components/grade/ModalClassificarGrade';
@@ -103,10 +114,15 @@ const COL_DEFS = [
   { key: 'estSeg', label: 'Est Seg' },
   { key: 'pcPend', label: 'PC Pend' },
   { key: 'agPag', label: 'Pré Compra' },
+  { key: 'preEntrada', label: 'Pré Entrada' },
   { key: 'saldoProjetado', label: 'Saldo projetado' },
 ] as const;
 
 type ColKey = (typeof COL_DEFS)[number]['key'];
+
+/** Destaque leve na célula quando há quantidade em pré-entrada (material a caminho). */
+const PRE_ENTRADA_CELL_CLASS =
+  'bg-violet-50/90 dark:bg-violet-950/30';
 
 /** Colunas preenchidas pelo usuário na grade (gravadas no snapshot). */
 const NUMERIC_INPUT_KEYS = new Set<ColKey>(['qtdeSug', 'qtdAprov']);
@@ -277,6 +293,11 @@ function getAgPagNumerico(row: Record<string, unknown>): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function getPreEntradaNumerico(row: Record<string, unknown>): number {
+  const n = Number(getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']) ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function getQtdeEmpNumerico(row: Record<string, unknown>): number {
   const n = Number(getRowValue(row, ['Qtde Empenhada', 'qtde empenhada']) ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -436,6 +457,8 @@ function getRessupCell(
       return fmtNum(getRowValue(row, ['PC', 'pc']));
     case 'agPag':
       return fmtNum(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']));
+    case 'preEntrada':
+      return fmtNum(getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']));
     case 'itemCritico':
       return String(getRowValue(row, ['Item Crítico', 'Item critico', 'itemcritico']) ?? '').trim() || '—';
     case 'coleta':
@@ -547,6 +570,13 @@ export default function RessupAlmoxAnalisePage() {
     codigo: string;
     descricao: string;
   } | null>(null);
+  const [preEntradaModal, setPreEntradaModal] = useState<{
+    idProduto: number;
+    codigo: string;
+    descricao: string;
+    qtdeGrade: number;
+  } | null>(null);
+  const [pilhaDocumentosPreEntrada, setPilhaDocumentosPreEntrada] = useState<AlvoDocumento[]>([]);
   const [empenhoModal, setEmpenhoModal] = useState<{
     idProduto: number;
     codigo: string;
@@ -613,8 +643,10 @@ export default function RessupAlmoxAnalisePage() {
   const [opcoesErro, setOpcoesErro] = useState<string | null>(null);
   const detalheHistoricoReqRef = useRef(0);
   const novaAnaliseWrapRef = useRef<HTMLDivElement>(null);
-  /** Caches em memória dos detalhes (PC Pend, Empenho) — reabrir = instantâneo até novo Filtrar. */
+  /** Caches em memória dos detalhes (PC Pend, Empenho, Pré Entrada) — reabrir = instantâneo até novo Filtrar. */
   const pcPendCacheRef = useRef(new Map<number, RessupAlmoxPcPendLinha[]>());
+  const preEntradaCacheRef = useRef(new Map<string, DetalheAcompanhamento>());
+  const preEntradaDocCacheRef = useRef(new Map<string, DocumentoAcompanhamento>());
   const empenhoCacheRef = useRef(new Map<string, RessupEmpenhoPedidoResultado>());
   const saldoCacheRef = useRef(new Map<number, SaldoSetorDetalhe[]>());
   const scCacheRef = useRef(new Map<number, ScDetalhe[]>());
@@ -1145,10 +1177,14 @@ export default function RessupAlmoxAnalisePage() {
     setUserInputs({});
     setFiltroCompraRecorrente('');
     pcPendCacheRef.current.clear();
+    preEntradaCacheRef.current.clear();
+    preEntradaDocCacheRef.current.clear();
     empenhoCacheRef.current.clear();
     saldoCacheRef.current.clear();
     scCacheRef.current.clear();
     cotacaoCacheRef.current.clear();
+    setPreEntradaModal(null);
+    setPilhaDocumentosPreEntrada([]);
     const codigoValues = filterCodigo.split('|').filter(Boolean);
     const descricaoValues = filterDescricao.split('|').filter(Boolean);
     const coletaValues = filterColeta.split('|').filter(Boolean);
@@ -2778,6 +2814,40 @@ export default function RessupAlmoxAnalisePage() {
                               </td>
                             );
                           }
+                          if (col.key === 'preEntrada') {
+                            const val = getRessupCell(row, 'preEntrada', inputs);
+                            const idProd = getIdProdutoFromRow(row);
+                            const qtdePre = getPreEntradaNumerico(row);
+                            const clicavel = idProd != null && qtdePre > 0;
+                            return (
+                              <td
+                                key={col.key}
+                                className={`border border-slate-200 dark:border-slate-600 px-1 py-1 align-top text-xs break-words text-right dark:text-slate-200 ${
+                                  clicavel ? PRE_ENTRADA_CELL_CLASS : ''
+                                }`}
+                              >
+                                {clicavel ? (
+                                  <GradeCelulaModalBtn
+                                    variant="violeta"
+                                    onClick={() => {
+                                      setPilhaDocumentosPreEntrada([]);
+                                      setPreEntradaModal({
+                                        idProduto: idProd,
+                                        codigo: getRessupCell(row, 'codigo', inputs),
+                                        descricao: getRessupCell(row, 'descricao', inputs),
+                                        qtdeGrade: qtdePre,
+                                      });
+                                    }}
+                                    title="Ver Pré Entrada (material a caminho)"
+                                  >
+                                    {val}
+                                  </GradeCelulaModalBtn>
+                                ) : (
+                                  <span className="block text-right tabular-nums">{val}</span>
+                                )}
+                              </td>
+                            );
+                          }
                           return (
                             <td
                               key={col.key}
@@ -2847,6 +2917,59 @@ export default function RessupAlmoxAnalisePage() {
         descricao={pcPendModal?.descricao ?? ''}
         onClose={() => setPcPendModal(null)}
         cacheRef={pcPendCacheRef}
+      />
+
+      <MateriaisAChegarDetalheModal
+        alvo={
+          preEntradaModal
+            ? {
+                idProduto: preEntradaModal.idProduto,
+                etapa: 'pre_entrada',
+                codigo: preEntradaModal.codigo,
+                descricao: preEntradaModal.descricao,
+                qtdeGrade: preEntradaModal.qtdeGrade,
+              }
+            : null
+        }
+        cacheRef={preEntradaCacheRef}
+        fetchDetalhe={async (idProduto, etapa: EtapaAcompanhamento) => {
+          if (etapa !== 'pre_entrada') {
+            return { detalhe: null, error: 'Etapa inválida neste contexto.' };
+          }
+          return obterRessupAlmoxPreEntradaDetalhe(idProduto);
+        }}
+        onAbrirDocumento={(doc) => {
+          setPilhaDocumentosPreEntrada((pilha) => {
+            const topo = pilha[pilha.length - 1];
+            if (topo && topo.tipo === doc.tipo && topo.id === doc.id) return pilha;
+            return [...pilha, doc];
+          });
+        }}
+        onClose={() => {
+          setPreEntradaModal(null);
+          setPilhaDocumentosPreEntrada([]);
+        }}
+      />
+
+      <MateriaisAChegarDocumentoModal
+        alvo={pilhaDocumentosPreEntrada[pilhaDocumentosPreEntrada.length - 1] ?? null}
+        anterior={pilhaDocumentosPreEntrada[pilhaDocumentosPreEntrada.length - 2] ?? null}
+        cacheRef={preEntradaDocCacheRef}
+        podeAlterarData={false}
+        mostrarAcoesGrade={false}
+        fetchDocumento={obterRessupAlmoxPipelineDocumento}
+        onVoltar={() => setPilhaDocumentosPreEntrada((pilha) => pilha.slice(0, -1))}
+        onAbrirDocumento={(doc) => {
+          setPilhaDocumentosPreEntrada((pilha) => {
+            const topo = pilha[pilha.length - 1];
+            if (topo && topo.tipo === doc.tipo && topo.id === doc.id) return pilha;
+            return [...pilha, doc];
+          });
+        }}
+        onVerNaGrade={() => undefined}
+        onFiltrarGrade={() => undefined}
+        onDataEntregaAlterada={() => undefined}
+        onClose={() => setPilhaDocumentosPreEntrada([])}
       />
 
       <ModalEmpenhoRessup

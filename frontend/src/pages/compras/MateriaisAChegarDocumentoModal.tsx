@@ -39,6 +39,14 @@ type Props = {
   onFiltrarGrade: (tipo: TipoDocumentoAcompanhamento, numero: string) => void;
   onDataEntregaAlterada: () => void;
   onClose: () => void;
+  /** Por padrão usa a API de Materiais a chegar; Ressup Não Almox passa o endpoint com COMPRAS_VER. */
+  fetchDocumento?: (
+    tipo: TipoDocumentoAcompanhamento,
+    id: number,
+    escopo?: EscopoDocumentoAcompanhamento
+  ) => Promise<{ documento: DocumentoAcompanhamento | null; error?: string }>;
+  /** Exibe "Filtrar a grade" / "Ver na grade" (só faz sentido na tela Materiais a chegar). */
+  mostrarAcoesGrade?: boolean;
 };
 
 const Z_MODAL = 14030;
@@ -209,6 +217,8 @@ export default function MateriaisAChegarDocumentoModal({
   onFiltrarGrade,
   onDataEntregaAlterada,
   onClose,
+  fetchDocumento = obterDocumentoAcompanhamento,
+  mostrarAcoesGrade = true,
 }: Props) {
   const [resultado, setResultado] = useState<{
     key: string;
@@ -230,12 +240,12 @@ export default function MateriaisAChegarDocumentoModal({
       setResultado({ key, documento: cached });
       return {};
     }
-    const r = await obterDocumentoAcompanhamento(alvo.tipo, alvo.id, alvo.escopo);
+    const r = await fetchDocumento(alvo.tipo, alvo.id, alvo.escopo);
     if (r.error || !r.documento) return { error: r.error ?? 'Não foi possível carregar o documento.' };
     cacheRef.current.set(key, r.documento);
     setResultado({ key, documento: r.documento });
     return {};
-  }, [alvo, cacheRef]);
+  }, [alvo, cacheRef, fetchDocumento]);
 
   const doc = alvo && resultado?.key === chave(alvo) ? resultado.documento : null;
 
@@ -317,14 +327,16 @@ export default function MateriaisAChegarDocumentoModal({
                     ← {TITULO_TIPO[anterior.tipo]} {anterior.numero}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => onFiltrarGrade(doc.tipo, doc.numero)}
-                  className="rounded-lg border border-sky-600 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-500 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
-                  title={`Fecha os modais e filtra a grade por ${ehPedido ? 'este pedido' : 'este documento'}`}
-                >
-                  Filtrar a grade por {ehPedido ? 'este pedido' : 'este documento'}
-                </button>
+                {mostrarAcoesGrade ? (
+                  <button
+                    type="button"
+                    onClick={() => onFiltrarGrade(doc.tipo, doc.numero)}
+                    className="rounded-lg border border-sky-600 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-500 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
+                    title={`Fecha os modais e filtra a grade por ${ehPedido ? 'este pedido' : 'este documento'}`}
+                  >
+                    Filtrar a grade por {ehPedido ? 'este pedido' : 'este documento'}
+                  </button>
+                ) : null}
                 {doc.efetivado ? (
                   <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:border-emerald-500/60 dark:bg-emerald-500/15 dark:text-emerald-100">
                     Documento já efetivado (não é mais pré-entrada)
@@ -478,7 +490,7 @@ export default function MateriaisAChegarDocumentoModal({
                                     Alterar data
                                   </button>
                                 ) : null}
-                                {st.naGrade ? (
+                                {mostrarAcoesGrade && st.naGrade ? (
                                   <button
                                     type="button"
                                     onClick={() => onVerNaGrade(item.codigo)}

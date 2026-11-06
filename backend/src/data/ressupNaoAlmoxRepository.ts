@@ -21,7 +21,6 @@ import {
   resolverFundiveisParesNomus,
   type FundivelParNomus,
 } from './ressupNaoAlmoxCatalogRepository.js';
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_VM = readFileSync(join(__dirname, 'sql', 'ressupNaoAlmoxVm.sql'), 'utf-8');
 const SQL_ESTOQUE = readFileSync(join(__dirname, 'sql', 'ressupNaoAlmoxEstoque.sql'), 'utf-8');
@@ -144,9 +143,10 @@ ${SQL_JOIN_TIPO_MATERIAL}
 }
 
 function adaptSqlForRessupNaoAlmox(baseSql: string, pares: FundivelParNomus[]): string {
+  // Base já traz Pré Entrada; acrescenta só a VM do Não Almox.
   let sql = baseSql.replace(
-    /coalesce\(agpag\.quantidade,0\) as '(?:Pré Compra|Ag Pag)'/i,
-    "coalesce(agpag.quantidade,0) as 'Pré Compra',\n  Coalesce(vm.VM, 0) As 'VM'"
+    /coalesce\(agpag\.quantidade,0\) as '(?:Pré Compra|Ag Pag)',\s*\r?\n\s*Coalesce\(preent\.quantidade, 0\) As 'Pré Entrada'/i,
+    "coalesce(agpag.quantidade,0) as 'Pré Compra',\n  Coalesce(preent.quantidade, 0) As 'Pré Entrada',\n  Coalesce(vm.VM, 0) As 'VM'"
   );
   sql = sql.replace(
     /  left join usuario u on u\.id = sco\.idUsuario\r?\nWhere\r?\n  \(p\.idTipoProduto In \(5, 13, 14, 6, 10, 16, 21, 22\)\)/i,

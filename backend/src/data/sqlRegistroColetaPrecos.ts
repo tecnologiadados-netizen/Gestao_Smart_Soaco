@@ -8,6 +8,35 @@ import {
   sqlFundiveisMapSubquery,
   type FundivelParNomus,
 } from './ressupNaoAlmoxCatalogRepository.js';
+import {
+  SQL_DOC_PRE_ENTRADA,
+  SQL_IPC_ATENDIDO,
+} from './acompanhamentoSolicitacaoRepository.js';
+
+/**
+ * Qtde em pré-entrada (doc 173 + item de pedido atendido).
+ * Mesma regra de SQL_GRADE_PRE_ENTRADA (integridade grade = modal).
+ */
+export const SQL_PRE_ENTRADA_QTDE_POR_PRODUTO = `
+Select
+  pre.idProduto As idProduto,
+  Sum(pre.qtde) As quantidade
+From (
+  Select
+    ide.id As idItem,
+    ide.idProduto As idProduto,
+    Round(ide.qtde, 2) As qtde
+  From itemdocumentoestoque ide
+  Inner Join documentoestoque de On de.id = ide.idDocumentoEstoque
+  Inner Join itemdocumentoestoque_itempedidocompra ideipc On ideipc.idItemDocumentoEstoque = ide.id
+  Inner Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+  Where ${SQL_DOC_PRE_ENTRADA}
+    And ${SQL_IPC_ATENDIDO}
+    And Round(ide.qtde, 2) > 0
+  Group By ide.id, ide.idProduto, ide.qtde
+) pre
+Group By pre.idProduto
+`.trim();
 
 /**
  * SQL para registro da coleta de preços no Nomus.
@@ -60,7 +89,8 @@ Select
   ds.opcao As 'Dia da Semana',
   Coalesce(ic.opcao, 'Sem Definição') As 'Item Crítico',
   Coalesce(cr.opcao, 'Sem Definição') As 'Compra Recorrente',
-  coalesce(agpag.quantidade,0) as 'Pré Compra'
+  coalesce(agpag.quantidade,0) as 'Pré Compra',
+  Coalesce(preent.quantidade, 0) As 'Pré Entrada'
 From
   produto p
   Left Join
@@ -708,6 +738,9 @@ where cc.status in (1, 2, 3)
 group by
 icc.idProduto,
 p.nome) agpag on agpag.idproduto = p.id
+  Left Join (
+${SQL_PRE_ENTRADA_QTDE_POR_PRODUTO}
+  ) preent On preent.idProduto = p.id
   left join usuario u on u.id = sco.idUsuario
 Where
   (p.idTipoProduto In (5, 13, 14, 6, 10, 16, 21, 22))

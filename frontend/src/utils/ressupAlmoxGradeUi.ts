@@ -21,6 +21,7 @@ export const RESSUP_DEFAULT_COL_WIDTHS: Record<string, number> = {
   estSeg: 64,
   pcPend: 64,
   agPag: 64,
+  preEntrada: 72,
   saldoProjetado: 96,
 };
 

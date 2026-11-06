@@ -41,6 +41,11 @@ type Props = {
   cacheRef: MutableRefObject<Map<string, DetalheAcompanhamento>>;
   onAbrirDocumento: (alvo: AlvoDocumento) => void;
   onClose: () => void;
+  /** Por padrão usa a API de Materiais a chegar; Ressup Não Almox passa o endpoint com COMPRAS_VER. */
+  fetchDetalhe?: (
+    idProduto: number,
+    etapa: EtapaAcompanhamento
+  ) => Promise<{ detalhe: DetalheAcompanhamento | null; error?: string }>;
 };
 
 function chave(alvo: Alvo): string {
@@ -56,7 +61,13 @@ function celula(valor: string | null | undefined): string {
   return t ? t : '—';
 }
 
-export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDocumento, onClose }: Props) {
+export default function MateriaisAChegarDetalheModal({
+  alvo,
+  cacheRef,
+  onAbrirDocumento,
+  onClose,
+  fetchDetalhe = obterDetalheAcompanhamento,
+}: Props) {
   const [resultado, setResultado] = useState<{
     key: string;
     detalhe: DetalheAcompanhamento;
@@ -70,12 +81,12 @@ export default function MateriaisAChegarDetalheModal({ alvo, cacheRef, onAbrirDo
       setResultado({ key, detalhe: cached });
       return {};
     }
-    const r = await obterDetalheAcompanhamento(alvo.idProduto, alvo.etapa);
+    const r = await fetchDetalhe(alvo.idProduto, alvo.etapa);
     if (r.error || !r.detalhe) return { error: r.error ?? 'Não foi possível carregar o detalhe.' };
     cacheRef.current.set(key, r.detalhe);
     setResultado({ key, detalhe: r.detalhe });
     return {};
-  }, [alvo, cacheRef]);
+  }, [alvo, cacheRef, fetchDetalhe]);
 
   const detalhe = alvo && resultado?.key === chave(alvo) ? resultado.detalhe : null;
   const linhas = detalhe && alvo && detalhe.etapa === alvo.etapa ? detalhe.linhas : [];

@@ -204,7 +204,7 @@ export async function getQualidadeDocumentosEntrada(
     res.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Erro ao buscar documentos de entrada.';
+      error instanceof Error ? error.message : 'Erro ao buscar documentos do fornecedor.';
     res.status(500).json({ error: message });
   }
 }

@@ -151,10 +151,10 @@ function baixadosPdfColumnStyles(doc: jsPDF): NonNullable<UserOptions["columnSty
 }
 
 const CONTAS_PDF_COL_IDX = {
-  comentariosAgendamento: 9,
-  comentariosLancamento: 10,
-  dias: 11,
-  valor: 13,
+  comentariosAgendamento: 10,
+  comentariosLancamento: 11,
+  dias: 12,
+  valor: 14,
 } as const;
 
 type BaixadosColumnId = (typeof BAIXADOS_COLUMN_IDS)[number];
@@ -327,6 +327,7 @@ function contasHeaders(situacao: "atraso" | "emDia"): string[] {
   return [
     "Código",
     "Data de emissão",
+    "Competência",
     "Vencimento",
     "Classificação",
     "Empresa",
@@ -358,6 +359,7 @@ function contasRow(row: ContaFinanceira, situacao: "atraso" | "emDia"): string[]
   return [
     String(row.codigo),
     formatDate(row.dataEmissao),
+    formatDate(row.dataCompetencia),
     vencimento,
     classificacao,
     row.empresa ?? "—",

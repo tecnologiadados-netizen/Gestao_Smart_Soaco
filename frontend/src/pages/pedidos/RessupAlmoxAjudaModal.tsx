@@ -18,9 +18,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado e cobertura',
     oQueE:
-      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Pré Compra. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01).',
+      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Pré Compra. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01). A coluna Pré Entrada é informativa (material a caminho) e não entra nessa fórmula.',
     comoLe:
-      'Saldo baixo ou cobertura curta indica prioridade de compra. Compare com CM e com o dia da compra recorrente do item.',
+      'Saldo baixo ou cobertura curta indica prioridade de compra. Compare com CM e com o dia da compra recorrente do item. Se PC Pend estiver zerado, confira Pré Entrada antes de concluir que não há material a chegar.',
   },
   {
     id: 'empenho',
@@ -29,6 +29,14 @@ const SECOES: SecaoAjuda[] = [
       'Mesma regra da Consulta de Estoque: empenho líquido = max(0, bruto − estoque em PA), consolidado na grade; detalhe por pedido no modal.',
     comoLe:
       'Clique em Empenho ou PC Pend: a soma do modal deve ser igual à célula. O flag “considerar requisições” altera o que entra no empenho.',
+  },
+  {
+    id: 'pre-entrada',
+    titulo: 'Pré Entrada',
+    oQueE:
+      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque).',
+    comoLe:
+      'Célula com quantidade ganha destaque violeta e abre o modal analítico (solicitação, pedido, documento, NF, fornecedor, emissão e situação). A soma do modal = valor da grade. Clique no pedido ou no documento no modal para ver todos os itens. Sai da coluna quando o documento deixa de ser pré-entrada.',
   },
   {
     id: 'sug-aprov',

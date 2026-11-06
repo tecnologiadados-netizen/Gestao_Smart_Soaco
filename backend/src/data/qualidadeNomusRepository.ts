@@ -49,7 +49,7 @@ export interface PessoaErp {
 
 export interface DocumentoEntradaErp {
   id: string;
-  /** Número fiscal no Nomus (ex.: DE38540). */
+  /** Número fiscal no Nomus (ex.: DE38540 ou 191051 em compra de serviço). */
   numero: string;
   dataEmissao?: string;
   dataEntrada?: string;
@@ -1051,8 +1051,10 @@ function mapSqlRowsToDocumentosEntrada(
 }
 
 /**
- * Documentos de entrada (DE…) do Nomus vinculados ao fornecedor (pessoa.idParceiro).
- * Natureza 3 e 4 = compra / entrada; exclui devoluções (natureza 5) mesmo com prefixo DE.
+ * Documentos do Nomus vinculados ao fornecedor (documentoestoque.idParceiro = pessoa.id):
+ * - Natureza 3/4 com prefixo DE… = documentos de entrada (compra/material)
+ * - Natureza 8 = compra de serviço (número interno, sem prefixo DE)
+ * Exclui devoluções (natureza 5) mesmo com prefixo DE.
  */
 export async function buscarDocumentosEntradaNomus(
   options: GetDocumentosEntradaOptions
@@ -1081,10 +1083,12 @@ export async function buscarDocumentosEntradaNomus(
     FROM documentoestoque de
     INNER JOIN tipomovimentacao tm ON tm.id = de.idTipoMovimentacao
     WHERE de.idParceiro = ?
-      AND tm.natureza IN (3, 4)
       AND de.numeroDocumentoFiscal IS NOT NULL
       AND TRIM(de.numeroDocumentoFiscal) <> ''
-      AND de.numeroDocumentoFiscal LIKE 'DE%'
+      AND (
+        (tm.natureza IN (3, 4) AND de.numeroDocumentoFiscal LIKE 'DE%')
+        OR tm.natureza = 8
+      )
   `;
 
   const q = options.q?.trim() ?? '';

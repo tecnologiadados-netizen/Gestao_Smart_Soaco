@@ -429,6 +429,7 @@ LEFT JOIN documentoestoque dee ON dee.id = af.idDocumentoEntrada
 const SELECT_COLS_CONTAS_DETALHE = `
   af.id AS codigo,
   IFNULL(dee.dataEmissao, des.dataEmissao) AS dataEmissao,
+  af.dataCompetencia AS dataCompetencia,
   af.dataVencimento AS dataVencimento,
   af.dataAgendamento AS dataAgendamento,
   cf.classificacao AS classificacao,
@@ -653,6 +654,7 @@ export function buildTitulosDescontadoContasQuery(
     SELECT
       af.id AS codigo,
       IFNULL(dee.dataEmissao, des.dataEmissao) AS dataEmissao,
+      af.dataCompetencia AS dataCompetencia,
       af.dataVencimento AS dataVencimento,
       af.dataAgendamento AS dataAgendamento,
       cf.classificacao AS classificacao,
