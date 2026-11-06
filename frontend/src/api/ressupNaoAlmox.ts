@@ -1,4 +1,11 @@
 import { apiFetch } from './client';
+import type {
+  DetalheAcompanhamento,
+  DocumentoAcompanhamento,
+  EscopoDocumentoAcompanhamento,
+  LinhaDetalhePreEntrada,
+  TipoDocumentoAcompanhamento,
+} from './acompanhamentoSolicitacao';
 
 export interface RessupNaoAlmoxPcPendLinha {
   pedidoCompra: string;
@@ -116,6 +123,41 @@ export async function obterRessupNaoAlmoxPcPendDetalhes(
   }
   if (!res.ok) return { data: [], error: body.error ?? `Erro ${res.status}` };
   return { data: body.data ?? [] };
+}
+
+/** Detalhe de pré-entrada (mesma regra da grade / Materiais a chegar), via permissão do Ressup. */
+export async function obterRessupNaoAlmoxPreEntradaDetalhe(
+  idProduto: number
+): Promise<{ detalhe: DetalheAcompanhamento | null; error?: string }> {
+  const qs = new URLSearchParams({ idProduto: String(idProduto), etapa: 'pre_entrada' });
+  const res = await apiFetch(`/api/compras/ressup-nao-almox/pipeline-detalhe?${qs.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as {
+    etapa?: string;
+    linhas?: LinhaDetalhePreEntrada[];
+    error?: string;
+  };
+  if (!res.ok) return { detalhe: null, error: body.error ?? res.statusText };
+  if (body.etapa !== 'pre_entrada') {
+    return { detalhe: null, error: 'Resposta inválida do detalhe.' };
+  }
+  return { detalhe: { etapa: 'pre_entrada', linhas: body.linhas ?? [] } };
+}
+
+export async function obterRessupNaoAlmoxPipelineDocumento(
+  tipo: TipoDocumentoAcompanhamento,
+  id: number,
+  escopo: EscopoDocumentoAcompanhamento = 'completo'
+): Promise<{ documento: DocumentoAcompanhamento | null; error?: string }> {
+  const qs = new URLSearchParams({ tipo, id: String(id), escopo });
+  const res = await apiFetch(`/api/compras/ressup-nao-almox/pipeline-documento?${qs.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as Partial<DocumentoAcompanhamento> & {
+    error?: string;
+  };
+  if (!res.ok) return { documento: null, error: body.error ?? res.statusText };
+  if (body.tipo !== tipo || !Array.isArray(body.itens)) {
+    return { documento: null, error: 'Resposta inválida do documento.' };
+  }
+  return { documento: body as DocumentoAcompanhamento };
 }
 
 export type RessupNaoAlmoxFiltrosPayload = {

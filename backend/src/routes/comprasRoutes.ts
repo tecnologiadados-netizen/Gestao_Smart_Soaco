@@ -174,6 +174,18 @@ router.get(
   async503(getRessupNaoAlmoxPcPendDetalhes)
 );
 
+/** Detalhe/documento de pré-entrada (mesma regra de Materiais a chegar), com permissão do Ressup. */
+router.get(
+  '/ressup-nao-almox/pipeline-detalhe',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDetalheAcompanhamento)
+);
+router.get(
+  '/ressup-nao-almox/pipeline-documento',
+  requirePermission(PERMISSOES.COMPRAS_VER),
+  async503(getDocumentoAcompanhamento)
+);
+
 router.get(
   '/ressup-nao-almox/opcoes-filtro',
   requirePermission(PERMISSOES.COMPRAS_VER),

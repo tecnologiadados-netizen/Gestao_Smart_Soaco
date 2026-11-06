@@ -21,6 +21,10 @@ import {
   resolverFundiveisParesNomus,
   type FundivelParNomus,
 } from './ressupNaoAlmoxCatalogRepository.js';
+import {
+  SQL_DOC_PRE_ENTRADA,
+  SQL_IPC_ATENDIDO,
+} from './acompanhamentoSolicitacaoRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SQL_VM = readFileSync(join(__dirname, 'sql', 'ressupNaoAlmoxVm.sql'), 'utf-8');
@@ -131,12 +135,40 @@ const ELEGIBILIDADE_PARAMS = [...RESSUP_NAO_ALMOX_TIPOS_MATERIAL, ...RESSUP_NAO_
 
 const BUSCA_OPCOES_LIMITE = 80;
 
+/**
+ * Qtde em pré-entrada (doc 173 + item de pedido atendido). Mesma regra de
+ * SQL_GRADE_PRE_ENTRADA em acompanhamentoSolicitacaoRepository (integridade grade = modal).
+ */
+const SQL_PRE_ENTRADA_QTDE_POR_PRODUTO = `
+Select
+  pre.idProduto As idProduto,
+  Sum(pre.qtde) As quantidade
+From (
+  Select
+    ide.id As idItem,
+    ide.idProduto As idProduto,
+    Round(ide.qtde, 2) As qtde
+  From itemdocumentoestoque ide
+  Inner Join documentoestoque de On de.id = ide.idDocumentoEstoque
+  Inner Join itemdocumentoestoque_itempedidocompra ideipc On ideipc.idItemDocumentoEstoque = ide.id
+  Inner Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+  Where ${SQL_DOC_PRE_ENTRADA}
+    And ${SQL_IPC_ATENDIDO}
+    And Round(ide.qtde, 2) > 0
+  Group By ide.id, ide.idProduto, ide.qtde
+) pre
+Group By pre.idProduto
+`.trim();
+
 function buildJoinsExtra(pares: FundivelParNomus[]): string {
   const sqlVm = applyExcluirIdsPintadosToken(SQL_VM.trim(), idsPintadosFromPares(pares));
   return `
   Left Join (
     ${sqlVm}
   ) vm On vm.idProduto = p.id
+  Left Join (
+${SQL_PRE_ENTRADA_QTDE_POR_PRODUTO}
+  ) preent On preent.idProduto = p.id
   Inner Join (
 ${SQL_JOIN_TIPO_MATERIAL}
   ) tmfilt On tmfilt.idProduto = p.id
@@ -146,7 +178,7 @@ ${SQL_JOIN_TIPO_MATERIAL}
 function adaptSqlForRessupNaoAlmox(baseSql: string, pares: FundivelParNomus[]): string {
   let sql = baseSql.replace(
     /coalesce\(agpag\.quantidade,0\) as '(?:Pré Compra|Ag Pag)'/i,
-    "coalesce(agpag.quantidade,0) as 'Pré Compra',\n  Coalesce(vm.VM, 0) As 'VM'"
+    "coalesce(agpag.quantidade,0) as 'Pré Compra',\n  Coalesce(preent.quantidade, 0) As 'Pré Entrada',\n  Coalesce(vm.VM, 0) As 'VM'"
   );
   sql = sql.replace(
     /  left join usuario u on u\.id = sco\.idUsuario\r?\nWhere\r?\n  \(p\.idTipoProduto In \(5, 13, 14, 6, 10, 16, 21, 22\)\)/i,

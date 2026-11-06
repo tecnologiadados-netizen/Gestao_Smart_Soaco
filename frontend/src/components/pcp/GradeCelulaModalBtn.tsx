@@ -10,7 +10,9 @@ export const GRADE_CELULA_MODAL_BTN_LARANJA_CLASS = `${BASE} ml-auto border-ambe
 
 export const GRADE_CELULA_MODAL_BTN_VERDE_CLASS = `${BASE} ml-auto border-emerald-500/80 bg-emerald-600 hover:bg-emerald-500 focus:ring-emerald-400/60 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
 
-export type GradeCelulaModalBtnVariant = 'primary' | 'laranja' | 'verde';
+export const GRADE_CELULA_MODAL_BTN_VIOLETA_CLASS = `${BASE} ml-auto border-violet-500/80 bg-violet-600 hover:bg-violet-500 focus:ring-violet-400/60 dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400`;
+
+export type GradeCelulaModalBtnVariant = 'primary' | 'laranja' | 'verde' | 'violeta';
 export type GradeCelulaModalBtnAlign = 'left' | 'center' | 'right';
 
 type Props = {
@@ -33,7 +35,9 @@ function classesVariante(variant: GradeCelulaModalBtnVariant, align: GradeCelula
       ? 'border-emerald-500/80 bg-emerald-600 hover:bg-emerald-500 focus:ring-emerald-400/60 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400'
       : variant === 'laranja'
         ? 'border-amber-500/80 bg-amber-600 hover:bg-amber-500 focus:ring-amber-400/60 dark:border-amber-400 dark:bg-amber-500 dark:hover:bg-amber-400'
-        : 'border-primary-500/70 bg-primary-600 hover:bg-primary-500 focus:ring-primary-400/60 dark:border-primary-400 dark:bg-primary-500 dark:hover:bg-primary-400';
+        : variant === 'violeta'
+          ? 'border-violet-500/80 bg-violet-600 hover:bg-violet-500 focus:ring-violet-400/60 dark:border-violet-400 dark:bg-violet-500 dark:hover:bg-violet-400'
+          : 'border-primary-500/70 bg-primary-600 hover:bg-primary-500 focus:ring-primary-400/60 dark:border-primary-400 dark:bg-primary-500 dark:hover:bg-primary-400';
   return `${BASE} ${margin} ${colors}`.replace(/\s+/g, ' ').trim();
 }
 

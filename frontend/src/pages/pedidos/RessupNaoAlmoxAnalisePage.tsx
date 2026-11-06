@@ -17,11 +17,22 @@ import {
   saveCatalogoFundivelNaoAlmox,
   fetchRessupNaoAlmoxEstoque,
   obterRessupNaoAlmoxPcPendDetalhes,
+  obterRessupNaoAlmoxPreEntradaDetalhe,
+  obterRessupNaoAlmoxPipelineDocumento,
   type RessupNaoAlmoxAnalisePayloadV1,
   type RessupNaoAlmoxAnaliseListItem,
   type RessupNaoAlmoxRowUserInputs,
   type RessupNaoAlmoxPcPendLinha,
 } from '../../api/ressupNaoAlmox';
+import type {
+  DetalheAcompanhamento,
+  DocumentoAcompanhamento,
+  EtapaAcompanhamento,
+} from '../../api/acompanhamentoSolicitacao';
+import MateriaisAChegarDetalheModal from '../compras/MateriaisAChegarDetalheModal';
+import MateriaisAChegarDocumentoModal, {
+  type AlvoDocumento,
+} from '../compras/MateriaisAChegarDocumentoModal';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
 import ModalClassificarGrade, { type ColunaClassificavel } from '../../components/grade/ModalClassificarGrade';
@@ -139,8 +150,13 @@ const COL_DEFS = [
   { key: 'precoAnt', label: 'Preço Ant' },
   { key: 'pcPend', label: 'PC Pend' },
   { key: 'agPag', label: 'Pré Compra' },
+  { key: 'preEntrada', label: 'Pré Entrada' },
   { key: 'saldoProjetado', label: 'Saldo projetado' },
 ] as const;
+
+/** Destaque leve na célula quando há quantidade em pré-entrada (material a caminho). */
+const PRE_ENTRADA_CELL_CLASS =
+  'bg-violet-50/90 dark:bg-violet-950/30';
 
 type ColKey = (typeof COL_DEFS)[number]['key'];
 
@@ -313,6 +329,11 @@ function getQtdeEmpNumerico(row: Record<string, unknown>): number {
 
 function getAgPagNumerico(row: Record<string, unknown>): number {
   const n = Number(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']) ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getPreEntradaNumerico(row: Record<string, unknown>): number {
+  const n = Number(getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']) ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -564,6 +585,8 @@ function getRessupCell(
       return fmtNum(getRowValue(row, ['PC', 'pc']));
     case 'agPag':
       return fmtNum(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']));
+    case 'preEntrada':
+      return fmtNum(getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']));
     case 'coleta':
       return String(getRowValue(row, ['Nome Coleta', 'nome coleta']) ?? '').trim() || '—';
     case 'saldoProjetado':
@@ -662,6 +685,13 @@ export default function RessupNaoAlmoxAnalisePage() {
     codigo: string;
     descricao: string;
   } | null>(null);
+  const [preEntradaModal, setPreEntradaModal] = useState<{
+    idProduto: number;
+    codigo: string;
+    descricao: string;
+    qtdeGrade: number;
+  } | null>(null);
+  const [pilhaDocumentosPreEntrada, setPilhaDocumentosPreEntrada] = useState<AlvoDocumento[]>([]);
   const [empenhoModal, setEmpenhoModal] = useState<{
     idProduto: number;
     codigo: string;
@@ -748,6 +778,8 @@ export default function RessupNaoAlmoxAnalisePage() {
   const empenhoCacheRef = useRef(new Map<string, RessupEmpenhoPedidoResultado>());
   const estoqueCacheRef = useRef(new Map<string, EstoqueNaoAlmoxResultado>());
   const pcPendCacheRef = useRef(new Map<number, RessupNaoAlmoxPcPendLinha[]>());
+  const preEntradaCacheRef = useRef(new Map<string, DetalheAcompanhamento>());
+  const preEntradaDocCacheRef = useRef(new Map<string, DocumentoAcompanhamento>());
   const scCacheRef = useRef(new Map<number, ScDetalhe[]>());
   const cotacaoCacheRef = useRef(new Map<number, CotacaoDetalhe[]>());
 
@@ -1344,8 +1376,12 @@ export default function RessupNaoAlmoxAnalisePage() {
     empenhoCacheRef.current.clear();
     estoqueCacheRef.current.clear();
     pcPendCacheRef.current.clear();
+    preEntradaCacheRef.current.clear();
+    preEntradaDocCacheRef.current.clear();
     scCacheRef.current.clear();
     cotacaoCacheRef.current.clear();
+    setPreEntradaModal(null);
+    setPilhaDocumentosPreEntrada([]);
     const codigoValues = filterCodigo.split('|').filter(Boolean);
     const descricaoValues = filterDescricao.split('|').filter(Boolean);
     const coletaValues = filterColeta.split('|').filter(Boolean);
@@ -1661,6 +1697,7 @@ export default function RessupNaoAlmoxAnalisePage() {
           estoqAtual: cell('estoqAtual'),
           pcPend: cell('pcPend'),
           agPag: cell('agPag'),
+          preEntrada: cell('preEntrada'),
           saldoProjetado: cell('saldoProjetado'),
         };
       });
@@ -3049,6 +3086,40 @@ export default function RessupNaoAlmoxAnalisePage() {
                               </td>
                             );
                           }
+                          if (col.key === 'preEntrada') {
+                            const val = getRessupCell(row, 'preEntrada', inputs);
+                            const idProd = getIdProdutoFromRow(row);
+                            const qtdePre = getPreEntradaNumerico(row);
+                            const clicavel = idProd != null && qtdePre > 0;
+                            return (
+                              <td
+                                key={col.key}
+                                className={`border border-slate-200 dark:border-slate-600 px-1 py-1 align-top text-xs break-words text-right dark:text-slate-200 ${
+                                  clicavel ? PRE_ENTRADA_CELL_CLASS : ''
+                                }`}
+                              >
+                                {clicavel ? (
+                                  <GradeCelulaModalBtn
+                                    variant="violeta"
+                                    onClick={() => {
+                                      setPilhaDocumentosPreEntrada([]);
+                                      setPreEntradaModal({
+                                        idProduto: idProd,
+                                        codigo: getRessupCell(row, 'codigo', inputs),
+                                        descricao: getRessupCell(row, 'descricao', inputs),
+                                        qtdeGrade: qtdePre,
+                                      });
+                                    }}
+                                    title="Ver Pré Entrada (material a caminho)"
+                                  >
+                                    {val}
+                                  </GradeCelulaModalBtn>
+                                ) : (
+                                  <span className="block text-right tabular-nums">{val}</span>
+                                )}
+                              </td>
+                            );
+                          }
                           return (
                             <td
                               key={col.key}
@@ -3119,6 +3190,59 @@ export default function RessupNaoAlmoxAnalisePage() {
         onClose={() => setPcPendModal(null)}
         cacheRef={pcPendCacheRef}
         fetchDetalhes={obterRessupNaoAlmoxPcPendDetalhes}
+      />
+
+      <MateriaisAChegarDetalheModal
+        alvo={
+          preEntradaModal
+            ? {
+                idProduto: preEntradaModal.idProduto,
+                etapa: 'pre_entrada',
+                codigo: preEntradaModal.codigo,
+                descricao: preEntradaModal.descricao,
+                qtdeGrade: preEntradaModal.qtdeGrade,
+              }
+            : null
+        }
+        cacheRef={preEntradaCacheRef}
+        fetchDetalhe={async (idProduto, etapa: EtapaAcompanhamento) => {
+          if (etapa !== 'pre_entrada') {
+            return { detalhe: null, error: 'Etapa inválida neste contexto.' };
+          }
+          return obterRessupNaoAlmoxPreEntradaDetalhe(idProduto);
+        }}
+        onAbrirDocumento={(doc) => {
+          setPilhaDocumentosPreEntrada((pilha) => {
+            const topo = pilha[pilha.length - 1];
+            if (topo && topo.tipo === doc.tipo && topo.id === doc.id) return pilha;
+            return [...pilha, doc];
+          });
+        }}
+        onClose={() => {
+          setPreEntradaModal(null);
+          setPilhaDocumentosPreEntrada([]);
+        }}
+      />
+
+      <MateriaisAChegarDocumentoModal
+        alvo={pilhaDocumentosPreEntrada[pilhaDocumentosPreEntrada.length - 1] ?? null}
+        anterior={pilhaDocumentosPreEntrada[pilhaDocumentosPreEntrada.length - 2] ?? null}
+        cacheRef={preEntradaDocCacheRef}
+        podeAlterarData={false}
+        mostrarAcoesGrade={false}
+        fetchDocumento={obterRessupNaoAlmoxPipelineDocumento}
+        onVoltar={() => setPilhaDocumentosPreEntrada((pilha) => pilha.slice(0, -1))}
+        onAbrirDocumento={(doc) => {
+          setPilhaDocumentosPreEntrada((pilha) => {
+            const topo = pilha[pilha.length - 1];
+            if (topo && topo.tipo === doc.tipo && topo.id === doc.id) return pilha;
+            return [...pilha, doc];
+          });
+        }}
+        onVerNaGrade={() => undefined}
+        onFiltrarGrade={() => undefined}
+        onDataEntregaAlterada={() => undefined}
+        onClose={() => setPilhaDocumentosPreEntrada([])}
       />
 
       {detalheConsultaModal && (

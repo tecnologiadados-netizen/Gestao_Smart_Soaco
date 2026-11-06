@@ -18,6 +18,7 @@ const COLUNAS_NUMERICAS = new Set([
   'estoqAtual',
   'pcPend',
   'agPag',
+  'preEntrada',
   'saldoProjetado',
 ]);
 

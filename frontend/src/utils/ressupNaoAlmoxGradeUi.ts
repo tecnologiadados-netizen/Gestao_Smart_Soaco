@@ -20,6 +20,7 @@ export const RESSUP_NAO_ALMOX_DEFAULT_COL_WIDTHS: Record<string, number> = {
   estoqAtual: 88,
   pcPend: 64,
   agPag: 64,
+  preEntrada: 72,
   saldoProjetado: 96,
 };
 
