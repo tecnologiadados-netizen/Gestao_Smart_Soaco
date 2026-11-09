@@ -331,20 +331,22 @@ function fmtPreco(v: unknown): string {
   return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Saldo projetado = −Qtde Emp + Solicitação (Qtd Liberada) + Estoque atual + PC Pend + Pré Compra */
+/** Saldo projetado = −Qtde Emp + Solicitação (Qtd Liberada) + Estoque atual + PC Pend + Pré Compra + Pré Entrada */
 function calcSaldoProjetado(row: Record<string, unknown>): number | null {
   const est = Number(getRowValue(row, ['Saldo Estoque', 'Saldo de Estoque', 'saldo estoque']) ?? 0);
   const emp = Number(getRowValue(row, ['Qtde Empenhada', 'qtde empenhada']) ?? 0);
   const qLiv = Number(getRowValue(row, ['Qtd Liberada', 'qtd liberada']) ?? 0);
   const pc = Number(getRowValue(row, ['PC', 'pc']) ?? 0);
   const ag = Number(getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']) ?? 0);
-  if (![est, emp, qLiv, pc, ag].some((n) => Number.isFinite(n))) return null;
+  const preEnt = Number(getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']) ?? 0);
+  if (![est, emp, qLiv, pc, ag, preEnt].some((n) => Number.isFinite(n))) return null;
   return (
     (Number.isFinite(est) ? est : 0) -
     (Number.isFinite(emp) ? emp : 0) +
     (Number.isFinite(qLiv) ? qLiv : 0) +
     (Number.isFinite(pc) ? pc : 0) +
-    (Number.isFinite(ag) ? ag : 0)
+    (Number.isFinite(ag) ? ag : 0) +
+    (Number.isFinite(preEnt) ? preEnt : 0)
   );
 }
 

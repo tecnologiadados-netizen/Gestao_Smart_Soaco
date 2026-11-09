@@ -42,9 +42,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado',
     oQueE:
-      'Mesma ideia do Almox: −Empenho + Solicitação + Estoque efetivo + PC Pend + Pré Compra. A coluna Pré Entrada é informativa (material a caminho) e não entra nessa fórmula.',
+      'Mesma ideia do Almox: −Empenho + Solicitação + Estoque efetivo + PC Pend + Pré Compra + Pré Entrada. Pré Entrada entra como PC Pend: material a caminho que ainda não entrou no estoque.',
     comoLe:
-      'Vermelho/ruptura sinaliza prioridade. Clique em Empenho/PC Pend para validar a conta no modal (soma = célula). No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo). Se PC Pend estiver zerado, confira Pré Entrada antes de concluir que não há material a chegar.',
+      'Vermelho/ruptura sinaliza prioridade. Clique em Empenho/PC Pend para validar a conta no modal (soma = célula). No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo). Quando o PC Pend zera após a pré-entrada, o saldo/cobertura continuam refletindo o material a chegar via Pré Entrada.',
   },
   {
     id: 'empenho',
@@ -58,7 +58,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'pre-entrada',
     titulo: 'Pré Entrada',
     oQueE:
-      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque).',
+      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque) e soma no saldo projetado/cobertura como se fosse PC Pend.',
     comoLe:
       'Célula com quantidade ganha destaque violeta e abre o modal analítico (solicitação, pedido, documento, NF, fornecedor, emissão e situação). A soma do modal = valor da grade. Clique no pedido ou no documento no modal para ver todos os itens. Sai da coluna quando o documento deixa de ser pré-entrada.',
   },

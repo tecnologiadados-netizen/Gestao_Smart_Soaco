@@ -18,9 +18,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'saldo',
     titulo: 'Saldo projetado e cobertura',
     oQueE:
-      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Pré Compra. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01). A coluna Pré Entrada é informativa (material a caminho) e não entra nessa fórmula.',
+      'Saldo projetado = −Empenho + Solicitação + Estoque atual + PC Pend + Pré Compra + Pré Entrada. Cobertura = saldo ÷ CM (se CM = 0, o divisor usa 0,01). Pré Entrada entra como PC Pend: material a caminho que ainda não entrou no estoque.',
     comoLe:
-      'Saldo baixo ou cobertura curta indica prioridade de compra. Compare com CM e com o dia da compra recorrente do item. Se PC Pend estiver zerado, confira Pré Entrada antes de concluir que não há material a chegar.',
+      'Saldo baixo ou cobertura curta indica prioridade de compra. Compare com CM e com o dia da compra recorrente do item. Quando o PC Pend zera após a pré-entrada, o saldo/cobertura continuam refletindo o material a chegar via Pré Entrada.',
   },
   {
     id: 'empenho',
@@ -34,7 +34,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'pre-entrada',
     titulo: 'Pré Entrada',
     oQueE:
-      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque).',
+      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque) e soma no saldo projetado/cobertura como se fosse PC Pend.',
     comoLe:
       'Célula com quantidade ganha destaque violeta e abre o modal analítico (solicitação, pedido, documento, NF, fornecedor, emissão e situação). A soma do modal = valor da grade. Clique no pedido ou no documento no modal para ver todos os itens. Sai da coluna quando o documento deixa de ser pré-entrada.',
   },
