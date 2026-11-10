@@ -10,6 +10,7 @@ import {
   isTituloDescontado,
   shouldHighlightVencimentoDayLabel,
 } from "../lib/formatters";
+import { isContaTituloDescontado } from "../lib/titulo-descontado";
 import { parseLocalDate } from "../lib/datas-locais";
 import { isRecebimentoDesconsideradoPorDiaNaoUtil } from "../lib/atraso-recebimento";
 import { LEGENDA_CORES_BAIXADOS } from "../lib/legenda-baixados";
@@ -872,7 +873,8 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
 
         if (
           data.column.index === CONTAS_PDF_COL_IDX.comentariosAgendamento &&
-          isTituloDescontado(row.comentariosAgendamento)
+          (isTituloDescontado(row.comentariosAgendamento) ||
+            isContaTituloDescontado(row))
         ) {
           data.cell.styles.fillColor = COLORS.tituloDescontado;
           data.cell.styles.textColor = COLORS.textDark;
@@ -881,7 +883,8 @@ export function generateDashboardPdf(input: DashboardReportInput): jsPDF {
 
         if (
           data.column.index === CONTAS_PDF_COL_IDX.comentariosLancamento &&
-          isTituloDescontado(row.comentariosLancamento)
+          (isTituloDescontado(row.comentariosLancamento) ||
+            isContaTituloDescontado(row))
         ) {
           data.cell.styles.fillColor = COLORS.tituloDescontado;
           data.cell.styles.textColor = COLORS.textDark;

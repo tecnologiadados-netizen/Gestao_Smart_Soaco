@@ -5,8 +5,8 @@ import {
   formatDiasAteAtrasar,
   formatDiasAtraso,
   formatText,
-  isTituloDescontado,
 } from "../lib/formatters";
+import { isContaTituloDescontado } from "../lib/titulo-descontado";
 import { useColumnResize } from "../hooks/useColumnResize";
 import { useMultiSort } from "../hooks/useMultiSort";
 import type { ContaFinanceira } from "../lib/types";
@@ -197,7 +197,7 @@ function ContaRow({
       <td className={`${td} cell-wrap`}>{row.descricao ?? "—"}</td>
       <td
         className={`${td} cell-wrap ${
-          isTituloDescontado(row.comentariosAgendamento)
+          isContaTituloDescontado(row)
             ? "bg-yellow-300 font-semibold text-slate-900"
             : ""
         }`}
@@ -206,7 +206,7 @@ function ContaRow({
       </td>
       <td
         className={`${td} cell-wrap ${
-          isTituloDescontado(row.comentariosLancamento)
+          isContaTituloDescontado(row)
             ? "bg-yellow-300 font-semibold text-slate-900"
             : ""
         }`}

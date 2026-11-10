@@ -56,7 +56,7 @@ export interface ContaFinanceira {
   status: string;
   natureza: string;
   diasAtraso: number;
-  /** Linha baixada/FIDC reclassificada como aberta por comentário TITULO DESCONTADO. */
+  /** Descontado ainda em aberto (FIDC legado ou rotina Nomus de desconto de duplicatas). */
   tituloDescontadoAberto?: boolean;
 }
 

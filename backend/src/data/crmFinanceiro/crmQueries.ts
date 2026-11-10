@@ -190,19 +190,50 @@ export const COMENTARIOS_LANCAMENTO = `COALESCE(
     ORDER BY lf.dataLancamento DESC, lf.id DESC LIMIT 1)
 )`;
 
-/** Comentário exclusivamente "TITULO DESCONTADO" — pagamento via FIDC, ainda não recebido do cliente. */
-export const TITULO_DESCONTADO_COND = `(
+/** Comentário exclusivamente "TITULO DESCONTADO" — FIDC legado, ainda não recebido do cliente. */
+export const TITULO_DESCONTADO_COMENTARIO_COND = `(
   UPPER(TRIM(COALESCE(af.comentarios, ''))) = 'TITULO DESCONTADO'
   OR UPPER(TRIM(COALESCE(${COMENTARIOS_LANCAMENTO}, ''))) = 'TITULO DESCONTADO'
 )`;
 
+/**
+ * Rotina Nomus "Desconto de duplicatas" ainda ativa (não liquidado / não reprovado).
+ * 1=Aguardando confirmação, 3=Aprovado c/ risco, 4=Aprovado s/ risco, 6=Em cobrança.
+ */
+export const DESCONTO_DUPLICATA_ATIVO_COND =
+  `IFNULL(af.statusDescontoDuplicata, 0) IN (1, 3, 4, 6)`;
+
+/** Qualquer forma de título descontado (comentário FIDC ou rotina nova). */
+export const TITULO_DESCONTADO_COND = `(
+  ${TITULO_DESCONTADO_COMENTARIO_COND}
+  OR ${DESCONTO_DUPLICATA_ATIVO_COND}
+)`;
+
+/**
+ * Descontado ainda em aberto no CRM:
+ * - legado: baixado com comentário TITULO DESCONTADO;
+ * - rotina nova: pendente, status ativo e saldo zerado (antecipação), valor = valorBaixar.
+ */
+export const TITULO_DESCONTADO_ABERTO_COND = `(
+  (${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COMENTARIO_COND})
+  OR (
+    ${AGENDAMENTO_PENDENTE}
+    AND ${DESCONTO_DUPLICATA_ATIVO_COND}
+    AND IFNULL(af.saldoBaixar, 0) = 0
+    AND IFNULL(af.valorBaixar, 0) <> 0
+  )
+)`;
+
 export const EXCLUIR_TITULO_DESCONTADO = ` AND NOT ${TITULO_DESCONTADO_COND} `;
 const LF_RECEBIDO_VALIDO = `${TEM_RECEBIMENTO_OU_BAIXA} AND NOT ${TITULO_DESCONTADO_COND}`;
-/** Pendente ou baixado FIDC (comentário TITULO DESCONTADO) — ainda em aberto no CRM. */
-export const AGENDAMENTO_ABERTO_EFETIVO = `(${AGENDAMENTO_PENDENTE} OR (${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COND}))`;
+/** Pendência real (saldo > 0) ou descontado ainda em aberto no CRM. */
+export const AGENDAMENTO_ABERTO_EFETIVO = `(
+  (${AGENDAMENTO_PENDENTE} AND af.saldoBaixar > 0)
+  OR ${TITULO_DESCONTADO_ABERTO_COND}
+)`;
 export const VALOR_ABERTO_EFETIVO = `CASE
+  WHEN ${TITULO_DESCONTADO_ABERTO_COND} THEN af.valorBaixar
   WHEN ${AGENDAMENTO_PENDENTE} THEN af.saldoBaixar
-  WHEN ${AGENDAMENTO_BAIXADA} AND ${TITULO_DESCONTADO_COND} THEN af.valorBaixar
   ELSE 0
 END`;
 const INDICADOR_RECEBIDO_30D = `COALESCE(SUM(CASE WHEN ${LF_RECEBIDO_VALIDO} AND ${LF_DATA_REFERENCIA_RECEBIMENTO} >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN ${LF_VALOR_RECEBIDO_PAGO} END), 0)`;
@@ -579,6 +610,7 @@ export function buildLancamentosRecebimentoNomusPorIdsQuery(ids: number[]): {
     WHERE lf.idAgendamentoRecebimento IN (${placeholders})
       AND IFNULL(lf.valor, 0) > 0
       AND UPPER(TRIM(COALESCE(lf.comentarios, ''))) <> 'TITULO DESCONTADO'
+      AND NOT ${DESCONTO_DUPLICATA_ATIVO_COND}
     ORDER BY lf.dataLancamento ASC, lf.id ASC
   `;
   return { sql, params: unicos };
@@ -636,7 +668,7 @@ export function buildSucessorAgendamentoNomusQuery(params: {
   };
 }
 
-/** Baixados com comentário TITULO DESCONTADO — tratados como contas em aberto (FIDC). */
+/** Títulos descontados (FIDC legado ou rotina Nomus) — tratados como contas em aberto. */
 export function buildTitulosDescontadoContasQuery(
   tipo: "receber" | "pagar",
   pessoa?: string | null,
@@ -678,8 +710,7 @@ export function buildTitulosDescontadoContasQuery(
     ${BASE_FROM_CONTAS_DETALHE}
     WHERE af.discriminador IN ${discriminadores}
       AND ${TIPO_CONTA_UTILIZADO}
-      AND ${AGENDAMENTO_BAIXADA}
-      AND ${TITULO_DESCONTADO_COND}
+      AND ${TITULO_DESCONTADO_ABERTO_COND}
       ${EXCLUIR_NF_ORIGEM_CANCELADA}
       ${classificacaoFilter.clause}
       ${pessoaFilter.clause}
@@ -952,7 +983,7 @@ export function buildPessoasQuery(
       IF(pes.tipoPessoa = 1, pes.cnpjCpf, pes.cpf) AS cnpjCpf,
       pes.idGrupoPessoa AS idGrupoPessoa,
       IFNULL(gp.grupo, '') AS grupo,
-      COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
+      COALESCE(SUM(CASE WHEN af.discriminador IN ('R','CR','NCC') AND ${AGENDAMENTO_ABERTO_EFETIVO} THEN ${VALOR_ABERTO_EFETIVO} ELSE 0 END), 0) AS totalPendente
     FROM pessoa pes
     LEFT JOIN grupopessoa gp ON gp.id = pes.idGrupoPessoa
     INNER JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
@@ -1008,7 +1039,7 @@ export function buildGruposPessoaQuery(
       gp.id AS id,
       IFNULL(gp.grupo, '') AS nome,
       COUNT(DISTINCT pes.id) AS qtdMembros,
-      COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
+      COALESCE(SUM(CASE WHEN af.discriminador IN ('R','CR','NCC') AND ${AGENDAMENTO_ABERTO_EFETIVO} THEN ${VALOR_ABERTO_EFETIVO} ELSE 0 END), 0) AS totalPendente
     FROM grupopessoa gp
     INNER JOIN pessoa pes ON pes.idGrupoPessoa = gp.id AND pes.ativo = 1
     INNER JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
@@ -1043,7 +1074,7 @@ export function buildMembrosGrupoQuery(
       pes.nome AS nome,
       pes.nomeRazaoSocial AS razaoSocial,
       IF(pes.tipoPessoa = 1, pes.cnpjCpf, pes.cpf) AS cnpjCpf,
-      COALESCE(SUM(CASE WHEN ${AGENDAMENTO_PENDENTE} AND af.discriminador IN ('R','CR','NCC') THEN af.saldoBaixar ELSE 0 END), 0) AS totalPendente
+      COALESCE(SUM(CASE WHEN af.discriminador IN ('R','CR','NCC') AND ${AGENDAMENTO_ABERTO_EFETIVO} THEN ${VALOR_ABERTO_EFETIVO} ELSE 0 END), 0) AS totalPendente
     FROM pessoa pes
     LEFT JOIN agendamentofinanceiro af ON af.idPessoa = pes.id AND ${TIPO_CONTA_UTILIZADO}${empresaFilter.clause}
     LEFT JOIN nfe nfes ON nfes.idDocumentoEstoque = af.idDocumentoSaida

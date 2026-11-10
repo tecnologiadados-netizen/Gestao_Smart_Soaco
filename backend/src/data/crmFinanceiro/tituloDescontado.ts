@@ -1,14 +1,15 @@
 import { isTituloDescontado } from './formatters.js';
 import type { ContaFinanceira, Recebimento } from './types.js';
 
-/** Comentário exclusivamente "TITULO DESCONTADO" (agendamento ou lançamento). */
+/** Comentário FIDC legado ou flag de descontado reaberto (rotina Nomus). */
 export function isRecebimentoTituloDescontado(
   recebimento: Pick<
     Recebimento,
     "comentariosAgendamento" | "comentariosLancamento"
-  >,
+  > & { tituloDescontadoAberto?: boolean },
 ): boolean {
   return (
+    recebimento.tituloDescontadoAberto === true ||
     isTituloDescontado(recebimento.comentariosLancamento) ||
     isTituloDescontado(recebimento.comentariosAgendamento)
   );
@@ -17,10 +18,11 @@ export function isRecebimentoTituloDescontado(
 export function isContaTituloDescontado(
   conta: Pick<
     ContaFinanceira,
-    "comentariosAgendamento" | "comentariosLancamento"
+    "comentariosAgendamento" | "comentariosLancamento" | "tituloDescontadoAberto"
   >,
 ): boolean {
   return (
+    conta.tituloDescontadoAberto === true ||
     isTituloDescontado(conta.comentariosLancamento) ||
     isTituloDescontado(conta.comentariosAgendamento)
   );
