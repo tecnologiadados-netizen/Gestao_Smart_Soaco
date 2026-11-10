@@ -70,7 +70,7 @@ function selecaoSincronizada(
 type Aba = "receber" | "pagar";
 type GuiaPainel = "empresa" | "cliente" | "pendencias" | "inadimplentes";
 
-const CACHE_STORAGE_KEY = "crm-financeiro:indicadores-globais:v14";
+const CACHE_STORAGE_KEY = "crm-financeiro:indicadores-globais:v15";
 const CACHE_SAUDE_EMPRESA_KEY = "crm-financeiro:saude-empresa:v6";
 
 function cacheSuffixEmpresa(empresaId: number | null): string {

@@ -150,6 +150,14 @@ function toText(value: unknown): string | null {
 }
 
 function mapConta(row: RowConta): ContaFinanceira {
+  const tituloDescontadoAberto =
+    row.tituloDescontadoAberto === true ||
+    Number(row.tituloDescontadoAberto ?? 0) === 1;
+  // Exibição apenas: rotina Nomus de desconto não grava o comentário legado.
+  const comentariosExibicao = tituloDescontadoAberto
+    ? "TITULO DESCONTADO"
+    : null;
+
   return {
     codigo: row.codigo,
     dataEmissao: toIso(row.dataEmissao),
@@ -163,16 +171,16 @@ function mapConta(row: RowConta): ContaFinanceira {
     formaPagamento: row.formaPagamento,
     pessoa: row.pessoa,
     descricao: toText(row.descricao),
-    comentariosAgendamento: toText(row.comentariosAgendamento),
-    comentariosLancamento: toText(row.comentariosLancamento),
+    comentariosAgendamento:
+      comentariosExibicao ?? toText(row.comentariosAgendamento),
+    comentariosLancamento:
+      comentariosExibicao ?? toText(row.comentariosLancamento),
     nfeOrigem: toText(row.nfeOrigem),
     valor: Math.abs(Number(row.valorSaldo ?? 0)),
     status: row.status,
     natureza: row.natureza,
     diasAtraso: Number(row.diasAtraso ?? 0),
-    tituloDescontadoAberto:
-      row.tituloDescontadoAberto === true ||
-      Number(row.tituloDescontadoAberto ?? 0) === 1,
+    tituloDescontadoAberto,
   };
 }
 
