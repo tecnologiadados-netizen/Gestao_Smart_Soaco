@@ -1,4 +1,8 @@
-﻿import { readPersistedJson, writePersistedJson } from "@rh/lib/ui-filter-persistence";
+﻿import {
+  clearPersistedKey,
+  readPersistedJson,
+  writePersistedJson,
+} from "@rh/lib/ui-filter-persistence";
 
 export const ORGANICO_FILTERS_SESSION_KEY = "rh-organico-filters-v1";
 
@@ -35,7 +39,8 @@ export type OrganicoFiltersStoreV2 = {
   byScope: Record<string, OrganicoFilterScopeState>;
 };
 
-const ORGANICO_FILTERS_STORAGE: "local" = "local";
+/** Na mesma aba/sessão; some no logout, 401 e ao fechar a aba. */
+const ORGANICO_FILTERS_STORAGE: "session" = "session";
 
 export const ORGANICO_SCOPE_DEFAULTS: OrganicoFilterScopeState = {
   statusFilter: ["Ativos"],
@@ -105,11 +110,20 @@ function migrateLegacyStore(raw: Partial<OrganicoFiltersSession>): OrganicoFilte
   };
 }
 
-export function readOrganicoFiltersStore(): OrganicoFiltersStoreV2 {
-  const raw = readPersistedJson<OrganicoFiltersStoreV2 | Partial<OrganicoFiltersSession>>(
+function readRawOrganicoFiltersStore(): OrganicoFiltersStoreV2 | Partial<OrganicoFiltersSession> | null {
+  // Resíduo antigo em localStorage sobrevivia a logout — descarta sem reaproveitar.
+  clearPersistedKey(ORGANICO_FILTERS_SESSION_KEY, "local");
+
+  const fromSession = readPersistedJson<OrganicoFiltersStoreV2 | Partial<OrganicoFiltersSession>>(
     ORGANICO_FILTERS_SESSION_KEY,
     ORGANICO_FILTERS_STORAGE,
   );
+  if (fromSession && typeof fromSession === "object") return fromSession;
+  return null;
+}
+
+export function readOrganicoFiltersStore(): OrganicoFiltersStoreV2 {
+  const raw = readRawOrganicoFiltersStore();
   if (!raw || typeof raw !== "object") return emptyStore();
   if ((raw as OrganicoFiltersStoreV2).v === 2) {
     const store = raw as OrganicoFiltersStoreV2;
@@ -125,6 +139,12 @@ export function readOrganicoFiltersStore(): OrganicoFiltersStoreV2 {
 
 export function writeOrganicoFiltersStore(store: OrganicoFiltersStoreV2): void {
   writePersistedJson(ORGANICO_FILTERS_SESSION_KEY, store, ORGANICO_FILTERS_STORAGE);
+  clearPersistedKey(ORGANICO_FILTERS_SESSION_KEY, "local");
+}
+
+export function clearOrganicoFiltersStore(): void {
+  clearPersistedKey(ORGANICO_FILTERS_SESSION_KEY, "session");
+  clearPersistedKey(ORGANICO_FILTERS_SESSION_KEY, "local");
 }
 
 export function readOrganicoScopeFilters(

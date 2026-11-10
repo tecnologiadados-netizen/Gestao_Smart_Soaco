@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { getMe } from '../api/auth';
 import { getStoredToken, SESSION_CLEARED_EVENT } from '../api/client';
+import { clearRhUiSessionCache } from '../modules/rh/lib/clear-rh-ui-session-cache';
 import { touchLastActivity } from '../utils/sessaoInatividade';
 import type { CodigoPermissao } from '../config/permissoes';
 
@@ -79,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!unauthorized && getStoredToken()) {
         return;
       }
+      if (unauthorized) clearRhUiSessionCache();
       clearUser();
     } finally {
       setProfileLoaded(true);
@@ -91,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onSessionCleared = () => {
+      clearRhUiSessionCache();
       clearUser();
       setProfileLoaded(true);
     };
