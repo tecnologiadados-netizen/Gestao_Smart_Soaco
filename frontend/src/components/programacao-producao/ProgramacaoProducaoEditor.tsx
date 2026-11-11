@@ -33,6 +33,8 @@ import {
 
   hydrateEstoqueMpAlternativaLinhas,
 
+  hydrateEstoqueAtualBobinaPorIds,
+
   estoqueMpAlternativaHydrateKey,
 
 } from '../../utils/programacaoProducaoEstoqueMpAlternativa';
@@ -179,6 +181,14 @@ export default function ProgramacaoProducaoEditor({
 
   const estoqueAltHydrateKeyRef = useRef('');
 
+  const estoqueBobinaHydrateKeyRef = useRef('');
+
+  useEffect(() => {
+    bobinasHydrateKeyRef.current = '';
+    estoqueAltHydrateKeyRef.current = '';
+    estoqueBobinaHydrateKeyRef.current = '';
+  }, [programacaoId]);
+
 
 
   const markDirty = useCallback(() => setDirty(true), []);
@@ -288,7 +298,40 @@ export default function ProgramacaoProducaoEditor({
     };
   }, [loading, dados.linhas]);
 
+  /** Estoque MP (bobina principal): live Nomus setores 19/20 — mesma fonte do modal. */
+  useEffect(() => {
+    if (loading) return;
 
+    const ids = dados.linhas
+      .map((l) => l.idBobina)
+      .filter((id): id is number => id != null && Number.isFinite(id) && id > 0);
+    const key = [...new Set(ids)].sort((a, b) => a - b).join('|');
+    if (!key || estoqueBobinaHydrateKeyRef.current === key) return;
+
+    let cancelled = false;
+
+    void hydrateEstoqueAtualBobinaPorIds(ids).then((map) => {
+      if (cancelled) return;
+
+      setDados((prev) => {
+        let changed = false;
+        const linhas = prev.linhas.map((l) => {
+          if (l.idBobina == null) return l;
+          const live = map.get(l.idBobina);
+          if (live == null || l.estoque_atual_bobina === live) return l;
+          changed = true;
+          return { ...l, estoque_atual_bobina: live };
+        });
+        return changed ? { ...prev, linhas } : prev;
+      });
+
+      estoqueBobinaHydrateKeyRef.current = key;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, dados.linhas]);
 
   const carregarGradeNomus = useCallback(async (): Promise<DadosProgramacaoProducaoV1 | null> => {
 

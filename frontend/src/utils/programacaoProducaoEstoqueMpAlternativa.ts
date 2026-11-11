@@ -140,3 +140,21 @@ export async function hydrateEstoqueMpAlternativaLinhas(
 ): Promise<LinhaProgramacaoProducao[]> {
   return Promise.all(linhas.map((l) => hydrateEstoqueMpAlternativaLinha(l)));
 }
+
+/**
+ * Saldo live da bobina principal (setores 19/20) — mesma fonte do modal
+ * "Estoque atual bobina", para a coluna Estoque MP bater com o detalhe.
+ */
+export async function hydrateEstoqueAtualBobinaPorIds(
+  idsBobina: number[]
+): Promise<Map<number, number>> {
+  const unique = [...new Set(idsBobina.filter((id) => Number.isFinite(id) && id > 0))];
+  const map = new Map<number, number>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const saldos = await estoqueSaldosBobinaMpAlternativa(id);
+      map.set(id, saldos.saldoTotal);
+    })
+  );
+  return map;
+}

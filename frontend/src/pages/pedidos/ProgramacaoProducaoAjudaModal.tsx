@@ -50,9 +50,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'estoques',
     titulo: 'Estoques da linha',
     oQueE:
-      'PA Nomus, estoque em produção (informado), bobina e MP alternativa (setores 19/20) apoiam a leitura da linha. A coluna Estoque mostra o Total = PA Nomus + estoque em produção. Estoque MP (e o modal por setor) usa o último saldo Nomus por data de movimentação nos setores Galpão Bobina (19) e MP Processada (20) — a mesma regra da Consulta de Estoque; a soma da grade deve bater com o total do modal.',
+      'PA Nomus, estoque em produção (informado), bobina e MP alternativa (setores 19/20) apoiam a leitura da linha. A coluna Estoque mostra o Total = PA Nomus + estoque em produção. Estoque MP (coluna e modal) e Estoque MP Alter são atualizados ao vivo no Nomus (último saldo por data de movimentação nos setores 19/20), inclusive em programações concluídas — a soma da grade deve bater com o total do modal.',
     comoLe:
-      'Clique em Estoque MP para ver o saldo por setor. Use esses campos para decidir se falta material ou se há alternativa. Eles não substituem a validação de OP na conclusão.',
+      'Clique em Estoque MP para ver o saldo por setor. O valor da coluna é o mesmo total do modal (não fica congelado no snapshot antigo). Use esses campos para decidir se falta material ou se há alternativa. Eles não substituem a validação de OP na conclusão.',
   },
   {
     id: 'saldo-projetado',
