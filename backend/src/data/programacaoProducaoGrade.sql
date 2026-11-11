@@ -64,24 +64,23 @@ bobinas_distintas AS (
 
 saldo_bobinas AS (
     SELECT
-        b.idBobina AS idProduto,
-        SUM(
-            GREATEST(IFNULL((
-                SELECT sep.saldoSetorFinal
-                FROM weberp_soaco.saldoestoque_produto sep
-                WHERE sep.id = (
-                    SELECT MAX(sp.id)
-                    FROM weberp_soaco.saldoestoque_produto sp
-                    WHERE sp.idSetorEstoque = se.id
-                      AND sp.idProduto = b.idBobina
-                      AND sp.idEmpresa = 1
-                )
-            ), 0), 0)
-        ) AS saldo_total
-    FROM bobinas_distintas b
-    CROSS JOIN weberp_soaco.setorestoque se
-    WHERE se.id IN (19, 20)
-    GROUP BY b.idBobina
+        u.idProduto,
+        SUM(u.saldo) AS saldo_total
+    FROM (
+        SELECT
+            sep.idProduto,
+            CASE WHEN sep.saldoSetorFinal <= 0 THEN 0 ELSE sep.saldoSetorFinal END AS saldo,
+            ROW_NUMBER() OVER (
+                PARTITION BY sep.idProduto, sep.idSetorEstoque
+                ORDER BY sep.dataMovimentacao DESC, sep.id DESC
+            ) AS rn
+        FROM weberp_soaco.saldoestoque_produto sep
+        INNER JOIN bobinas_distintas b ON b.idBobina = sep.idProduto
+        WHERE sep.idEmpresa = 1
+          AND sep.idSetorEstoque IN (19, 20)
+    ) u
+    WHERE u.rn = 1
+    GROUP BY u.idProduto
 ),
 
 ultimo_saldo_pa AS (
