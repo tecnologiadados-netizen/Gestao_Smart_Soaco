@@ -3,6 +3,7 @@ import { PERMISSOES } from '../config/permissoes.js';
 import {
   PERMISSOES_ACESSO_PAINEL_COBERTURA_ESTOQUE,
   PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
+  PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO,
   PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
   PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
 } from './kpisPermissoes.js';
@@ -36,6 +37,9 @@ describe('kpisPermissoes (política estrita)', () => {
     expect(PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS).toEqual([
       PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER,
     ]);
+    expect(PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO).toEqual([
+      PERMISSOES.KPIS_PAINEL_GRUPO_ECONOMICO_VER,
+    ]);
   });
 
   it('não inclui fallbacks PCP/Produção legados', () => {
@@ -44,6 +48,7 @@ describe('kpisPermissoes (política estrita)', () => {
       ...PERMISSOES_ACESSO_PAINEL_PEDIDOS_EM_ABERTO,
       ...PERMISSOES_ACESSO_PAINEL_PRODUCAO_CAMASI,
       ...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS,
+      ...PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO,
     ];
     for (const legacy of LEGACY_FALLBACKS) {
       expect(all).not.toContain(legacy);
