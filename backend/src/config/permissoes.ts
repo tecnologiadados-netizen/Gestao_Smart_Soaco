@@ -115,6 +115,7 @@ export const PERMISSOES = {
   KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER: 'kpis.painel.pedidos_em_aberto.ver',
   KPIS_PAINEL_COBERTURA_ESTOQUE_VER: 'kpis.painel.cobertura_estoque.ver',
   KPIS_PAINEL_GESTAO_ENTRADAS_VER: 'kpis.painel.gestao_entradas.ver',
+  KPIS_PAINEL_GRUPO_ECONOMICO_VER: 'kpis.painel.grupo_economico.ver',
 
   // Produção (Camasi / máquinas) — legado; acesso também via hub KPIs
   PRODUCAO_VER: 'producao.ver',
@@ -306,6 +307,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER,
   PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER,
   PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER,
+  PERMISSOES.KPIS_PAINEL_GRUPO_ECONOMICO_VER,
 
   // Produção
   PERMISSOES.PRODUCAO_VER,
@@ -496,6 +498,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.KPIS_PAINEL_PEDIDOS_EM_ABERTO_VER]: 'KPIs — painel Pedidos em aberto',
   [PERMISSOES.KPIS_PAINEL_COBERTURA_ESTOQUE_VER]: 'KPIs — painel Cobertura de Estoque',
   [PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER]: 'KPIs — painel Gestão entradas',
+  [PERMISSOES.KPIS_PAINEL_GRUPO_ECONOMICO_VER]: 'KPIs — painel Grupo Econômico',
 
   // Produção
   [PERMISSOES.PRODUCAO_VER]: 'Ver Produção Camasi (legado; preferir KPIs)',

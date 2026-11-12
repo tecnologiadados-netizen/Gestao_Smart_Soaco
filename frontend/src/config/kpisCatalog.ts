@@ -39,6 +39,11 @@ export const KPI_PASTAS: KpiPastaDef[] = [
     label: 'Gestão entradas',
     descricao: 'Acuracidade das notas de entrada e divergências aceitas',
   },
+  {
+    id: 'grupo-economico',
+    label: 'Grupo Econômico',
+    descricao: 'Grupos de pessoas Nomus e seus membros',
+  },
 ];
 
 /** Painéis do hub KPIs. Novos painéis entram aqui e saem do menu lateral. */
@@ -106,6 +111,14 @@ export const KPI_PAINEIS: KpiPainelDef[] = [
     capaTitulo: 'GESTÃO ENTRADAS',
     to: '/kpis/gestao-entradas/painel',
     permissoes: [PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER],
+  },
+  {
+    id: 'grupo-economico',
+    pastaId: 'grupo-economico',
+    label: 'Grupo Econômico',
+    capaTitulo: 'GRUPO ECONÔMICO',
+    to: '/kpis/grupo-economico/painel',
+    permissoes: [PERMISSOES.KPIS_PAINEL_GRUPO_ECONOMICO_VER],
   },
 ];
 
@@ -177,6 +190,10 @@ export const PERMISSOES_ACESSO_PAINEL_RFV: CodigoPermissao[] =
 /** Permissões da rota do painel Gestão entradas. */
 export const PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS: CodigoPermissao[] =
   getKpiPainel('gestao-entradas')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_GESTAO_ENTRADAS_VER];
+
+/** Permissões da rota do painel Grupo Econômico. */
+export const PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO: CodigoPermissao[] =
+  getKpiPainel('grupo-economico')?.permissoes ?? [PERMISSOES.KPIS_PAINEL_GRUPO_ECONOMICO_VER];
 
 /** Permissões da rota Análise de Comissionamento. */
 export const PERMISSOES_ACESSO_PAINEL_COMISSIONAMENTO: CodigoPermissao[] =

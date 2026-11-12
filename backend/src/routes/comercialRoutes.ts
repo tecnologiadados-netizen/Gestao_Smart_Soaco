@@ -7,6 +7,11 @@ import {
   PERMISSOES_ACESSO_COMERCIAL_COMISSIONAMENTO,
   PERMISSOES_ACESSO_COMERCIAL_PORTA_PALLETS,
 } from '../utils/comercialPermissoes.js';
+import { PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO } from '../utils/kpisPermissoes.js';
+import {
+  getGrupoEconomicoDetalhe,
+  getGrupoEconomicoLista,
+} from '../controllers/grupoEconomicoController.js';
 import {
   getHistoricoVendasAnalytics,
   getHistoricoVendasDrill,
@@ -38,6 +43,10 @@ const verHistoricoVendas = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_HIST
 const verRfvClientes = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_RFV);
 const verComissionamento = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_COMISSIONAMENTO);
 const verPortaPallets = requirePermission(...PERMISSOES_ACESSO_COMERCIAL_PORTA_PALLETS);
+const verGrupoEconomico = requirePermission(...PERMISSOES_ACESSO_PAINEL_GRUPO_ECONOMICO);
+
+router.get('/grupo-economico', verGrupoEconomico, getGrupoEconomicoLista);
+router.get('/grupo-economico/:id', verGrupoEconomico, getGrupoEconomicoDetalhe);
 
 router.get('/historico-vendas/analytics', verHistoricoVendas, getHistoricoVendasAnalytics);
 router.get('/historico-vendas/drill', verHistoricoVendas, getHistoricoVendasDrill);

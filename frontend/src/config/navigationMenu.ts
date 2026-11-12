@@ -260,6 +260,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/pedidos/consulta-estoque': 'Consulta de Estoque',
   '/pedidos/cobertura-estoque': 'Cobertura de Estoque',
   '/kpis/gestao-entradas/painel': 'Gestão entradas',
+  '/kpis/grupo-economico': 'KPIs › Grupo Econômico',
+  '/kpis/grupo-economico/painel': 'Grupo Econômico',
   '/pedidos/painel-metas/gerencial': 'Painel Gerencial',
   '/pedidos/painel-metas/tv': 'Painel TV',
   '/pedidos/painel-metas/metas': 'Metas',
