@@ -72,9 +72,28 @@ export function markQualidadeStoreHydrated(login: string | null): void {
   qualidadeHydratedLogin = login;
 }
 
+/** Evita martelar o bootstrap a cada focus/aba (soft refresh só de documentos). */
+let softRefreshDocumentsAt = 0;
+const SOFT_REFRESH_DOCUMENTS_TTL_MS = 12_000;
+let softRefreshDocumentsInFlight: Promise<void> | null = null;
+
 /** Reconsulta bootstrap sem tela preta (outras abas avançaram etapas). */
-export async function softRefreshQualidadeDocuments(): Promise<void> {
+export async function softRefreshQualidadeDocuments(force = false): Promise<void> {
   if (documentsHydrating) return;
+  const now = Date.now();
+  if (
+    !force &&
+    softRefreshDocumentsInFlight == null &&
+    now - softRefreshDocumentsAt < SOFT_REFRESH_DOCUMENTS_TTL_MS
+  ) {
+    return;
+  }
+  if (softRefreshDocumentsInFlight) {
+    await softRefreshDocumentsInFlight;
+    return;
+  }
+
+  softRefreshDocumentsInFlight = (async () => {
   // Espera flush local (e o que ainda for enfileirado neste tick) terminar.
   await documentsFlushChain.catch(() => undefined);
   await new Promise<void>((resolve) => setTimeout(resolve, 80));
@@ -87,7 +106,8 @@ export async function softRefreshQualidadeDocuments(): Promise<void> {
 
   setQualidadeDocumentsHydrating(true);
   try {
-    const data = await fetchQualidadeBootstrap();
+    // Só o fatia de documentos — RNC/RCC com PDF embutido não entram no caminho crítico.
+    const data = await fetchQualidadeBootstrap('documentos');
     const docTasks = data.tasks.filter(
       (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
     );
@@ -229,8 +249,16 @@ export async function softRefreshQualidadeDocuments(): Promise<void> {
       revalidacoes: data.revalidacoes as never[],
     });
     useDocumentsStore.getState().syncValidadeAlertas();
+    softRefreshDocumentsAt = Date.now();
   } finally {
     setQualidadeDocumentsHydrating(false);
+  }
+  })();
+
+  try {
+    await softRefreshDocumentsInFlight;
+  } finally {
+    softRefreshDocumentsInFlight = null;
   }
 }
 let registrosHydrating = false;
@@ -731,7 +759,7 @@ export function flushQualidadeDocumentsSync(): Promise<void> {
       if (!hadPendingFiles) return;
       // Fora da cadeia de flush: evita deadlock (softRefresh espera a chain).
       try {
-        await softRefreshQualidadeDocuments();
+        await softRefreshQualidadeDocuments(true);
       } catch (err) {
         console.warn('[qualidade-sync] soft refresh pós-anexo:', err);
       }
@@ -754,7 +782,7 @@ export function flushQualidadeDocumentSync(documentId: string): Promise<void> {
     .then(async () => {
       if (!hadPendingFiles) return;
       try {
-        await softRefreshQualidadeDocuments();
+        await softRefreshQualidadeDocuments(true);
       } catch (err) {
         console.warn('[qualidade-sync] soft refresh pós-anexo:', err);
       }
@@ -920,82 +948,131 @@ async function migrateFromLocalStorageIfNeeded() {
   return fetchQualidadeBootstrap();
 }
 
-export async function hydrateQualidadeFromServer(currentUserLogin: string) {
-  setQualidadeConfigHydrating(true);
-  setQualidadeDocumentsHydrating(true);
-  try {
-  const data = await migrateFromLocalStorageIfNeeded();
-  const users = await fetchQualidadeResponsaveis();
-
-  useConfigStore.setState({
-    currentUserId: currentUserLogin,
-    users,
-    departments: data.departments,
-    documentTypes: data.documentTypes,
-    enderecamentos: parseEnderecamentosFromOpcoes(
-      data.opcoesLista[ENDERECAMENTOS_OPCOES_CHAVE]
-    ),
-  });
-
-  const docTasks = data.tasks.filter(
-    (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
-  );
-  const calTasks = data.tasks.filter(
-    (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'equipamento'
-  );
-
-  useDocumentsStore.setState({
-    documents: data.documents as never[],
-    versions: data.versions as never[],
-    tasks: docTasks as never[],
-    validadeAlertas: data.validadeAlertas as never[],
-    revalidacoes: data.revalidacoes as never[],
-  });
-
-  setQualidadeRegistrosHydrating(true);
-  const registrosAtivos = (data.registros as Registro[]).filter(
-    (r) => !isRegistroHistoricoNomusExcluido(r)
-  );
-  useRegistrosStore.setState({ registros: registrosAtivos as never[] });
-  setQualidadeRegistrosHydrating(false);
-
-  setQualidadeCalibrationsHydrating(true);
-  useCalibrationsStore.setState({
-    equipment: data.equipment as never[],
-    calibrationRecords: data.calibrationRecords as never[],
-    verificationRecords: data.verificationRecords as never[],
-    tasks: calTasks as never[],
-  });
-  setQualidadeCalibrationsHydrating(false);
-
-  useAvaliacaoFornecedorStore.setState({ avaliacoes: data.avaliacoes as never[] });
-
+function applyQualidadeOpcoesLista(opcoesLista: Record<string, string[]>) {
   for (const [chaveApi, storageKey] of Object.entries(SGQ_OPCOES_LISTA_CHAVES)) {
-    const lista = data.opcoesLista[chaveApi];
+    const lista = opcoesLista[chaveApi];
     if (lista) {
       localStorage.setItem(storageKey, JSON.stringify(lista));
     }
   }
+}
 
-  const tasksAntes = useDocumentsStore
-    .getState()
-    .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
-    .sort()
-    .join('|');
-  useDocumentsStore.getState().syncValidadeAlertas();
-  const tasksDepois = useDocumentsStore
-    .getState()
-    .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
-    .sort()
-    .join('|');
-
-  if (tasksAntes !== tasksDepois) {
-    scheduleQualidadeDocumentsFlush();
+function applyQualidadeModulesFromBootstrap(
+  data: Awaited<ReturnType<typeof fetchQualidadeBootstrap>>,
+  opts: { includeDocuments: boolean; includeRest: boolean }
+) {
+  if (opts.includeDocuments) {
+    const docTasks = data.tasks.filter(
+      (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'documento'
+    );
+    useDocumentsStore.setState({
+      documents: data.documents as never[],
+      versions: data.versions as never[],
+      tasks: docTasks as never[],
+      validadeAlertas: data.validadeAlertas as never[],
+      revalidacoes: data.revalidacoes as never[],
+    });
   }
+
+  if (opts.includeRest) {
+    const calTasks = data.tasks.filter(
+      (t) => (t as { referenciaTipo?: string }).referenciaTipo === 'equipamento'
+    );
+
+    setQualidadeRegistrosHydrating(true);
+    const registrosAtivos = (data.registros as Registro[]).filter(
+      (r) => !isRegistroHistoricoNomusExcluido(r)
+    );
+    useRegistrosStore.setState({ registros: registrosAtivos as never[] });
+    setQualidadeRegistrosHydrating(false);
+
+    setQualidadeCalibrationsHydrating(true);
+    useCalibrationsStore.setState({
+      equipment: data.equipment as never[],
+      calibrationRecords: data.calibrationRecords as never[],
+      verificationRecords: data.verificationRecords as never[],
+      tasks: calTasks as never[],
+    });
+    setQualidadeCalibrationsHydrating(false);
+
+    useAvaliacaoFornecedorStore.setState({
+      avaliacoes: data.avaliacoes as never[],
+    });
+  }
+
+  applyQualidadeOpcoesLista(data.opcoesLista);
+}
+
+export async function hydrateQualidadeFromServer(currentUserLogin: string) {
+  setQualidadeConfigHydrating(true);
+  setQualidadeDocumentsHydrating(true);
+  try {
+    // 1ª pintura: só documentos/config — a tela de Documentos não espera RNC/RCC.
+    const [docsBootstrap, users] = await Promise.all([
+      fetchQualidadeBootstrap('documentos'),
+      fetchQualidadeResponsaveis(),
+    ]);
+
+    let data = docsBootstrap;
+    if (isBootstrapEmpty(docsBootstrap)) {
+      // Ambiente novo: migra localStorage e já traz o bootstrap completo.
+      data = await migrateFromLocalStorageIfNeeded();
+    }
+
+    useConfigStore.setState({
+      currentUserId: currentUserLogin,
+      users,
+      departments: data.departments,
+      documentTypes: data.documentTypes,
+      enderecamentos: parseEnderecamentosFromOpcoes(
+        data.opcoesLista[ENDERECAMENTOS_OPCOES_CHAVE]
+      ),
+    });
+
+    applyQualidadeModulesFromBootstrap(data, {
+      includeDocuments: true,
+      includeRest: !isBootstrapEmpty(docsBootstrap) ? false : true,
+    });
+
+    const tasksAntes = useDocumentsStore
+      .getState()
+      .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
+      .sort()
+      .join('|');
+    useDocumentsStore.getState().syncValidadeAlertas();
+    const tasksDepois = useDocumentsStore
+      .getState()
+      .tasks.map((t) => `${t.id}:${t.status}:${t.tipo}`)
+      .sort()
+      .join('|');
+
+    if (tasksAntes !== tasksDepois) {
+      scheduleQualidadeDocumentsFlush();
+    }
+
+    softRefreshDocumentsAt = Date.now();
   } finally {
     setQualidadeConfigHydrating(false);
     setQualidadeDocumentsHydrating(false);
   }
+
+  // Demais módulos em background (anexos de registro já vêm sem base64 no bootstrap).
+  void (async () => {
+    try {
+      const jaTemRestante =
+        useRegistrosStore.getState().registros.length > 0 ||
+        useCalibrationsStore.getState().equipment.length > 0 ||
+        useAvaliacaoFornecedorStore.getState().avaliacoes.length > 0;
+      if (jaTemRestante) return;
+      const full = await fetchQualidadeBootstrap('full');
+      applyQualidadeModulesFromBootstrap(full, {
+        includeDocuments: false,
+        includeRest: true,
+      });
+    } catch (err) {
+      console.error('[qualidade] falha ao hidratar módulos restantes:', err);
+    }
+  })();
 }
 
 let syncPode: (codigo: CodigoPermissao) => boolean = () => false;

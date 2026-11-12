@@ -16,8 +16,13 @@ export interface QualidadeBootstrap {
   opcoesLista: Record<string, string[]>;
 }
 
-export async function fetchQualidadeBootstrap(): Promise<QualidadeBootstrap> {
-  const res = await apiFetch('/api/qualidade/bootstrap');
+export type QualidadeBootstrapScope = 'full' | 'documentos';
+
+export async function fetchQualidadeBootstrap(
+  scope: QualidadeBootstrapScope = 'full'
+): Promise<QualidadeBootstrap> {
+  const qs = scope === 'documentos' ? '?scope=documentos' : '';
+  const res = await apiFetch(`/api/qualidade/bootstrap${qs}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? 'Falha ao carregar módulo Qualidade.');

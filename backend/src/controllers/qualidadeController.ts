@@ -278,9 +278,13 @@ export async function postQualidadeRccPdf(req: Request, res: Response): Promise<
   }
 }
 
-export async function getQualidadeBootstrapHandler(_req: Request, res: Response): Promise<void> {
+export async function getQualidadeBootstrapHandler(req: Request, res: Response): Promise<void> {
   try {
-    const data = await getQualidadeBootstrap();
+    const scope =
+      String(req.query.scope ?? '').trim().toLowerCase() === 'documentos'
+        ? 'documentos'
+        : 'full';
+    const data = await getQualidadeBootstrap(scope);
     res.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao carregar dados do módulo Qualidade.';

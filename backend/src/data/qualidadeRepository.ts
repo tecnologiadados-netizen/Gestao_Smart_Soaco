@@ -208,6 +208,117 @@ async function migrateEmbeddedAnexosToDisk(): Promise<void> {
   }
 }
 
+/**
+ * RNC/RCC guardavam PDFs em base64 dentro de dadosJson — o bootstrap
+ * chegava a dezenas de MB e a tela de Documentos ficava em "Carregando…".
+ * Move para disco e deixa só storagePath (mantém id/titulo/nome).
+ */
+function persistRegistroDadosAnexos(
+  registroUid: string,
+  dados: Record<string, unknown>
+): { dados: Record<string, unknown>; touched: boolean } {
+  if (!Array.isArray(dados.anexos) || dados.anexos.length === 0) {
+    return { dados, touched: false };
+  }
+
+  let touched = false;
+  const anexos = dados.anexos.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    const a = raw as Record<string, unknown>;
+    const dataUrl = typeof a.dataUrl === 'string' ? a.dataUrl : '';
+    if (!dataUrl.startsWith('data:')) return a;
+
+    const file = extractBase64(dataUrl);
+    if (!file) {
+      return { ...a, dataUrl: '' };
+    }
+
+    const nome = String(a.nome ?? file.fileName ?? 'anexo').trim() || 'anexo';
+    file.fileName = nome;
+    const pathHint =
+      typeof a.storagePath === 'string' && a.storagePath.startsWith('/uploads/qualidade/')
+        ? a.storagePath
+        : null;
+    try {
+      const saved = saveQualidadeAnexoIfChanged(
+        `registros/${registroUid}/anexos`,
+        file,
+        pathHint
+      );
+      touched = true;
+      return { ...a, nome, dataUrl: '', storagePath: saved.storagePath };
+    } catch (err) {
+      console.warn('[qualidade] anexo de registro ignorado:', registroUid, nome, err);
+      return { ...a, dataUrl: '' };
+    }
+  });
+
+  return touched ? { dados: { ...dados, anexos }, touched: true } : { dados, touched: false };
+}
+
+/** Remove data:… do payload de bootstrap (preview usa storagePath + endpoint de arquivo). */
+function sanitizeRegistroDadosBootstrap(
+  dados: Record<string, unknown>
+): Record<string, unknown> {
+  if (!Array.isArray(dados.anexos) || dados.anexos.length === 0) return dados;
+  let changed = false;
+  const anexos = dados.anexos.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    const a = raw as Record<string, unknown>;
+    const dataUrl = typeof a.dataUrl === 'string' ? a.dataUrl : '';
+    if (!dataUrl.startsWith('data:')) return a;
+    changed = true;
+    return { ...a, dataUrl: '' };
+  });
+  return changed ? { ...dados, anexos } : dados;
+}
+
+async function migrateRegistroAnexosToDisk(): Promise<void> {
+  const rows = await prisma.sgqRegistro.findMany({
+    select: { id: true, uid: true, dadosJson: true },
+  });
+  for (const row of rows) {
+    if (!row.dadosJson.includes('data:')) continue;
+    const dados = parseJson<Record<string, unknown>>(row.dadosJson, {});
+    const { dados: next, touched } = persistRegistroDadosAnexos(row.uid, dados);
+    if (!touched) continue;
+    const json = JSON.stringify(next);
+    if (json === row.dadosJson) continue;
+    await prisma.sgqRegistro.update({
+      where: { id: row.id },
+      data: { dadosJson: json },
+    });
+  }
+}
+
+let sgqMaintenancePromise: Promise<void> | null = null;
+let sgqMaintenanceDoneAt = 0;
+const SGQ_MAINTENANCE_TTL_MS = 15 * 60 * 1000;
+
+/** Seeds/migrações/limpeza — não bloqueiam o bootstrap (TTL por processo). */
+function scheduleSgqBootstrapMaintenance(): void {
+  const now = Date.now();
+  if (sgqMaintenancePromise) return;
+  if (now - sgqMaintenanceDoneAt < SGQ_MAINTENANCE_TTL_MS) return;
+
+  sgqMaintenancePromise = (async () => {
+    try {
+      await ensureSgqHistoricoSeed();
+      await migrateEmbeddedAnexosToDisk();
+      await migrateRegistroAnexosToDisk();
+      await limparOrfaosRelacaoSgq();
+    } catch (err) {
+      console.warn(
+        '[sgq] manutenção em background falhou:',
+        err instanceof Error ? err.message : err
+      );
+    } finally {
+      sgqMaintenanceDoneAt = Date.now();
+      sgqMaintenancePromise = null;
+    }
+  })();
+}
+
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -415,7 +526,9 @@ function mapRegistro(row: {
   createdAt: Date;
   updatedAt: Date;
 }) {
-  const dados = parseJson<Record<string, unknown>>(row.dadosJson, {});
+  const dados = sanitizeRegistroDadosBootstrap(
+    parseJson<Record<string, unknown>>(row.dadosJson, {})
+  );
   return {
     id: row.uid,
     tipo: row.tipo,
@@ -667,14 +780,16 @@ async function limparOrfaosRelacaoSgq() {
   }
 }
 
-export async function getQualidadeBootstrap() {
-  await ensureSgqCatalogosSeed();
-  await ensureSgqHistoricoSeed();
-  // Anexos antigos em base64 no JSON → disco (não apaga; só reorganiza).
-  await migrateEmbeddedAnexosToDisk();
-  await limparOrfaosRelacaoSgq();
-  await fecharRevalidacoesObsoletas();
+export type QualidadeBootstrapScope = 'full' | 'documentos';
 
+export async function getQualidadeBootstrap(scope: QualidadeBootstrapScope = 'full') {
+  await ensureSgqCatalogosSeed();
+  // Tarefas de revalidação precisam estar corretas na grade de Documentos.
+  await fecharRevalidacoesObsoletas();
+  // Seeds/migração de base64 e limpeza de órfãos: fora do caminho crítico.
+  scheduleSgqBootstrapMaintenance();
+
+  const docInclude = { documento: { select: { uid: true } } } as const;
   const [
     setores,
     tipos,
@@ -682,27 +797,23 @@ export async function getQualidadeBootstrap() {
     versoes,
     revalidacoes,
     alertas,
-    registros,
-    equipamentos,
-    calibracoes,
-    verificacoes,
-    avaliacoes,
-    tarefas,
+    tarefasDoc,
     opcoes,
   ] = await Promise.all([
     prisma.sgqSetor.findMany({ orderBy: { nome: 'asc' } }),
     prisma.sgqTipoDocumento.findMany({ orderBy: { sigla: 'asc' } }),
     prisma.sgqDocumento.findMany({ orderBy: { codigo: 'asc' } }),
-    prisma.sgqDocumentoVersao.findMany({ include: { documento: true } }),
-    prisma.sgqDocumentoRevalidacao.findMany({ include: { documento: true } }),
-    prisma.sgqDocumentoAlerta.findMany({ include: { documento: true } }),
-    prisma.sgqRegistro.findMany({ orderBy: { createdAt: 'desc' } }),
-    prisma.sgqEquipamento.findMany({ orderBy: { codigo: 'asc' } }),
-    prisma.sgqCalibracao.findMany({ include: { equipamento: true } }),
-    prisma.sgqVerificacao.findMany({ include: { equipamento: true } }),
-    prisma.sgqAvaliacaoFornecedor.findMany({ orderBy: { createdAt: 'desc' } }),
-    prisma.sgqTarefa.findMany({ orderBy: { createdAt: 'desc' } }),
-    prisma.sgqOpcaoLista.findMany({ where: { ativo: true }, orderBy: [{ chave: 'asc' }, { sortOrder: 'asc' }] }),
+    prisma.sgqDocumentoVersao.findMany({ include: docInclude }),
+    prisma.sgqDocumentoRevalidacao.findMany({ include: docInclude }),
+    prisma.sgqDocumentoAlerta.findMany({ include: docInclude }),
+    prisma.sgqTarefa.findMany({
+      where: { concluida: false, referenciaTipo: 'documento' },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.sgqOpcaoLista.findMany({
+      where: { ativo: true },
+      orderBy: [{ chave: 'asc' }, { sortOrder: 'asc' }],
+    }),
   ]);
 
   const opcoesPorChave: Record<string, string[]> = {};
@@ -711,7 +822,7 @@ export async function getQualidadeBootstrap() {
     opcoesPorChave[o.chave].push(o.valor);
   }
 
-  return {
+  const base = {
     departments: setores.map(mapSetor),
     documentTypes: tipos.map(mapTipo),
     documents: documentos.map(mapDocumento),
@@ -738,6 +849,37 @@ export async function getQualidadeBootstrap() {
       lida: a.lida,
       createdAt: iso(a.createdAt),
     })),
+    opcoesLista: opcoesPorChave,
+  };
+
+  // Soft refresh / 1ª pintura da tela Documentos: não carrega RNC/RCC/calibrações.
+  if (scope === 'documentos') {
+    return {
+      ...base,
+      registros: [] as ReturnType<typeof mapRegistro>[],
+      equipment: [] as ReturnType<typeof mapEquipamento>[],
+      calibrationRecords: [] as ReturnType<typeof mapCalibracao>[],
+      verificationRecords: [] as ReturnType<typeof mapVerificacao>[],
+      avaliacoes: [] as ReturnType<typeof mapAvaliacao>[],
+      tasks: tarefasDoc.map(mapTarefa),
+    };
+  }
+
+  const [registros, equipamentos, calibracoes, verificacoes, avaliacoes, tarefasOutras] =
+    await Promise.all([
+      prisma.sgqRegistro.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.sgqEquipamento.findMany({ orderBy: { codigo: 'asc' } }),
+      prisma.sgqCalibracao.findMany({ include: { equipamento: true } }),
+      prisma.sgqVerificacao.findMany({ include: { equipamento: true } }),
+      prisma.sgqAvaliacaoFornecedor.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.sgqTarefa.findMany({
+        where: { concluida: false, referenciaTipo: { not: 'documento' } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+  return {
+    ...base,
     registros: registros
       .map(mapRegistro)
       .filter((r) => !isRegistroNomusRncRcc(r.tipo, Boolean(r.origemNomus))),
@@ -745,8 +887,7 @@ export async function getQualidadeBootstrap() {
     calibrationRecords: calibracoes.map((c) => mapCalibracao(c, false)),
     verificationRecords: verificacoes.map(mapVerificacao),
     avaliacoes: avaliacoes.map(mapAvaliacao),
-    tasks: tarefas.filter((t) => !t.concluida).map(mapTarefa),
-    opcoesLista: opcoesPorChave,
+    tasks: [...tarefasDoc, ...tarefasOutras].map(mapTarefa),
   };
 }
 
@@ -1124,7 +1265,10 @@ export async function syncQualidadeRegistros(
       select: { numero: true },
     });
     let numeroFinal = existente?.numero ?? (await numeroDisponivelRegistro(tipo, numero));
-    let dadosSalvar: Record<string, unknown> = { ...(dadosBase ?? {}) };
+    let dadosSalvar: Record<string, unknown> = persistRegistroDadosAnexos(
+      uid,
+      { ...(dadosBase ?? {}) }
+    ).dados;
     if (!existente && numeroFinal !== numero) {
       dadosSalvar = { ...dadosSalvar, codigoDocumento: numeroFinal };
     }
