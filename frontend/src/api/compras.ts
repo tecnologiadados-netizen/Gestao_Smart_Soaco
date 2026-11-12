@@ -564,6 +564,8 @@ export interface ColetaPrecosListItem {
   qtdItens: number;
   qtdRegistros: number;
   usuarioCriacao: string | null;
+  /** Quem recebeu o último link de aprovação ainda válido. */
+  usuarioAprovacao?: string | null;
   fornecedores: FornecedorColetaItem[];
   status?: string;
   /** Justificativa do cancelamento (quando status é Rejeitada). */
@@ -1047,20 +1049,87 @@ export async function atualizarObservacoesColeta(coletaId: number, observacoes: 
   return { ok: true };
 }
 
-/** Envia a coleta para aprovação (status → "Em Aprovação"). */
-export async function enviarParaAprovacao(coletaId: number): Promise<{ ok: boolean; error?: string }> {
-  const res = await apiFetch(`/api/compras/coletas/${coletaId}/enviar-aprovacao`, { method: 'PATCH' });
-  const text = await res.text();
-  let body: { error?: string } = {};
+export type AprovadorColetaWhatsapp = {
+  id: number;
+  nome: string;
+  login: string;
+  temWhatsapp: boolean;
+};
+
+export type ResultadoEnvioLinkAprovacao = {
+  status: string;
+  whatsappOk: boolean;
+  whatsappErro?: string;
+  aprovadorNome?: string;
+};
+
+type CorpoEnvioLink = {
+  error?: string;
+  status?: string;
+  whatsappOk?: boolean;
+  whatsappErro?: string;
+  link?: { destinatarioNome?: string };
+};
+
+function lerEnvioLink(res: Response, text: string): { ok: true; status: string; whatsappOk: boolean; whatsappErro?: string; aprovadorNome?: string } | { ok: false; error: string } {
+  let body: CorpoEnvioLink = {};
   if (text) {
     try {
-      body = JSON.parse(text) as { error?: string };
+      body = JSON.parse(text) as CorpoEnvioLink;
     } catch {
       body = { error: text || res.statusText };
     }
   }
   if (!res.ok) return { ok: false, error: body.error ?? res.statusText };
-  return { ok: true };
+  return {
+    ok: true,
+    status: body.status ?? 'Em Aprovação',
+    whatsappOk: body.whatsappOk === true,
+    whatsappErro: body.whatsappErro,
+    aprovadorNome: body.link?.destinatarioNome,
+  };
+}
+
+export async function listarAprovadoresColetaWhatsapp(): Promise<{ data: AprovadorColetaWhatsapp[]; error?: string }> {
+  const res = await apiFetch('/api/compras/coletas/aprovadores-whatsapp');
+  const text = await res.text();
+  let body: { data?: AprovadorColetaWhatsapp[]; error?: string } = {};
+  if (text) {
+    try {
+      body = JSON.parse(text) as { data?: AprovadorColetaWhatsapp[]; error?: string };
+    } catch {
+      body = { error: text || res.statusText };
+    }
+  }
+  if (!res.ok) return { data: [], error: body.error ?? res.statusText };
+  return { data: Array.isArray(body.data) ? body.data : [] };
+}
+
+/** Envia a coleta para aprovação (status → "Em Aprovação") e grava o aprovador. */
+export async function enviarParaAprovacao(
+  coletaId: number,
+  usuarioId: number,
+  manual = false
+): Promise<{ ok: boolean; error?: string; status?: string; whatsappOk?: boolean; whatsappErro?: string; aprovadorNome?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/enviar-aprovacao`, {
+    method: 'PATCH',
+    body: { usuarioId, manual },
+  });
+  const text = await res.text();
+  return lerEnvioLink(res, text);
+}
+
+/** Reenvia o WhatsApp sem mudar o status, enquanto a coleta está Em Aprovação. */
+export async function reenviarLinkAprovacaoColeta(
+  coletaId: number,
+  usuarioId: number
+): Promise<{ ok: boolean; error?: string; status?: string; whatsappOk?: boolean; whatsappErro?: string; aprovadorNome?: string }> {
+  const res = await apiFetch(`/api/compras/coletas/${coletaId}/enviar-link-aprovacao`, {
+    method: 'POST',
+    body: { usuarioId },
+  });
+  const text = await res.text();
+  return lerEnvioLink(res, text);
 }
 
 /** Reabre a coleta (volta para "Em cotação"). Exige senha do usuário. Só quando status é "Em Aprovação". */

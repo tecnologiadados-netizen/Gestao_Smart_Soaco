@@ -1336,6 +1336,39 @@ export async function getColetasPrecosDebug(_req: Request, res: Response): Promi
  * GET /api/compras/coletas
  * Lista coletas de preços (id, data de criação, qtd itens e registros). Inclui codigosProduto e descricoesProduto para filtro.
  */
+/** Nome de quem recebeu o último link de aprovação ainda válido; se todos foram substituídos, o do último envio. */
+async function nomesAprovadoresDasColetas(ids: number[]): Promise<Map<number, string>> {
+  const mapa = new Map<number, string>();
+  if (ids.length === 0) return mapa;
+  try {
+    const links = await prisma.coletaPrecosAprovacaoLink.findMany({
+      where: { coletaPrecosId: { in: ids } },
+      orderBy: [{ enviadoEm: 'desc' }, { id: 'desc' }],
+      select: {
+        coletaPrecosId: true,
+        substituido: true,
+        usuario: { select: { nome: true, login: true } },
+      },
+    });
+    const ativo = new Map<number, string>();
+    const ultimo = new Map<number, string>();
+    for (const link of links) {
+      const nome = (link.usuario.nome ?? '').trim() || link.usuario.login;
+      if (!nome) continue;
+      if (!link.substituido && !ativo.has(link.coletaPrecosId)) ativo.set(link.coletaPrecosId, nome);
+      if (!ultimo.has(link.coletaPrecosId)) ultimo.set(link.coletaPrecosId, nome);
+    }
+    for (const id of ids) {
+      const nome = ativo.get(id) ?? ultimo.get(id);
+      if (nome) mapa.set(id, nome);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[comprasController] nomesAprovadoresDasColetas:', msg);
+  }
+  return mapa;
+}
+
 export async function getColetasPrecos(_req: Request, res: Response): Promise<void> {
   try {
     type ColetaRow = {
@@ -1409,6 +1442,7 @@ export async function getColetasPrecos(_req: Request, res: Response): Promise<vo
         throw err;
       }
     }
+    const aprovadorPorColeta = await nomesAprovadoresDasColetas(coletas.map((c) => c.id));
     const data = coletas.map((c) => {
       let fornecedores: { idPessoa: number; nome: string; [k: string]: unknown }[] = [];
       if (typeof c.fornecedores === 'string' && c.fornecedores.trim()) {
@@ -1458,6 +1492,7 @@ export async function getColetasPrecos(_req: Request, res: Response): Promise<vo
         qtdItens: c._count.itens,
         qtdRegistros: c._count.registros,
         usuarioCriacao: c.usuarioCriacao ?? null,
+        usuarioAprovacao: aprovadorPorColeta.get(c.id) ?? null,
         fornecedores,
         status: c.status ?? 'Em cotação',
         justificativaCancelamento: c.justificativaCancelamento ?? null,
@@ -1627,8 +1662,16 @@ export async function patchCancelarCotacao(req: Request, res: Response): Promise
       res.status(404).json({ error: 'Coleta não encontrada.' });
       return;
     }
-    if ((coleta.status ?? '') !== 'Em Aprovação') {
-      res.status(400).json({ error: 'Só é possível cancelar a cotação quando o status é "Em Aprovação".' });
+    const statusCancelar = coleta.status ?? '';
+    if (
+      statusCancelar !== 'Em Aprovação' &&
+      statusCancelar !== 'Aprovado Total' &&
+      statusCancelar !== 'Aprovado Parcial' &&
+      statusCancelar !== 'Reavaliar'
+    ) {
+      res.status(400).json({
+        error: 'Só é possível cancelar a cotação quando o status é "Em Aprovação", "Aprovado Total", "Aprovado Parcial" ou "Reavaliar".',
+      });
       return;
     }
     await prisma.coletaPrecos.update({
@@ -1697,11 +1740,14 @@ export async function patchReabrirColeta(req: Request, res: Response): Promise<v
     const statusAtual = coleta.status ?? '';
     if (
       statusAtual !== 'Em Aprovação' &&
+      statusAtual !== 'Aprovado Total' &&
+      statusAtual !== 'Aprovado Parcial' &&
+      statusAtual !== 'Reavaliar' &&
       statusAtual !== 'Enviado para Financeiro' &&
       statusAtual !== 'Finalizada'
     ) {
       res.status(400).json({
-        error: 'Só é possível reabrir quando o status é "Em Aprovação", "Enviado para Financeiro" ou "Finalizada".',
+        error: 'Só é possível reabrir quando o status é "Em Aprovação", "Aprovado Total", "Aprovado Parcial", "Reavaliar", "Enviado para Financeiro" ou "Finalizada".',
       });
       return;
     }
@@ -2095,22 +2141,51 @@ export async function patchFinalizarCotacao(req: Request, res: Response): Promis
       res.status(404).json({ error: 'Coleta não encontrada.' });
       return;
     }
-    if ((coleta.status ?? '') !== 'Em Aprovação') {
-      res.status(400).json({ error: 'Só é possível finalizar quando o status é "Em Aprovação".' });
+    const statusParaFinalizar = coleta.status ?? '';
+    if (
+      statusParaFinalizar !== 'Em Aprovação' &&
+      statusParaFinalizar !== 'Aprovado Total' &&
+      statusParaFinalizar !== 'Aprovado Parcial'
+    ) {
+      res.status(400).json({
+        error: 'Só é possível finalizar quando o status é "Em Aprovação", "Aprovado Total" ou "Aprovado Parcial".',
+      });
       return;
     }
     const registros = await prisma.coletaPrecosRegistro.findMany({
       where: { coletaPrecosId: id },
-      select: { id: true, qtdeAprovada: true, idFornecedorVencedor: true },
+      select: { id: true, qtdeAprovada: true, idFornecedorVencedor: true, dados: true },
     });
-    const semQtde = registros.filter((r) => r.qtdeAprovada == null || Number(r.qtdeAprovada) <= 0);
+    const decisaoDe = (dados: string | null): { rejeitado: boolean; reavaliar: boolean } => {
+      if (!dados) return { rejeitado: false, reavaliar: false };
+      try {
+        const obj = JSON.parse(dados) as Record<string, unknown>;
+        return { rejeitado: obj.__rejeitarCompra === true, reavaliar: obj.__reavaliar === true };
+      } catch {
+        return { rejeitado: false, reavaliar: false };
+      }
+    };
+    if (registros.some((r) => decisaoDe(r.dados).reavaliar)) {
+      res.status(400).json({
+        error: 'Há item com reavaliação solicitada. Envie para uma nova aprovação ou resolva o retorno antes de finalizar.',
+      });
+      return;
+    }
+    const semQtde = registros.filter((r) => {
+      if (decisaoDe(r.dados).rejeitado) return false;
+      return r.qtdeAprovada == null || Number(r.qtdeAprovada) <= 0;
+    });
     if (semQtde.length > 0) {
       res.status(400).json({
         error: 'Preencha as quantidades aprovadas pela diretoria em todos os itens da coleta antes de finalizar.',
       });
       return;
     }
-    const semVencedor = registros.filter((r) => r.idFornecedorVencedor == null || Number(r.idFornecedorVencedor) <= 0);
+    const semVencedor = registros.filter((r) => {
+      if (decisaoDe(r.dados).rejeitado) return false;
+      if (!(Number(r.qtdeAprovada) > 0)) return false;
+      return r.idFornecedorVencedor == null || Number(r.idFornecedorVencedor) <= 0;
+    });
     if (semVencedor.length > 0) {
       res.status(400).json({
         error: 'Indique o fornecedor vencedor em todos os itens da coleta antes de finalizar. Itens cancelados não precisam de vencedor.',
@@ -2347,8 +2422,15 @@ export async function patchEnviarFinanceiro(req: Request, res: Response): Promis
       res.status(404).json({ error: 'Coleta não encontrada.' });
       return;
     }
-    if ((coleta.status ?? '') !== 'Em Aprovação') {
-      res.status(400).json({ error: 'Só é possível enviar para financeiro quando o status é "Em Aprovação".' });
+    const statusFinanceiro = coleta.status ?? '';
+    if (
+      statusFinanceiro !== 'Em Aprovação' &&
+      statusFinanceiro !== 'Aprovado Total' &&
+      statusFinanceiro !== 'Aprovado Parcial'
+    ) {
+      res.status(400).json({
+        error: 'Só é possível enviar para financeiro quando o status é "Em Aprovação", "Aprovado Total" ou "Aprovado Parcial".',
+      });
       return;
     }
     await prisma.coletaPrecos.update({
@@ -2395,8 +2477,8 @@ export async function deleteColetaItem(req: Request, res: Response): Promise<voi
       return;
     }
     const statusAtual = coleta.status ?? 'Em cotação';
-    if (statusAtual !== 'Em cotação' && statusAtual !== 'Em Aprovação') {
-      res.status(400).json({ error: 'Só é possível excluir/cancelar itens quando o status é "Em cotação" ou "Em Aprovação".' });
+    if (statusAtual !== 'Em cotação' && statusAtual !== 'Em Aprovação' && statusAtual !== 'Reavaliar') {
+      res.status(400).json({ error: 'Só é possível excluir/cancelar itens quando o status é "Em cotação", "Em Aprovação" ou "Reavaliar".' });
       return;
     }
     console.info('[comprasController] deleteColetaItem: coletaId=%d idProduto=%d justificativa=%s', id, idProduto, justificativa);
@@ -3237,9 +3319,9 @@ export async function postPrecosCotacao(req: Request, res: Response): Promise<vo
       return;
     }
     const statusColeta = String(coleta.status ?? 'Em cotação').trim();
-    if (statusColeta !== 'Em cotação' && statusColeta !== 'Finalizada') {
+    if (statusColeta !== 'Em cotação' && statusColeta !== 'Finalizada' && statusColeta !== 'Reavaliar') {
       res.status(400).json({
-        error: 'Só é possível cadastrar ou alterar preços quando o status é "Em cotação" ou "Finalizada".',
+        error: 'Só é possível cadastrar ou alterar preços quando o status é "Em cotação", "Reavaliar" ou "Finalizada".',
       });
       return;
     }

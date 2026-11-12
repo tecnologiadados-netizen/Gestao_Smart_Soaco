@@ -44,6 +44,7 @@ import lojaEstoqueKitsRoutes from './routes/lojaEstoqueKitsRoutes.js';
 import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { getDoubleCheckInConferenciaPagina } from './controllers/doubleCheckInConferenciaPaginaController.js';
+import { getColetaAprovacaoPagina, postColetaAprovacaoPagina } from './controllers/coletaAprovacaoPaginaController.js';
 import { rhUploadRoot } from './rh/utils/rhUpload.js';
 import { qualidadeUploadRoot } from './utils/qualidadeUpload.js';
 
@@ -224,6 +225,13 @@ app.get('/health', async (_req, res) => {
 // Link permanente do WhatsApp (conferência NF × PC). Antes do SPA para não cair no login.
 app.get('/c/:token', (req, res, next) => {
   getDoubleCheckInConferenciaPagina(req, res).catch(next);
+});
+
+app.get('/a/:token', (req, res, next) => {
+  getColetaAprovacaoPagina(req, res).catch(next);
+});
+app.post('/a/:token', express.urlencoded({ extended: false, limit: '1mb' }), (req, res, next) => {
+  postColetaAprovacaoPagina(req, res).catch(next);
 });
 
 // Frontend estático (build em backend/public). Também com "npm run dev" na raiz: NODE_ENV pode vir

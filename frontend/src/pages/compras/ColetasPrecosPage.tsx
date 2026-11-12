@@ -11,6 +11,16 @@ import { MensagemSemRegistrosInline } from '../../components/MensagemSemRegistro
 import { listarColetasPrecos, obterOpcoesFiltroColetas, excluirColetaPrecos, listarColetasBloqueantes, registrarCienciaColeta, type ColetaPrecosListItem, type FornecedorColetaItem, type ColetaBloqueante } from '../../api/compras';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 
+function classeStatusColeta(status: string): string {
+  if (status === 'Em Aprovação') return 'bg-primary-100 text-blue-800 dark:bg-primary-900/40 dark:text-blue-200';
+  if (status === 'Aprovado Total' || status === 'Finalizada') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
+  if (status === 'Aprovado Parcial') return 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200';
+  if (status === 'Reavaliar') return 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200';
+  if (status === 'Enviado para Financeiro') return 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200';
+  if (status === 'Rejeitada') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200';
+}
+
 function formatarData(iso: string): string {
   try {
     const d = new Date(iso);
@@ -258,6 +268,9 @@ export default function ColetasPrecosPage() {
               <option value="">Todos</option>
               <option value="Em cotação">Em cotação</option>
               <option value="Em Aprovação">Em Aprovação</option>
+              <option value="Aprovado Total">Aprovado Total</option>
+              <option value="Aprovado Parcial">Aprovado Parcial</option>
+              <option value="Reavaliar">Reavaliar</option>
               <option value="Rejeitada">Rejeitada</option>
               <option value="Finalizada">Finalizada</option>
               <option value="Enviado para Financeiro">Enviado para Financeiro</option>
@@ -371,6 +384,7 @@ export default function ColetasPrecosPage() {
                 <th className="py-3 px-4 font-semibold">Identificador / Nome</th>
                 <th className="py-3 px-4 font-semibold">Status</th>
                 <th className="py-3 px-4 font-semibold">Criado por</th>
+                <th className="py-3 px-4 font-semibold">Aprovado por</th>
                 <th className="py-3 px-4 font-semibold">Tempo</th>
                 <th className="py-3 px-4 font-semibold">Data de criação</th>
                 <th className="py-3 px-4 font-semibold">Ações</th>
@@ -379,21 +393,21 @@ export default function ColetasPrecosPage() {
             <tbody className="text-slate-700 dark:text-slate-200">
               {loading && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-500 dark:text-slate-400">
                     Carregando...
                   </td>
                 </tr>
               )}
               {!loading && coletas.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 px-4 text-center">
+                  <td colSpan={7} className="py-12 px-4 text-center">
                     <MensagemSemRegistrosInline />
                   </td>
                 </tr>
               )}
               {!loading && filteredColetas.length === 0 && coletas.length > 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 px-4 text-center">
+                  <td colSpan={7} className="py-8 px-4 text-center">
                     <MensagemSemRegistrosInline />
                   </td>
                 </tr>
@@ -404,7 +418,14 @@ export default function ColetasPrecosPage() {
                 const finalizada = statusColeta === 'Finalizada';
                 const rejeitada = statusColeta === 'Rejeitada';
                 const emCotacao = statusColeta === 'Em cotação';
-                const podeAbrirMapaCotacao = emAprovacao || finalizada || rejeitada || emCotacao;
+                const podeAbrirMapaCotacao =
+                  emAprovacao ||
+                  finalizada ||
+                  rejeitada ||
+                  emCotacao ||
+                  statusColeta === 'Aprovado Total' ||
+                  statusColeta === 'Aprovado Parcial' ||
+                  statusColeta === 'Reavaliar';
                 const dataRefTempo = emAprovacao && c.dataEnvioAprovacao ? c.dataEnvioAprovacao : c.dataCriacao;
                 return (
                 <tr key={c.id} className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/30">
@@ -412,22 +433,13 @@ export default function ColetasPrecosPage() {
                   <td className="py-3 px-4">
                     <span
                       title={statusColeta === 'Rejeitada' && (c.justificativaCancelamento ?? '').trim() ? (c.justificativaCancelamento ?? '').trim() : undefined}
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        emAprovacao
-                          ? 'bg-primary-100 text-blue-800 dark:bg-primary-900/40 dark:text-blue-200'
-                          : statusColeta === 'Finalizada'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                            : statusColeta === 'Enviado para Financeiro'
-                              ? 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'
-                              : statusColeta === 'Rejeitada'
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-                      }`}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classeStatusColeta(statusColeta)}`}
                     >
                       {statusColeta}
                     </span>
                   </td>
                   <td className="py-3 px-4">{c.usuarioCriacao ?? '—'}</td>
+                  <td className="py-3 px-4">{c.usuarioAprovacao ?? '—'}</td>
                   <td className="py-3 px-4 font-medium tabular-nums text-primary-600 dark:text-primary-400">
                     {emAprovacao ? `Em aprovação: ${formatarTempoDecorrido(dataRefTempo, agora)}` : formatarTempoDecorrido(dataRefTempo, agora)}
                   </td>
@@ -687,6 +699,7 @@ export default function ColetasPrecosPage() {
           fornecedores={coletaPrecos.fornecedores ?? []}
           dataCriacao={coletaPrecos.dataCriacao}
           usuarioCriacao={coletaPrecos.usuarioCriacao}
+          usuarioAprovacao={coletaPrecos.usuarioAprovacao}
           status={coletaPrecos.status ?? 'Em cotação'}
           dataEnvioAprovacao={coletaPrecos.dataEnvioAprovacao ?? null}
           observacoes={coletaPrecos.observacoes ?? null}

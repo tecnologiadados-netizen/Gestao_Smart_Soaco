@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   listarPrecosColeta,
   excluirItemColeta,
-  enviarParaAprovacao,
   reabrirColeta,
   cancelarCotacao,
   finalizarCotacao,
@@ -19,6 +18,7 @@ import {
 } from '../../api/compras';
 import type { FornecedorColetaItem } from '../../api/compras';
 import ModalCadastrarPrecos from './ModalCadastrarPrecos';
+import ModalEnviarLinkAprovacaoColeta from './ModalEnviarLinkAprovacaoColeta';
 import ModalCriarColetaPrecos from './ModalCriarColetaPrecos';
 import SingleSelectWithSearch, { type OptionItem } from '../SingleSelectWithSearch';
 import { useAuth } from '../../contexts/AuthContext';
@@ -30,6 +30,7 @@ export interface ModalPrecosColetaProps {
   fornecedores: FornecedorColetaItem[];
   dataCriacao?: string;
   usuarioCriacao?: string | null;
+  usuarioAprovacao?: string | null;
   status?: string;
   /** Data/hora em que foi enviado para aprovação (para exibir tempo em aprovação). */
   dataEnvioAprovacao?: string | null;
@@ -78,6 +79,35 @@ const COLUNAS_PRECOS: { keys: string[]; label: string; decimals?: number; date?:
   { keys: ['Qtde Empenhada', 'qtde empenhada', 'Qtdempenhada'], label: 'Qtde Empenhada', decimals: 2 },
   { keys: ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag'], label: 'Pré Compra', decimals: 2 },
 ];
+
+function classeStatusColeta(status: string): string {
+  if (status === 'Em Aprovação') return 'bg-primary-100 text-blue-800 dark:bg-primary-900/40 dark:text-blue-200';
+  if (status === 'Aprovado Total' || status === 'Finalizada') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
+  if (status === 'Aprovado Parcial') return 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200';
+  if (status === 'Reavaliar') return 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200';
+  if (status === 'Enviado para Financeiro') return 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200';
+  if (status === 'Rejeitada') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200';
+}
+
+function statusAprovacaoDoItem(row: Record<string, unknown>): { rotulo: string; classe: string; detalhe: string | null } {
+  const rejeitado = row.__rejeitarCompra === true;
+  const reavaliar = row.__reavaliar === true;
+  const motivo = typeof row.__motivoRejeicao === 'string' ? row.__motivoRejeicao.trim() : '';
+  const pedido = typeof row.__pedidoReavaliacao === 'string' ? row.__pedidoReavaliacao.trim() : '';
+  const rawQtde = row['Qtde Aprovada'] ?? row.qtdeAprovada;
+  const qtde = typeof rawQtde === 'number' ? rawQtde : parseFloat(String(rawQtde ?? ''));
+  if (reavaliar) {
+    return { rotulo: 'Reavaliar', classe: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200', detalhe: pedido || null };
+  }
+  if (rejeitado) {
+    return { rotulo: 'Rejeitado', classe: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200', detalhe: motivo || null };
+  }
+  if (Number.isFinite(qtde) && qtde > 0) {
+    return { rotulo: 'Aprovado', classe: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200', detalhe: null };
+  }
+  return { rotulo: 'Aguardando avaliação', classe: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200', detalhe: null };
+}
 
 function getRowValue(row: Record<string, unknown>, keys: string[]): unknown {
   for (const k of keys) {
@@ -172,6 +202,7 @@ export default function ModalPrecosColeta({
   fornecedores,
   dataCriacao,
   usuarioCriacao,
+  usuarioAprovacao,
   status = 'Em cotação',
   dataEnvioAprovacao,
   podeEditarCompras = true,
@@ -212,18 +243,23 @@ export default function ModalPrecosColeta({
 
   const [loading, setLoading] = useState(true);
   const [excluindoId, setExcluindoId] = useState<number | null>(null);
-  const [enviandoAprovacao, setEnviandoAprovacao] = useState(false);
+  const [modalEnvio, setModalEnvio] = useState<{ alterarStatus: boolean; novaRodada: boolean } | null>(null);
+  const [aprovadorLocal, setAprovadorLocal] = useState<string | null>(usuarioAprovacao ?? null);
   const [modalAdicionarItens, setModalAdicionarItens] = useState(false);
   const [statusLocal, setStatusLocal] = useState(status);
   /** Quando enviamos para aprovação aqui, guardamos a data local até o parent atualizar. */
   const [dataEnvioAprovacaoLocal, setDataEnvioAprovacaoLocal] = useState<string | null>(null);
   const emCotacao = statusLocal === 'Em cotação';
   const emAprovacao = statusLocal === 'Em Aprovação';
+  const reavaliar = statusLocal === 'Reavaliar';
+  const aprovadoTotal = statusLocal === 'Aprovado Total';
+  const aprovadoParcial = statusLocal === 'Aprovado Parcial';
   const enviadoFinanceiro = statusLocal === 'Enviado para Financeiro';
   const finalizada = statusLocal === 'Finalizada';
   /** Permite cadastrar/alterar preços mesmo após finalização (nova cotação). */
-  const podeCadastrarPrecos = emCotacao || emAprovacao || finalizada;
-  const podeReabrir = emAprovacao || enviadoFinanceiro || finalizada;
+  const podeCadastrarPrecos = emCotacao || emAprovacao || reavaliar || finalizada;
+  const podeReabrir = emAprovacao || reavaliar || aprovadoTotal || aprovadoParcial || enviadoFinanceiro || finalizada;
+  const podeFinalizarCotacao = emAprovacao || aprovadoTotal || aprovadoParcial;
   const rejeitada = statusLocal === 'Rejeitada';
   const [modalCancelar, setModalCancelar] = useState(false);
   const [justificativaCancelar, setJustificativaCancelar] = useState('');
@@ -258,6 +294,9 @@ export default function ModalPrecosColeta({
   useEffect(() => {
     setStatusLocal(status);
   }, [status]);
+  useEffect(() => {
+    setAprovadorLocal(usuarioAprovacao ?? null);
+  }, [usuarioAprovacao]);
   useEffect(() => {
     if (!emAprovacao || !dataRefAprovacao) {
       setTempoAprovacaoDisplay('');
@@ -438,22 +477,13 @@ export default function ModalPrecosColeta({
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 shrink-0">
           <div className="flex flex-col gap-1.5 text-sm text-slate-600 dark:text-slate-300">
             <div><strong className="text-slate-700 dark:text-slate-200">Data Criação:</strong> {dataCriacao ? formatarDataCriacao(dataCriacao) : '—'}</div>
-            <div><strong className="text-slate-700 dark:text-slate-200">Usuário da Criação:</strong> {(usuarioCriacao ?? '—').toString().toUpperCase()}</div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <div><strong className="text-slate-700 dark:text-slate-200">Usuário da Criação:</strong> {(usuarioCriacao ?? '—').toString().toUpperCase()}</div>
+              <div><strong className="text-slate-700 dark:text-slate-200">Usuário da Aprovação:</strong> {(aprovadorLocal ?? '—').toString().toUpperCase()}</div>
+            </div>
             <div>
               <strong className="text-slate-700 dark:text-slate-200">Status atual:</strong>{' '}
-              <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                  statusLocal === 'Em Aprovação'
-                    ? 'bg-primary-100 text-blue-800 dark:bg-primary-900/40 dark:text-blue-200'
-                    : statusLocal === 'Finalizada'
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                      : statusLocal === 'Enviado para Financeiro'
-                        ? 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'
-                        : statusLocal === 'Rejeitada'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-                }`}
-              >
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classeStatusColeta(statusLocal ?? '')}`}>
                 {statusLocal}
               </span>
             </div>
@@ -461,6 +491,25 @@ export default function ModalPrecosColeta({
               <div><strong className="text-slate-700 dark:text-slate-200">Tempo em aprovação:</strong> {tempoAprovacaoDisplay}</div>
             )}
           </div>
+          {data.some((row) => (row as Record<string, unknown>).__reavaliar === true) && (
+            <div className="mt-3 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900 dark:border-orange-700 dark:bg-orange-900/20 dark:text-orange-100">
+              <strong className="block mb-1">Retorno da avaliação</strong>
+              <ul className="space-y-1">
+                {data.filter((row) => (row as Record<string, unknown>).__reavaliar === true).map((row, idx) => {
+                  const item = row as Record<string, unknown>;
+                  const codigo = String(getRowValue(item, ['Codigo do Produto', 'codigo do produto']) ?? '');
+                  const nome = String(getRowValue(item, ['Descricao do Produto', 'descricao do produto']) ?? '');
+                  const pedido = typeof item.__pedidoReavaliacao === 'string' ? item.__pedidoReavaliacao.trim() : '';
+                  return (
+                    <li key={idx}>
+                      <span className="font-medium">{[codigo, nome].filter(Boolean).join(' — ')}</span>
+                      {pedido ? `: ${pedido}` : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
 
         {(() => {
@@ -517,20 +566,10 @@ export default function ModalPrecosColeta({
           <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shrink-0">
             <button
               type="button"
-              onClick={async () => {
-                setEnviandoAprovacao(true);
-                const res = await enviarParaAprovacao(coletaId);
-                setEnviandoAprovacao(false);
-                if (res.ok) {
-                  setStatusLocal('Em Aprovação');
-                  setDataEnvioAprovacaoLocal(new Date().toISOString());
-                  onColetaAlterada?.();
-                }
-              }}
-              disabled={enviandoAprovacao}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50 transition"
+              onClick={() => setModalEnvio({ alterarStatus: true, novaRodada: false })}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition"
             >
-              {enviandoAprovacao ? 'Enviando…' : 'Enviar para aprovação'}
+              Enviar para aprovação
             </button>
             <button
               type="button"
@@ -560,6 +599,7 @@ export default function ModalPrecosColeta({
               >
                 Cancelar Cotação
               </button>
+              {emAprovacao && (
               <button
                 type="button"
                 onClick={() => setModalCancelarItem({ tipo: 'todos' })}
@@ -568,9 +608,28 @@ export default function ModalPrecosColeta({
               >
                 Cancelar todos os itens
               </button>
+              )}
+              {reavaliar && (
+                <button
+                  type="button"
+                  onClick={() => setModalEnvio({ alterarStatus: true, novaRodada: true })}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition"
+                >
+                  Enviar para nova aprovação
+                </button>
+              )}
             </div>
-            {emAprovacao && (
+            {podeFinalizarCotacao && (
               <div className="flex items-center gap-2">
+                {emAprovacao && (
+                  <button
+                    type="button"
+                    onClick={() => setModalEnvio({ alterarStatus: false, novaRodada: false })}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 text-sm font-medium transition"
+                  >
+                    Reenviar WhatsApp
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={async () => {
@@ -656,6 +715,9 @@ export default function ModalPrecosColeta({
                     <th className="py-2 px-3 font-semibold whitespace-nowrap border-b border-primary-500 w-32">
                       Ações
                     </th>
+                    <th className="py-2 px-3 font-semibold whitespace-nowrap border-b border-primary-500">
+                      Status da aprovação
+                    </th>
                     {colunas.map((col) => (
                       <th
                         key={col.label}
@@ -690,7 +752,7 @@ export default function ModalPrecosColeta({
                               Cadastrar preços
                             </button>
                           )}
-                          {podeEditarCompras && (emCotacao || emAprovacao) && (() => {
+                          {podeEditarCompras && (emCotacao || emAprovacao || reavaliar) && (() => {
                             const idProduto = Number(getRowValue(row as Record<string, unknown>, ['Id Produto', 'id produto', 'idProduto']) ?? 0);
                             if (!idProduto) return null;
                             const labelExcluir = emCotacao ? 'Excluir da coleta' : 'Cancelar item';
@@ -706,6 +768,27 @@ export default function ModalPrecosColeta({
                             );
                           })()}
                         </div>
+                      </td>
+                      <td className="py-2 px-3 border-b border-slate-100 dark:border-slate-700 align-top">
+                        {(() => {
+                          const statusItem = statusAprovacaoDoItem(row as Record<string, unknown>);
+                          const codigo = String(getRowValue(row as Record<string, unknown>, ['Codigo do Produto', 'codigo do produto']) ?? '');
+                          const nome = String(getRowValue(row as Record<string, unknown>, ['Descricao do Produto', 'descricao do produto']) ?? '');
+                          return (
+                            <div className="min-w-[140px] max-w-[240px]">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusItem.classe}`}>
+                                {statusItem.rotulo}
+                              </span>
+                              {statusItem.detalhe ? (
+                                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 whitespace-normal" title={statusItem.detalhe}>
+                                  {[codigo, nome].filter(Boolean).join(' — ')}
+                                  {codigo || nome ? ': ' : ''}
+                                  {statusItem.detalhe}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </td>
                       {colunas.map((col) => {
                         const value = getRowValue(row as Record<string, unknown>, col.keys);
@@ -1336,6 +1419,23 @@ export default function ModalPrecosColeta({
           </div>
         )}
         </>
+      )}
+      {modalEnvio && (
+        <ModalEnviarLinkAprovacaoColeta
+          coletaId={coletaId}
+          alterarStatus={modalEnvio.alterarStatus}
+          novaRodada={modalEnvio.novaRodada}
+          onClose={() => setModalEnvio(null)}
+          onEnviado={(resultado) => {
+            if (resultado.aprovadorNome) setAprovadorLocal(resultado.aprovadorNome);
+            if (modalEnvio.alterarStatus) {
+              setStatusLocal('Em Aprovação');
+              setDataEnvioAprovacaoLocal(new Date().toISOString());
+            }
+            setModalEnvio(null);
+            onColetaAlterada?.();
+          }}
+        />
       )}
     </div>
   );

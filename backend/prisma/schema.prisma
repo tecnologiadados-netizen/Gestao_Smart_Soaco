@@ -129,6 +129,7 @@ model Usuario {
   assistenteConversas AssistenteConversa[]
   assistenteFeedbacks AssistenteFeedback[]
   pdvEmpresa PdvUsuarioEmpresa?
+  coletaPrecosAprovacaoLinks ColetaPrecosAprovacaoLink[]
 
   @@map("usuario")
 }
@@ -591,7 +592,7 @@ model ColetaPrecos {
   createdAt           DateTime  @default(now())
   usuarioCriacao      String?   // login do usuário que criou a coleta
   fornecedores        String?   // JSON array de até 6 nomes de fornecedores da cotação
-  status                      String?   @default("Em cotação") // "Em cotação" | "Em Aprovação" | "Rejeitada" | "Finalizada" | "Enviado para Financeiro"
+  status                      String?   @default("Em cotação") // "Em cotação" | "Em Aprovação" | "Aprovado Total" | "Aprovado Parcial" | "Reavaliar" | "Rejeitada" | "Finalizada" | "Enviado para Financeiro"
   dataEnvioAprovacao          DateTime?  // quando foi enviado para aprovação (zerado ao reabrir)
   jaEnviadaAprovacao          Boolean   @default(false) // true assim que foi enviada para aprovação uma vez; nunca volta a false (bloqueia exclusão)
   justificativaCancelamento  String?   // justificativa ao cancelar (reverter) aprovação
@@ -614,8 +615,31 @@ model ColetaPrecos {
   ciencias    ColetaPrecosCiencia[]
   /// Finalizações registradas como erro operacional (vínculo ampliado + senha).
   vinculosErroOperacional ColetaPrecosVinculoErroOperacional[]
+  aprovacaoLinks ColetaPrecosAprovacaoLink[]
 
   @@map("coleta_precos")
+}
+
+/// Link público (/a/:token) de aprovação da coleta, virtual (WhatsApp) ou manual.
+model ColetaPrecosAprovacaoLink {
+  id              Int       @id @default(autoincrement())
+  coletaPrecosId  Int
+  token           String    @unique
+  usuarioId       Int
+  enviadoPorLogin String
+  enviadoEm       DateTime  @default(now())
+  decisao         String?
+  decididoEm      DateTime?
+  observacao      String?
+  retratoJson     String?
+  substituido     Boolean   @default(false)
+
+  coletaPrecos ColetaPrecos @relation(fields: [coletaPrecosId], references: [id], onDelete: Cascade)
+  usuario      Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([coletaPrecosId])
+  @@index([usuarioId])
+  @@map("coleta_precos_aprovacao_link")
 }
 
 /// Registro de finalização com vínculo tratado como erro operacional (auditoria / dashboard).
