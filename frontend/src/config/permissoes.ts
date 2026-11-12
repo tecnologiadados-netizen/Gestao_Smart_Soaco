@@ -83,6 +83,7 @@ export const PERMISSOES = {
   FINANCEIRO_CARTEIRA_FINANCEIRA_VER: 'financeiro.carteira_financeira.ver',
   FINANCEIRO_DIARIO_VER: 'financeiro.diario.ver',
   FINANCEIRO_DIARIO_APROVAR: 'financeiro.diario.aprovar',
+  FINANCEIRO_RENTABILIDADE_PEDIDOS_VER: 'financeiro.rentabilidade_pedidos.ver',
 
   // Logística / Cubagem
   LOGISTICA_VER: 'logistica.ver',

@@ -88,6 +88,7 @@ export const PERMISSOES = {
   FINANCEIRO_CARTEIRA_FINANCEIRA_VER: 'financeiro.carteira_financeira.ver',
   FINANCEIRO_DIARIO_VER: 'financeiro.diario.ver',
   FINANCEIRO_DIARIO_APROVAR: 'financeiro.diario.aprovar',
+  FINANCEIRO_RENTABILIDADE_PEDIDOS_VER: 'financeiro.rentabilidade_pedidos.ver',
 
   // Logística / Cubagem
   LOGISTICA_VER: 'logistica.ver',
@@ -289,6 +290,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_CARTEIRA_FINANCEIRA_VER,
   PERMISSOES.FINANCEIRO_DIARIO_VER,
   PERMISSOES.FINANCEIRO_DIARIO_APROVAR,
+  PERMISSOES.FINANCEIRO_RENTABILIDADE_PEDIDOS_VER,
   PERMISSOES.LOGISTICA_VER,
   PERMISSOES.LOGISTICA_TOTAL,
   PERMISSOES.LOGISTICA_CUBAGEM_VER,
@@ -480,6 +482,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.FINANCEIRO_CARTEIRA_FINANCEIRA_VER]: 'Carteira Financeira',
   [PERMISSOES.FINANCEIRO_DIARIO_VER]: 'Diário Financeiro',
   [PERMISSOES.FINANCEIRO_DIARIO_APROVAR]: 'Diário Financeiro — aprovar contas a pagar',
+  [PERMISSOES.FINANCEIRO_RENTABILIDADE_PEDIDOS_VER]: 'Rentabilidade de Pedidos',
   [PERMISSOES.LOGISTICA_VER]: 'Ver Logística',
   [PERMISSOES.LOGISTICA_TOTAL]: 'Logística — permissão total',
   [PERMISSOES.LOGISTICA_CUBAGEM_VER]: 'Cubagem — visualizar',

@@ -213,6 +213,7 @@ export const FINANCEIRO_MENU: FinanceiroMenuEntry[] = [
     children: [
       { to: '/financeiro/crm', label: 'CRM Financeiro' },
       { to: '/financeiro/diario', label: 'Diário Financeiro' },
+      { to: '/financeiro/rentabilidade-pedidos', label: 'Rentabilidade de Pedidos' },
     ],
   },
 ];
@@ -309,6 +310,7 @@ export const PATH_LABELS: Record<string, string> = {
   '/loja/estoque-kits': 'Controle de estoque de kits',
   '/financeiro/renegociacao-contratos': 'Simulação de Renegociação',
   '/financeiro/crm': 'CRM Financeiro',
+  '/financeiro/rentabilidade-pedidos': 'Rentabilidade de Pedidos',
   '/relatorios': 'Relatórios',
   '/integracao': 'Integração',
   '/integracao/alteracao-data-entrega-compra': 'Alteração Data Entrega',

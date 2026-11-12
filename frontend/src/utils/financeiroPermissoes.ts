@@ -14,6 +14,7 @@ export const PERMISSOES_ACESSO_FINANCEIRO_MENU: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_CRM_PENDENCIAS_VER,
   PERMISSOES.FINANCEIRO_CARTEIRA_FINANCEIRA_VER,
   PERMISSOES.FINANCEIRO_DIARIO_VER,
+  PERMISSOES.FINANCEIRO_RENTABILIDADE_PEDIDOS_VER,
 ];
 
 export const PERMISSOES_ACESSO_FINANCEIRO_RESUMO: CodigoPermissao[] = [
@@ -95,6 +96,11 @@ export const PERMISSOES_ACESSO_FINANCEIRO_DIARIO: CodigoPermissao[] = [
   PERMISSOES.FINANCEIRO_DIARIO_VER,
 ];
 
+export const PERMISSOES_ACESSO_FINANCEIRO_RENTABILIDADE_PEDIDOS: CodigoPermissao[] = [
+  PERMISSOES.FINANCEIRO_VER,
+  PERMISSOES.FINANCEIRO_RENTABILIDADE_PEDIDOS_VER,
+];
+
 export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
   '/financeiro': PERMISSOES_ACESSO_FINANCEIRO_MENU,
   '/financeiro/resumo': PERMISSOES_ACESSO_FINANCEIRO_MENU,
@@ -106,6 +112,7 @@ export const ROTA_PERMISSOES_FINANCEIRO: Record<string, CodigoPermissao[]> = {
   '/financeiro/crm': PERMISSOES_ACESSO_FINANCEIRO_CRM,
   '/financeiro/carteira-financeira': PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
   '/financeiro/diario': PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
+  '/financeiro/rentabilidade-pedidos': PERMISSOES_ACESSO_FINANCEIRO_RENTABILIDADE_PEDIDOS,
 };
 
 export function podeAcessarRotaFinanceiro(
@@ -136,6 +143,7 @@ export const ROTAS_ENTRADA_FINANCEIRO = [
   '/financeiro/crm',
   '/financeiro/carteira-financeira',
   '/financeiro/diario',
+  '/financeiro/rentabilidade-pedidos',
 ] as const;
 
 export function rotaInicialFinanceiro(hasPermission: (c: CodigoPermissao) => boolean): string | null {

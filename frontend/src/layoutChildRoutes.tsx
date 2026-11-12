@@ -33,6 +33,7 @@ import RenegociacaoContratosPage from './pages/financeiro/RenegociacaoContratosP
 import CrmFinanceiroPage from './pages/financeiro/CrmFinanceiroPage';
 import CarteiraFinanceiraPage from './pages/financeiro/CarteiraFinanceiraPage';
 import DiarioProcessosPage from './pages/financeiro/DiarioProcessosPage';
+import RentabilidadePedidosPage from './pages/financeiro/RentabilidadePedidosPage';
 import FinanceiroRedirectPage from './pages/financeiro/FinanceiroRedirectPage';
 import EstoqueKitsPage from './pages/loja/EstoqueKitsPage';
 import SycroOrderPage from './pages/pedidos/SycroOrderPage';
@@ -176,6 +177,7 @@ export const layoutChildRoutes: RouteObject[] = [
   { path: 'financeiro/painel-financeiro-comercial', element: <PainelFinanceiroComercialPage /> },
   { path: 'financeiro/renegociacao-contratos', element: <RenegociacaoContratosPage /> },
   { path: 'financeiro/crm', element: <ErrorBoundary><CrmFinanceiroPage /></ErrorBoundary> },
+  { path: 'financeiro/rentabilidade-pedidos', element: <ErrorBoundary><RentabilidadePedidosPage /></ErrorBoundary> },
   { path: 'comercial/painel', element: <Navigate to="/kpis/comercial" replace /> },
   { path: 'comercial/historico-vendas', element: <ErrorBoundary><HistoricoVendasPage /></ErrorBoundary> },
   { path: 'comercial/classificacao-rfv', element: <ErrorBoundary><RfvClientesPage /></ErrorBoundary> },

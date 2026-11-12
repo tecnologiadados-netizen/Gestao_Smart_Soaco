@@ -14,7 +14,9 @@ import {
   PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA,
   PERMISSOES_ACESSO_FINANCEIRO_DIARIO,
   PERMISSOES_APROVAR_FINANCEIRO_DIARIO,
+  PERMISSOES_ACESSO_FINANCEIRO_RENTABILIDADE_PEDIDOS,
 } from '../utils/financeiroPermissoes.js';
+import { getRentabilidadePedidos } from '../controllers/rentabilidadePedidosController.js';
 import { getCarteiraFinanceira } from '../controllers/carteiraFinanceiraController.js';
 import {
   getDiarioContasBancarias,
@@ -166,6 +168,7 @@ const editarCrmPendenciasDestinatarios = requirePermission(
 const verFinanceiroCarteira = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_CARTEIRA);
 const verFinanceiroDiario = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_DIARIO);
 const aprovarFinanceiroDiario = requirePermission(...PERMISSOES_APROVAR_FINANCEIRO_DIARIO);
+const verRentabilidadePedidos = requirePermission(...PERMISSOES_ACESSO_FINANCEIRO_RENTABILIDADE_PEDIDOS);
 /** Classificação compartilhada: a mesma prioridade vale na DFC e no Diário. */
 const verPrioridadeDfcDiario = requirePermission(
   ...PERMISSOES_ACESSO_FINANCEIRO_DFC,
@@ -173,6 +176,7 @@ const verPrioridadeDfcDiario = requirePermission(
 );
 
 router.get('/carteira-financeira', verFinanceiroCarteira, getCarteiraFinanceira);
+router.get('/rentabilidade-pedidos', verRentabilidadePedidos, getRentabilidadePedidos);
 router.get('/diario/contas-pagar', verFinanceiroDiario, getDiarioContasPagar);
 router.get('/diario/contas-pagar/vencidos', verFinanceiroDiario, getDiarioVencidosReprogramados);
 router.get('/diario/contas-bancarias', verFinanceiroDiario, getDiarioContasBancarias);
