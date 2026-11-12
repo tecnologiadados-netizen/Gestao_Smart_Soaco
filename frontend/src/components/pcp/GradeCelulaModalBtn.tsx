@@ -50,7 +50,10 @@ export default function GradeCelulaModalBtn({
   align = 'right',
   preencherCelula = false,
 }: Props) {
-  const classes = className ?? classesVariante(variant, align);
+  const base = classesVariante(variant, align);
+  const classes = className ? `${base} ${className}` : base;
+  const justifyPreenchido =
+    align === 'right' ? '!justify-end' : align === 'center' ? '!justify-center' : '!justify-start';
   return (
     <button
       type="button"
@@ -58,7 +61,7 @@ export default function GradeCelulaModalBtn({
       title={title}
       className={
         preencherCelula
-          ? `${classes} !flex w-full min-w-0 max-w-full !justify-start overflow-hidden`
+          ? `${classes} !flex w-full min-w-0 max-w-full overflow-hidden ${justifyPreenchido}`
           : classes
       }
     >

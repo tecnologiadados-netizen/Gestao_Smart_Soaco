@@ -1982,7 +1982,7 @@ export default function CalendarioProducaoModal({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-4 py-2 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
-          <div className="grid min-w-0 max-w-xl grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-0.5 sm:w-max sm:grid-cols-[max-content_max-content_max-content]">
             <div className="flex flex-col gap-0.5">
               <span>Datas do calendário baseadas na data de produção</span>
               <button
@@ -2043,6 +2043,8 @@ export default function CalendarioProducaoModal({
                 <IndicadorPrevisaoConfiavel status="branco" />
                 <span>= Em branco</span>
               </button>
+            </div>
+            <div className="flex flex-col justify-end gap-0.5 pt-4">
               <button
                 type="button"
                 onClick={() => alternarIcone('as')}

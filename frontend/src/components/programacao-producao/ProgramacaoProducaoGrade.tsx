@@ -43,6 +43,7 @@ import { validarBobinasAlternativasLinha } from '../../utils/programacaoProducao
 import type { ModalGradeTipo } from './ProgramacaoProducaoModals';
 import ProgramacaoProducaoInventarioModal from './ProgramacaoProducaoInventarioModal';
 import { textoResumoOpsNomus } from '../../utils/programacaoProducaoOpsNomus';
+import GradeCelulaModalBtn from '../pcp/GradeCelulaModalBtn';
 
 const BTN_PRIMARY =
   'px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm transition shrink-0';
@@ -56,9 +57,19 @@ const INPUT_CELL =
 const INPUT_NUM =
   `${INPUT_CELL} appearance-textfield [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]`;
 
-/** Mesmo padrão dos campos clicáveis (estoque, qtde produzir, etc.). */
-const CELL_CLICKABLE =
-  'block w-full truncate cursor-pointer text-primary-700 underline underline-offset-2 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200';
+/** Número clicável no mesmo botão azul da grade de carradas, alinhado à direita da célula. */
+function CelulaNumeroModal({ valor, onClick }: { valor: string; onClick: () => void }) {
+  return (
+    <GradeCelulaModalBtn
+      onClick={onClick}
+      title={valor}
+      align="right"
+      className="!block w-fit !min-w-0 max-w-full overflow-hidden"
+    >
+      <span className="block truncate">{valor}</span>
+    </GradeCelulaModalBtn>
+  );
+}
 
 type Props = {
   dados: DadosProgramacaoProducaoV1;
@@ -269,19 +280,16 @@ export default function ProgramacaoProducaoGrade({
           idComponente: linha.idComponente,
         });
       return (
-        <span
-          role="button"
-          tabIndex={0}
-          className={`${CELL_CLICKABLE} ${PP_CELL_WRAP_CLASS}`}
-          title={visualizarModais ? texto : `${texto}\n\nDuplo clique para editar`}
-          onClick={visualizarModais ? abrir : undefined}
-          onDoubleClick={visualizarModais ? undefined : abrir}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') abrir();
-          }}
+        <GradeCelulaModalBtn
+          onClick={abrir}
+          title={visualizarModais ? texto : `${texto}\n\nClique para editar`}
+          align="left"
+          preencherCelula
         >
-          {texto}
-        </span>
+          <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug">
+            {texto}
+          </span>
+        </GradeCelulaModalBtn>
       );
     }
     if (key === 'cod_bobina_alternativa' || key === 'descricao_bobina_alternativa') {
@@ -297,18 +305,22 @@ export default function ProgramacaoProducaoGrade({
           linha,
           idComponente: linha.idComponente,
         });
+      const textoLongo = key === 'descricao_bobina_alternativa';
       return (
-        <span
-          role="button"
-          tabIndex={0}
-          className={`${CELL_CLICKABLE} ${PP_CELL_WRAP_CLASS}`}
+        <GradeCelulaModalBtn
           onClick={abrir}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') abrir();
-          }}
+          title={texto}
+          align="left"
+          preencherCelula={textoLongo}
         >
-          {texto}
-        </span>
+          {textoLongo ? (
+            <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug">
+              {texto}
+            </span>
+          ) : (
+            texto
+          )}
+        </GradeCelulaModalBtn>
       );
     }
     if (key === 'qtde_mp') {
@@ -346,20 +358,20 @@ export default function ProgramacaoProducaoGrade({
         );
       }
       return (
-        <button
-          type="button"
-          className={`w-full text-left text-xs truncate ${CELL_CLICKABLE}`}
+        <GradeCelulaModalBtn
+          onClick={() =>
+            onOpenModal({ tipo: 'ops_nomus', linha, idComponente: linha.idComponente })
+          }
           title={
             visualizarModais
               ? resumo
               : `${resumo}\n\nClique para selecionar OPs`
           }
-          onClick={() =>
-            onOpenModal({ tipo: 'ops_nomus', linha, idComponente: linha.idComponente })
-          }
+          align="left"
+          preencherCelula
         >
-          {resumo}
-        </button>
+          <span className="min-w-0 flex-1 truncate text-left">{resumo}</span>
+        </GradeCelulaModalBtn>
       );
     }
     if (key === 'estoque') {
@@ -368,27 +380,21 @@ export default function ProgramacaoProducaoGrade({
         return <span className="block w-full text-right tabular-nums">{formatNum(total)}</span>;
       }
       return (
-        <button
-          type="button"
-          className={`w-full text-right tabular-nums ${CELL_CLICKABLE}`}
+        <CelulaNumeroModal
+          valor={formatNum(total)}
           onClick={() =>
             onOpenModal({ tipo: 'estoque', linha, idComponente: linha.idComponente })
           }
-        >
-          {formatNum(total)}
-        </button>
+        />
       );
     }
     if (key === 'estoque_atual_bobina') {
       if (!linha.idBobina) return formatNum(linha.estoque_atual_bobina);
       return (
-        <button
-          type="button"
-          className={`w-full text-right tabular-nums ${CELL_CLICKABLE}`}
+        <CelulaNumeroModal
+          valor={formatNum(linha.estoque_atual_bobina)}
           onClick={() => onOpenModal({ tipo: 'estoque_bobina', linha })}
-        >
-          {formatNum(linha.estoque_atual_bobina)}
-        </button>
+        />
       );
     }
     if (key === 'estoque_mp_alternativa') {
@@ -409,13 +415,10 @@ export default function ProgramacaoProducaoGrade({
         return <span className="block w-full text-right tabular-nums">—</span>;
       }
       return (
-        <button
-          type="button"
-          className={`w-full text-right tabular-nums ${CELL_CLICKABLE}`}
+        <CelulaNumeroModal
+          valor={formatNum(linha.estoque_mp_alternativa)}
           onClick={() => onOpenModal({ tipo: 'estoque_mp_alternativa', linha })}
-        >
-          {formatNum(linha.estoque_mp_alternativa)}
-        </button>
+        />
       );
     }
     if (key === 'qtde_produzir') {
@@ -425,14 +428,11 @@ export default function ProgramacaoProducaoGrade({
         return <span className="block w-full text-right tabular-nums">{formatNum(sum)}</span>;
       }
       return (
-        <div className="flex items-center justify-end gap-1 w-full min-w-0">
-          <button
-            type="button"
-            className={`flex-1 min-w-0 text-right tabular-nums truncate ${CELL_CLICKABLE}`}
+        <div className="flex w-full min-w-0 items-center justify-end gap-1">
+          <CelulaNumeroModal
+            valor={formatNum(sum)}
             onClick={() => onOpenModal({ tipo: 'qtde_produzir', linha, idComponente: linha.idComponente })}
-          >
-            {formatNum(sum)}
-          </button>
+          />
           <BotaoObservacaoCelula
             hasObservacao={hasObs}
             bloqueado={false}
