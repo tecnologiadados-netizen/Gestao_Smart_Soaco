@@ -128,7 +128,7 @@ SELECT
 FROM pedido pd
 INNER JOIN itempedido ip ON ip.idPedido = pd.id
 INNER JOIN produto p ON p.id = ip.idProduto
-LEFT JOIN pessoa pe ON pe.id = pd.idPessoa
+LEFT JOIN pessoa pe ON pe.id = pd.idCliente
 LEFT JOIN pessoa vr ON vr.id = COALESCE(pd.idVendedor, pd.idRepresentante)
 LEFT JOIN (
   SELECT
