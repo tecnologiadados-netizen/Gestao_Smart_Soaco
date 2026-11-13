@@ -8,6 +8,7 @@ import {
   getEspera,
   getFormas,
   getOpcoesConfig,
+  getOrcamentos,
   getProdutos,
   getSessao,
   getVenda,
@@ -16,6 +17,7 @@ import {
   postFecharCaixa,
   postMovimento,
   postRetomar,
+  postTransformar,
   postVenda,
   putEmpresaConfig,
   putFiscal,
@@ -51,11 +53,17 @@ router.post('/caixa/fechar', (req, res, next) => {
 router.get('/vendas/espera', (req, res, next) => {
   getEspera(req, res).catch(next);
 });
+router.get('/vendas/orcamentos', (req, res, next) => {
+  getOrcamentos(req, res).catch(next);
+});
 router.post('/vendas', (req, res, next) => {
   postVenda(req, res).catch(next);
 });
 router.post('/vendas/:id/retomar', (req, res, next) => {
   postRetomar(req, res).catch(next);
+});
+router.post('/vendas/:id/transformar', (req, res, next) => {
+  postTransformar(req, res).catch(next);
 });
 router.get('/vendas/:id', (req, res, next) => {
   getVenda(req, res).catch(next);

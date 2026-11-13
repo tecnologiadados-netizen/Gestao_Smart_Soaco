@@ -1,27 +1,54 @@
 import { prisma } from '../config/prisma.js';
-import { idDe, nomusRest } from './nomusRest.js';
+import { nomusRest } from './nomusRest.js';
 import { listarFormas, precosDaTabela } from './pdvCatalogo.js';
+import { PdvErro } from './pdvErro.js';
 import { lerTributacaoPedido, saldoDisponivel } from './pdvEstoque.js';
+import {
+  criarDocumentoSaidaNomus,
+  criarPedidoNomus,
+  criarPropostaNomus,
+  destinoPermitido,
+  itensPropostaNomus,
+  normalizarDestino,
+  normalizarModoOperacao,
+  type ConfigNomusPdv,
+  type DestinoVendaPdv,
+} from './pdvNomusVenda.js';
 import { abrirPfx, type CertificadoAberto } from './fiscal/certificado.js';
 import { emitirNota, type EmitenteNota } from './fiscal/emitir.js';
 import { decifrar, decifrarTexto } from './secrets.js';
 
-export class PdvErro extends Error {
-  status: number;
-  constructor(message: string, status = 400) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function hojeBr(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
+export { PdvErro } from './pdvErro.js';
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function configNomusDe(config: {
+  idEmpresa: number;
+  idTabelaPreco: number | null;
+  idTipoMovimentacao: number | null;
+  idTipoPedido: number | null;
+  idSetorSaida: number | null;
+  idCondicaoPagamento: number | null;
+  idFormaPagamento: number | null;
+  idContaBancaria: number | null;
+  idPessoaVendedor: number | null;
+}): ConfigNomusPdv {
+  if (!config.idTabelaPreco || !config.idSetorSaida || !config.idTipoMovimentacao) {
+    throw new PdvErro('A empresa do PDV ainda não tem tabela, setor e tipo de movimentação.', 409);
+  }
+  return {
+    idEmpresa: config.idEmpresa,
+    idTabelaPreco: config.idTabelaPreco,
+    idTipoMovimentacao: config.idTipoMovimentacao,
+    idTipoPedido: config.idTipoPedido,
+    idSetorSaida: config.idSetorSaida,
+    idCondicaoPagamento: config.idCondicaoPagamento,
+    idFormaPagamento: config.idFormaPagamento,
+    idContaBancaria: config.idContaBancaria,
+    idPessoaVendedor: config.idPessoaVendedor,
+  };
 }
 
 export async function caixaAberto(usuarioId: number, idEmpresa: number) {
@@ -110,17 +137,33 @@ export async function confirmarVenda(input: {
   observacao: string;
   fiscal: 'nenhuma' | 'nfce' | 'nfe';
   espera: boolean;
+  destino?: DestinoVendaPdv | string;
 }) {
   const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa: input.idEmpresa } });
-  if (!config?.idTabelaPreco || !config.idSetorSaida || !config.idTipoMovimentacao || !config.idTipoPedido) {
-    throw new PdvErro('A empresa do PDV ainda não tem tabela, setor, tipo de movimentação e tipo de pedido.', 409);
+  if (!config?.idTabelaPreco || !config.idSetorSaida || !config.idTipoMovimentacao) {
+    throw new PdvErro('A empresa do PDV ainda não tem tabela, setor e tipo de movimentação.', 409);
+  }
+  const modo = normalizarModoOperacao(config.modoOperacao);
+  const destino = normalizarDestino(input.destino ?? (modo === 'orcamento' ? 'orcamento' : 'pedido'));
+  if (!destinoPermitido(modo, destino)) {
+    throw new PdvErro(
+      modo === 'orcamento'
+        ? 'Esta empresa está configurada só para orçamento.'
+        : 'Esta empresa está configurada só para pedido direto.',
+      409,
+    );
   }
   if (!input.itens.length) throw new PdvErro('Inclua ao menos um produto.');
-  if (!input.espera && (input.fiscal === 'nfce' || input.fiscal === 'nfe')) {
+  if (destino === 'pedido' && !config.idTipoPedido) {
+    throw new PdvErro('Configure o tipo de pedido desta empresa para emitir pedido.', 409);
+  }
+  if (!input.espera && destino === 'pedido' && (input.fiscal === 'nfce' || input.fiscal === 'nfe')) {
     await garantirCertificado(input.idEmpresa, input.fiscal);
   }
   const caixa = await caixaAberto(input.usuarioId, input.idEmpresa);
-  if (!caixa && !input.espera) throw new PdvErro('Abra o caixa para concluir a venda.', 409);
+  if (!caixa && !input.espera && destino === 'pedido') {
+    throw new PdvErro('Abra o caixa para concluir a venda.', 409);
+  }
 
   const { descontoMaximo } = await precosDaTabela(config.idTabelaPreco);
   const descontoMax = descontoMaximo > 0 ? descontoMaximo : 0;
@@ -159,20 +202,23 @@ export async function confirmarVenda(input: {
     }, 0),
   );
   const pago = round2(input.pagamentos.reduce((s, p) => s + p.valor, 0));
-  if (!input.espera && pago + 0.009 < total) throw new PdvErro('O pagamento não cobre o total da venda.');
-  const troco = round2(Math.max(0, pago - total));
+  if (!input.espera && destino === 'pedido' && pago + 0.009 < total) {
+    throw new PdvErro('O pagamento não cobre o total da venda.');
+  }
+  const troco = destino === 'pedido' ? round2(Math.max(0, pago - total)) : 0;
 
   const formas = await listarFormas().catch(() => []);
   const venda = await prisma.pdvVenda.create({
     data: {
-      caixaId: caixa?.id,
+      caixaId: caixa?.id ?? null,
       usuarioId: input.usuarioId,
       idEmpresa: input.idEmpresa,
       status: input.espera ? 'espera' : 'aberta',
       idPessoaCliente: input.idPessoaCliente,
       clienteNome: input.clienteNome,
       observacao: input.observacao,
-      fiscalTipo: input.fiscal,
+      fiscalTipo: destino === 'orcamento' ? 'nenhuma' : input.fiscal,
+      destinoNomus: destino,
       total,
       troco,
       itens: {
@@ -219,56 +265,62 @@ export async function confirmarVenda(input: {
 
   if (input.espera) return venda;
 
-  const data = hojeBr();
-  const pedidoBody = {
-    dataEmissao: data,
-    idCondicaoPagamento: config.idCondicaoPagamento,
-    idEmpresa: input.idEmpresa,
-    idFormaPagamento: input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento,
-    idPessoaCliente: idCliente,
-    idTipoMovimentacao: config.idTipoMovimentacao,
-    idTipoPedido: config.idTipoPedido,
-    observacoes: input.observacao,
-    idSetorSaida: config.idSetorSaida,
-    itensPedido: venda.itens.map((item, idx) => ({
-      idProduto: item.idProduto,
-      idSetorSaida: config.idSetorSaida,
-      idTabelaPreco: config.idTabelaPreco,
-      idTipoMovimentacao: config.idTipoMovimentacao,
-      idUnidadeMedida: item.idUnidadeMedida,
-      item: String(idx + 1),
-      percentualDesconto: String(item.descontoPercentual),
-      quantidade: String(item.quantidade),
-      status: 4,
-      valorDesconto: '0',
-      valorUnitario: String(item.valorUnitario),
-      dataEntrega: data,
-    })),
-    parcelas: [
-      {
-        dataVencimento: data,
-        geraAdiantamento: false,
-        valorParcela: total.toFixed(2).replace('.', ','),
-        idContaBancaria: config.idContaBancaria,
-        idFormaPagamento: input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento,
+  const nomusCfg = configNomusDe({ ...config, idEmpresa: input.idEmpresa });
+  const idForma = input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento;
+  const itensNomus = venda.itens.map((item) => ({
+    idProduto: item.idProduto,
+    quantidade: item.quantidade,
+    valorUnitario: item.valorUnitario,
+    descontoPercentual: item.descontoPercentual,
+    idUnidadeMedida: item.idUnidadeMedida,
+  }));
+
+  if (destino === 'orcamento') {
+    let idProposta: number | null = null;
+    try {
+      idProposta = await criarPropostaNomus({
+        config: nomusCfg,
+        idCliente: idCliente!,
+        clienteNome: input.clienteNome,
+        observacao: input.observacao,
+        itens: itensNomus,
+        idFormaPagamento: idForma,
+      });
+    } catch (err) {
+      await prisma.pdvVenda.update({
+        where: { id: venda.id },
+        data: { status: 'erro', motivoFiscal: err instanceof Error ? err.message : 'Falha ao criar proposta.' },
+      });
+      throw err instanceof PdvErro ? err : new PdvErro('Falha ao criar a proposta no Nomus.', 502);
+    }
+    return prisma.pdvVenda.update({
+      where: { id: venda.id },
+      data: {
+        status: 'orcamento',
+        concluidaEm: new Date(),
+        idPropostaNomus: idProposta,
+        destinoNomus: 'orcamento',
       },
-    ],
-  };
+      include: { itens: true, pagamentos: true },
+    });
+  }
 
   let idPedido: number | null = null;
   try {
-    const criado = await nomusRest<Record<string, unknown>>('/pedidos', {
-      method: 'POST',
-      body: JSON.stringify(pedidoBody),
-      cacheMs: 0,
+    idPedido = await criarPedidoNomus({
+      config: nomusCfg,
+      idCliente: idCliente!,
+      observacao: input.observacao,
+      total,
+      itens: itensNomus,
+      idFormaPagamento: idForma,
     });
-    idPedido = idDe(criado);
   } catch (err) {
     await prisma.pdvVenda.update({
       where: { id: venda.id },
       data: { status: 'erro', motivoFiscal: err instanceof Error ? err.message : 'Falha ao criar pedido.' },
     });
-    throw new PdvErro(err instanceof Error ? err.message : 'Falha ao criar o pedido no Nomus.', 502);
+    throw err instanceof PdvErro ? err : new PdvErro('Falha ao criar o pedido no Nomus.', 502);
   }
 
   let aliquotaMedia = 0;
@@ -289,35 +341,14 @@ export async function confirmarVenda(input: {
 
   let idDocumento: number | null = null;
   try {
-    const doc = await nomusRest<Record<string, unknown>>('/documentosSaida', {
-      method: 'POST',
-      cacheMs: 0,
-      body: JSON.stringify({
-        numero: `PDV-${venda.id}`,
-        idEmpresa: input.idEmpresa,
-        idPessoa: idCliente,
-        idTipoMovimentacao: config.idTipoMovimentacao,
-        idSetorSaida: config.idSetorSaida,
-        idTabelaPreco: config.idTabelaPreco,
-        observacoes: input.observacao,
-        idCondicaoPagamento: config.idCondicaoPagamento,
-        idFormaPagamento: input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento,
-        geraContaReceber: true,
-        idContaBancariaContaReceber: config.idContaBancaria,
-        itens: venda.itens.map((item) => ({
-          idProduto: item.idProduto,
-          idTipoMovimentacao: config.idTipoMovimentacao,
-          idUnidadeMedida: item.idUnidadeMedida,
-          idSetorSaida: config.idSetorSaida,
-          idTabelaPreco: config.idTabelaPreco,
-          quantidade: String(item.quantidade),
-          valorUnitario: String(item.valorUnitario),
-          tipoDesconto: 'percentual',
-          porcentagemDesconto: String(item.descontoPercentual),
-        })),
-      }),
+    idDocumento = await criarDocumentoSaidaNomus({
+      config: nomusCfg,
+      idCliente: idCliente!,
+      observacao: input.observacao,
+      numero: `PDV-${venda.id}`,
+      itens: itensNomus,
+      idFormaPagamento: idForma,
     });
-    idDocumento = idDe(doc);
   } catch (err) {
     await prisma.pdvVenda.update({
       where: { id: venda.id },
@@ -401,10 +432,215 @@ export async function confirmarVenda(input: {
     data: {
       status: 'concluida',
       concluidaEm: new Date(),
+      destinoNomus: 'pedido',
       idPedidoNomus: idPedido,
       idDocumentoNomus: idDocumento,
       aliquotaIpiMedia: aliquotaMedia,
       ...fiscal,
+    },
+    include: { itens: true, pagamentos: true },
+  });
+}
+
+export async function transformarOrcamento(input: {
+  usuarioId: number;
+  idEmpresa: number;
+  vendaId: number;
+  pagamentos?: PagamentoEntrada[];
+  fiscal?: 'nenhuma' | 'nfce' | 'nfe';
+  clienteDocumento?: string;
+  clienteContribuinte?: boolean;
+  clienteIe?: string;
+  clienteUf?: string;
+}) {
+  const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa: input.idEmpresa } });
+  if (!config) throw new PdvErro('Empresa do PDV sem configuração.', 409);
+  const modo = normalizarModoOperacao(config.modoOperacao);
+  if (modo !== 'ambos') {
+    throw new PdvErro('Só empresas no modo "Orçamento e pedido" transformam orçamento em pedido no PDV.', 409);
+  }
+  const venda = await prisma.pdvVenda.findFirst({
+    where: { id: input.vendaId, idEmpresa: input.idEmpresa, status: 'orcamento' },
+    include: { itens: true, pagamentos: true },
+  });
+  if (!venda?.idPropostaNomus) throw new PdvErro('Orçamento não encontrado ou sem proposta no Nomus.', 404);
+
+  const caixa = await caixaAberto(input.usuarioId, input.idEmpresa);
+  if (!caixa) throw new PdvErro('Abra o caixa para transformar o orçamento em pedido.', 409);
+
+  const idCliente = venda.idPessoaCliente || config.idPessoaConsumidor;
+  if (!idCliente) throw new PdvErro('Cadastre o cliente consumidor padrão desta empresa.', 409);
+
+  const nomusCfg = configNomusDe({ ...config, idEmpresa: input.idEmpresa });
+  if (!nomusCfg.idTipoPedido) {
+    throw new PdvErro('Configure o tipo de pedido desta empresa para transformar o orçamento.', 409);
+  }
+
+  const pagamentos =
+    input.pagamentos && input.pagamentos.length > 0
+      ? input.pagamentos
+      : venda.pagamentos.map((p) => ({ idFormaPagamento: p.idFormaPagamento, valor: p.valor }));
+  const pago = round2(pagamentos.reduce((s, p) => s + Number(p.valor), 0));
+  if (pago + 0.009 < venda.total) throw new PdvErro('O pagamento não cobre o total do orçamento.');
+  const troco = round2(Math.max(0, pago - venda.total));
+  const fiscal = input.fiscal === 'nfce' || input.fiscal === 'nfe' ? input.fiscal : 'nenhuma';
+  if (fiscal !== 'nenhuma') await garantirCertificado(input.idEmpresa, fiscal);
+
+  let itensNomus = await itensPropostaNomus(venda.idPropostaNomus);
+  if (!itensNomus.length) {
+    itensNomus = venda.itens.map((item) => ({
+      idProduto: item.idProduto,
+      quantidade: item.quantidade,
+      valorUnitario: item.valorUnitario,
+      descontoPercentual: item.descontoPercentual,
+      idUnidadeMedida: item.idUnidadeMedida,
+    }));
+  }
+
+  const idForma = pagamentos[0]?.idFormaPagamento || config.idFormaPagamento;
+  let idPedido: number | null = null;
+  try {
+    idPedido = await criarPedidoNomus({
+      config: nomusCfg,
+      idCliente,
+      observacao: venda.observacao,
+      total: venda.total,
+      itens: itensNomus,
+      idFormaPagamento: idForma,
+    });
+  } catch (err) {
+    throw err instanceof PdvErro ? err : new PdvErro('Falha ao criar o pedido a partir da proposta.', 502);
+  }
+
+  let aliquotaMedia = 0;
+  try {
+    const mapa = await lerTributacaoPedido(idPedido);
+    let soma = 0;
+    for (const item of venda.itens) {
+      const aliq = mapa.get(item.idProduto) ?? 0;
+      soma += aliq;
+      await prisma.pdvVendaItem.update({ where: { id: item.id }, data: { aliquotaIpi: aliq } });
+    }
+    aliquotaMedia = venda.itens.length ? soma / venda.itens.length : 0;
+  } catch {
+    aliquotaMedia = 0;
+  }
+
+  let idDocumento: number | null = null;
+  try {
+    idDocumento = await criarDocumentoSaidaNomus({
+      config: nomusCfg,
+      idCliente,
+      observacao: venda.observacao,
+      numero: `PDV-${venda.id}`,
+      itens: itensNomus,
+      idFormaPagamento: idForma,
+    });
+  } catch (err) {
+    await prisma.pdvVenda.update({
+      where: { id: venda.id },
+      data: {
+        status: 'erro',
+        idPedidoNomus: idPedido,
+        aliquotaIpiMedia: aliquotaMedia,
+        motivoFiscal: err instanceof Error ? err.message : 'Pedido criado, documento de saída falhou.',
+      },
+    });
+    throw new PdvErro(
+      `Pedido criado no Nomus (${idPedido}), mas o documento de saída falhou. ${err instanceof Error ? err.message : ''}`,
+      502,
+    );
+  }
+
+  const formas = await listarFormas().catch(() => []);
+  let fiscalResult = {
+    statusFiscal: '',
+    motivoFiscal: '',
+    chave: '',
+    protocolo: '',
+    xmlNota: '',
+    qrCode: '',
+  };
+  if (fiscal === 'nfce' || fiscal === 'nfe') {
+    try {
+      const itensComIpi = await prisma.pdvVendaItem.findMany({ where: { vendaId: venda.id } });
+      fiscalResult = await emitirFiscal({
+        idEmpresa: input.idEmpresa,
+        modelo: fiscal === 'nfce' ? '65' : '55',
+        clienteNome: venda.clienteNome,
+        clienteDocumento: input.clienteDocumento ?? '',
+        clienteContribuinte: Boolean(input.clienteContribuinte),
+        clienteIe: input.clienteIe ?? '',
+        clienteUf: input.clienteUf ?? '',
+        itens: itensComIpi.map((item) => ({
+          idProduto: item.idProduto,
+          codigo: item.codigo,
+          descricao: item.descricao,
+          quantidade: item.quantidade,
+          valorUnitario: item.valorUnitario,
+          descontoPercentual: item.descontoPercentual,
+          ncm: item.ncm,
+          origem: item.origem,
+          idUnidadeMedida: item.idUnidadeMedida,
+          aliquotaIpi: item.aliquotaIpi,
+        })),
+        pagamentos,
+        formas,
+      });
+    } catch (err) {
+      const motivo = err instanceof Error ? err.message : 'Falha na emissão.';
+      await prisma.pdvVenda.update({
+        where: { id: venda.id },
+        data: {
+          status: 'concluida',
+          concluidaEm: new Date(),
+          caixaId: caixa.id,
+          destinoNomus: 'pedido',
+          idPedidoNomus: idPedido,
+          idDocumentoNomus: idDocumento,
+          aliquotaIpiMedia: aliquotaMedia,
+          troco,
+          fiscalTipo: fiscal,
+          statusFiscal: 'rejeitada',
+          motivoFiscal: motivo,
+        },
+      });
+      throw new PdvErro(
+        `${motivo} Pedido e documento de saída já foram gravados no Nomus (pedido ${idPedido}).`,
+        err instanceof PdvErro ? err.status : 502,
+      );
+    }
+  }
+
+  if (pagamentos.length) {
+    await prisma.pdvVendaPagamento.deleteMany({ where: { vendaId: venda.id } });
+    await prisma.pdvVendaPagamento.createMany({
+      data: pagamentos.map((p) => ({
+        vendaId: venda.id,
+        idFormaPagamento: p.idFormaPagamento,
+        nomeForma: formas.find((f) => f.id === p.idFormaPagamento)?.nome ?? '',
+        valor: round2(p.valor),
+      })),
+    });
+  }
+
+  await prisma.pdvCaixaMovimento.create({
+    data: { caixaId: caixa.id, tipo: 'venda', valor: venda.total, observacao: `Transformação orçamento ${venda.id}` },
+  });
+
+  return prisma.pdvVenda.update({
+    where: { id: venda.id },
+    data: {
+      status: 'concluida',
+      concluidaEm: new Date(),
+      caixaId: caixa.id,
+      destinoNomus: 'pedido',
+      idPedidoNomus: idPedido,
+      idDocumentoNomus: idDocumento,
+      aliquotaIpiMedia: aliquotaMedia,
+      troco,
+      fiscalTipo: fiscal,
+      ...fiscalResult,
     },
     include: { itens: true, pagamentos: true },
   });

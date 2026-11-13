@@ -7,6 +7,8 @@ import { enviarCertificado, pdvJson } from '@pdv/pdvApi';
 type Opcao = { id: number; nome: string };
 type Empresa = Opcao & { uf: string; crt: string };
 type Usuario = { id: number; nome: string; login: string; idEmpresa: number | null };
+type ModoOperacao = 'pedido' | 'orcamento' | 'ambos';
+
 type Config = {
   idEmpresa: number;
   nomeEmpresa: string;
@@ -22,7 +24,18 @@ type Config = {
   idContaBancaria: number | null;
   idPessoaVendedor: number | null;
   ignorarEstoque: boolean;
+  modoOperacao: ModoOperacao;
 };
+
+const MODOS_OPERACAO: { id: ModoOperacao; label: string; ajuda: string }[] = [
+  { id: 'pedido', label: 'Pedido direto', ajuda: 'Gera pedido de venda e documento de saída no Nomus.' },
+  { id: 'orcamento', label: 'Só orçamento', ajuda: 'Gera proposta comercial; o fechamento fica fora do PDV.' },
+  { id: 'ambos', label: 'Orçamento e pedido', ajuda: 'Operador escolhe no balcão e pode transformar orçamento em pedido.' },
+];
+
+function rotuloModo(modo: ModoOperacao | undefined) {
+  return MODOS_OPERACAO.find((m) => m.id === modo)?.label ?? 'Pedido direto';
+}
 type Cert = {
   idEmpresa: number;
   cnpj: string;
@@ -63,6 +76,7 @@ const vazio: Omit<Config, 'idEmpresa'> = {
   idContaBancaria: null,
   idPessoaVendedor: null,
   ignorarEstoque: false,
+  modoOperacao: 'pedido',
 };
 
 function num(v: string): number | null {
@@ -141,7 +155,14 @@ export default function PdvConfigPage() {
   useEffect(() => {
     if (!aberta) return;
     if (configAtual) {
-      setForm({ ...vazio, ...configAtual });
+      setForm({
+        ...vazio,
+        ...configAtual,
+        modoOperacao:
+          configAtual.modoOperacao === 'orcamento' || configAtual.modoOperacao === 'ambos'
+            ? configAtual.modoOperacao
+            : 'pedido',
+      });
     } else if (empresaAberta) {
       setForm({ ...vazio, nomeEmpresa: empresaAberta.nome, uf: empresaAberta.uf, crt: empresaAberta.crt });
     }
@@ -302,6 +323,8 @@ export default function PdvConfigPage() {
                   {empresa.crt ? ` · CRT ${empresa.crt}` : ''}
                 </p>
                 <p className="mt-auto pt-4 text-xs text-slate-600 dark:text-slate-300">
+                  {rotuloModo(config?.modoOperacao)}
+                  {' · '}
                   {cert?.temCertificado ? 'Certificado cadastrado' : 'Sem certificado'}
                   {' · '}
                   {operadores.length === 1 ? '1 operador' : `${operadores.length} operadores`}
@@ -364,6 +387,28 @@ export default function PdvConfigPage() {
               {erro ? <p className="mb-3 text-red-700">{erro}</p> : null}
               {aba === 'venda' ? (
               <section className="grid content-start gap-2">
+                  <label className="block">
+                    Comportamento do PDV
+                    <select
+                      value={form.modoOperacao}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          modoOperacao: (['pedido', 'orcamento', 'ambos'].includes(e.target.value)
+                            ? e.target.value
+                            : 'pedido') as ModoOperacao,
+                        })
+                      }
+                      className="mt-1 w-full rounded border px-2 py-1 dark:bg-slate-900"
+                    >
+                      {MODOS_OPERACAO.map((opcao) => (
+                        <option key={opcao.id} value={opcao.id}>{opcao.label}</option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {MODOS_OPERACAO.find((m) => m.id === form.modoOperacao)?.ajuda}
+                    </span>
+                  </label>
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"

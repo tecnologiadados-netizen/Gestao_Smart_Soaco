@@ -3002,6 +3002,8 @@ model PdvEmpresaConfig {
   idContaBancaria      Int?    @map("id_conta_bancaria")
   idPessoaVendedor     Int?    @map("id_pessoa_vendedor")
   ignorarEstoque       Boolean @default(false) @map("ignorar_estoque")
+  /// pedido | orcamento | ambos
+  modoOperacao         String  @default("pedido") @map("modo_operacao")
 
   @@map("pdv_empresa_config")
 }
@@ -3065,7 +3067,10 @@ model PdvVenda {
   clienteNome      String    @default("") @map("cliente_nome")
   observacao       String    @default("")
   fiscalTipo       String    @default("nenhuma") @map("fiscal_tipo")
+  /// pedido | orcamento
+  destinoNomus     String    @default("pedido") @map("destino_nomus")
   idPedidoNomus    Int?      @map("id_pedido_nomus")
+  idPropostaNomus  Int?      @map("id_proposta_nomus")
   idDocumentoNomus Int?      @map("id_documento_nomus")
   chave            String    @default("")
   protocolo        String    @default("")

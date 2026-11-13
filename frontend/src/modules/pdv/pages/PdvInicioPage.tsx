@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { logout } from '@/api/auth';
 import { pdvJson } from '@pdv/pdvApi';
 
+type ModoOperacao = 'pedido' | 'orcamento' | 'ambos';
+type DestinoVenda = 'pedido' | 'orcamento';
+
 type Sessao = {
   operador: string;
   podeConfigurar: boolean;
@@ -12,6 +15,7 @@ type Sessao = {
   crt: string;
   configurado: boolean;
   ignorarEstoque: boolean;
+  modoOperacao: ModoOperacao;
   certificado: {
     cnpj: string;
     titular: string;
@@ -48,7 +52,9 @@ type VendaResposta = {
   total: number;
   troco: number;
   status: string;
+  destinoNomus?: DestinoVenda | string;
   idPedidoNomus: number | null;
+  idPropostaNomus?: number | null;
   idDocumentoNomus: number | null;
   aliquotaIpiMedia: number;
   chave: string;
@@ -101,10 +107,13 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [ie, setIe] = useState('');
   const [ufCliente, setUfCliente] = useState('');
   const [fiscal, setFiscal] = useState<'nenhuma' | 'nfce' | 'nfe'>('nenhuma');
+  const [destino, setDestino] = useState<DestinoVenda>('pedido');
   const [enviando, setEnviando] = useState(false);
   const [comprovante, setComprovante] = useState<VendaResposta | null>(null);
   const [esperas, setEsperas] = useState<VendaResposta[]>([]);
+  const [orcamentos, setOrcamentos] = useState<VendaResposta[]>([]);
   const [painelEspera, setPainelEspera] = useState(false);
+  const [painelOrcamentos, setPainelOrcamentos] = useState(false);
   const [fundo, setFundo] = useState('0');
   const [movimentoValor, setMovimentoValor] = useState('');
   const [movimentoTipo, setMovimentoTipo] = useState<'suprimento' | 'sangria'>('suprimento');
@@ -233,8 +242,16 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     );
   }
 
+  const modo = sessao?.modoOperacao === 'orcamento' || sessao?.modoOperacao === 'ambos' ? sessao.modoOperacao : 'pedido';
+  const destinoEfetivo: DestinoVenda = modo === 'orcamento' ? 'orcamento' : modo === 'pedido' ? 'pedido' : destino;
+
+  useEffect(() => {
+    if (modo === 'orcamento') setDestino('orcamento');
+    else if (modo === 'pedido') setDestino('pedido');
+  }, [modo]);
+
   const confirmar = useCallback(
-    async (espera: boolean) => {
+    async (espera: boolean, destinoEscolhido: DestinoVenda = destinoEfetivo) => {
       if (!carrinho.length) {
         setAviso('Inclua ao menos um produto.');
         return;
@@ -246,7 +263,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           method: 'POST',
           body: {
             espera,
-            fiscal: espera ? 'nenhuma' : fiscal,
+            destino: destinoEscolhido,
+            fiscal: espera || destinoEscolhido === 'orcamento' ? 'nenhuma' : fiscal,
             itens: carrinho.map((item) => ({
               idProduto: item.id,
               codigo: item.codigo,
@@ -258,7 +276,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               origem: item.origem,
               idUnidadeMedida: item.idUnidadeMedida,
             })),
-            pagamentos: espera ? [] : pagamentos.filter((p) => p.valor > 0 && p.idFormaPagamento),
+            pagamentos:
+              espera || destinoEscolhido === 'orcamento'
+                ? []
+                : pagamentos.filter((p) => p.valor > 0 && p.idFormaPagamento),
             idPessoaCliente: cliente?.id ?? null,
             clienteNome: cliente?.nome ?? '',
             clienteDocumento: documento,
@@ -281,7 +302,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         setEnviando(false);
       }
     },
-    [carrinho, cliente, contribuinte, documento, fiscal, ie, pagamentos, recarregarSessao, ufCliente],
+    [carrinho, cliente, contribuinte, destinoEfetivo, documento, fiscal, ie, pagamentos, recarregarSessao, ufCliente],
   );
 
   useEffect(() => {
@@ -345,6 +366,41 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       setEsperas(data.vendas);
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'Falha ao listar vendas em espera.');
+    }
+  }
+
+  async function abrirOrcamentos() {
+    setPainelOrcamentos(true);
+    try {
+      const data = await pdvJson<{ vendas: VendaResposta[] }>('/api/pdv/vendas/orcamentos');
+      setOrcamentos(data.vendas);
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'Falha ao listar orçamentos.');
+    }
+  }
+
+  async function transformar(id: number) {
+    setEnviando(true);
+    setAviso('');
+    try {
+      const venda = await pdvJson<VendaResposta>(`/api/pdv/vendas/${id}/transformar`, {
+        method: 'POST',
+        body: {
+          fiscal,
+          pagamentos: pagamentos.filter((p) => p.valor > 0 && p.idFormaPagamento),
+          clienteDocumento: documento,
+          clienteContribuinte: contribuinte,
+          clienteIe: ie,
+          clienteUf: ufCliente,
+        },
+      });
+      setPainelOrcamentos(false);
+      setComprovante(venda);
+      recarregarSessao();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'Não foi possível transformar o orçamento.');
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -426,6 +482,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               {sessao.operador}
               {sessao.uf ? ` · ${sessao.uf}` : ''}
               {sessao.caixa ? ' · Caixa aberto' : ' · Caixa fechado'}
+              {modo === 'orcamento' ? ' · só orçamento' : modo === 'ambos' ? ' · orçamento e pedido' : ' · pedido direto'}
               {sessao.ignorarEstoque ? ' · sem checagem de estoque' : ''}
             </p>
           </div>
@@ -440,6 +497,11 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           <button type="button" onClick={() => void abrirEsperas()} className={botaoContorno}>
             Em espera
           </button>
+          {modo === 'ambos' ? (
+            <button type="button" onClick={() => void abrirOrcamentos()} className={botaoContorno}>
+              Orçamentos
+            </button>
+          ) : null}
           {sessao.podeConfigurar ? (
             <Link to="/pdv/configuracao" className={botaoContorno}>
               Configuração
@@ -487,9 +549,13 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         </section>
       ) : null}
 
-      {!sessao.caixa && !painelCaixa ? (
+      {!sessao.caixa && !painelCaixa && modo !== 'orcamento' ? (
         <section className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#FFAD00]/30 bg-[var(--pdv-field)] px-3 py-2 text-sm">
-          <span className="text-xs text-[var(--pdv-muted)]">Caixa fechado. Informe o fundo para vender.</span>
+          <span className="text-xs text-[var(--pdv-muted)]">
+            {modo === 'ambos'
+              ? 'Caixa fechado. Orçamento pode ser gerado; pedido e transformação exigem caixa aberto.'
+              : 'Caixa fechado. Informe o fundo para vender.'}
+          </span>
           <input value={fundo} onChange={(e) => setFundo(e.target.value)} placeholder="Fundo" className={`${campo} w-28`} />
           <button type="button" onClick={() => void abrirCaixa()} className="rounded-lg bg-[#1E22AA] px-3 py-2 text-sm font-medium text-white">
             Abrir caixa
@@ -660,31 +726,72 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               </div>
             ) : null}
 
-            <fieldset className="flex flex-wrap gap-3 text-xs text-[var(--pdv-muted)]">
-              <label className="flex items-center gap-1.5">
-                <input type="radio" checked={fiscal === 'nenhuma'} onChange={() => setFiscal('nenhuma')} /> Sem nota
-              </label>
-              <label className="flex items-center gap-1.5" title={certOk && sessao.certificado?.temCsc ? '' : 'Cadastre certificado e CSC'}>
-                <input type="radio" checked={fiscal === 'nfce'} onChange={() => setFiscal('nfce')} disabled={!certOk || !sessao.certificado?.temCsc} /> NFC-e
-              </label>
-              <label className="flex items-center gap-1.5" title={certOk ? '' : 'Cadastre o certificado'}>
-                <input type="radio" checked={fiscal === 'nfe'} onChange={() => setFiscal('nfe')} disabled={!certOk} /> NF-e
-              </label>
-            </fieldset>
+            {destinoEfetivo === 'pedido' ? (
+              <fieldset className="flex flex-wrap gap-3 text-xs text-[var(--pdv-muted)]">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={fiscal === 'nenhuma'} onChange={() => setFiscal('nenhuma')} /> Sem nota
+                </label>
+                <label className="flex items-center gap-1.5" title={certOk && sessao.certificado?.temCsc ? '' : 'Cadastre certificado e CSC'}>
+                  <input type="radio" checked={fiscal === 'nfce'} onChange={() => setFiscal('nfce')} disabled={!certOk || !sessao.certificado?.temCsc} /> NFC-e
+                </label>
+                <label className="flex items-center gap-1.5" title={certOk ? '' : 'Cadastre o certificado'}>
+                  <input type="radio" checked={fiscal === 'nfe'} onChange={() => setFiscal('nfe')} disabled={!certOk} /> NF-e
+                </label>
+              </fieldset>
+            ) : (
+              <p className="text-xs text-[var(--pdv-muted)]">Orçamento gera proposta no Nomus; nota fiscal só na transformação/pedido.</p>
+            )}
+
+            {modo === 'ambos' ? (
+              <fieldset className="flex flex-wrap gap-3 text-xs text-[var(--pdv-muted)]">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={destino === 'orcamento'} onChange={() => setDestino('orcamento')} /> Orçamento
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={destino === 'pedido'} onChange={() => setDestino('pedido')} /> Pedido
+                </label>
+              </fieldset>
+            ) : null}
 
             <div className="flex gap-2">
               <button type="button" disabled={enviando || carrinho.length === 0} onClick={() => void confirmar(true)} className={`${botaoContorno} disabled:opacity-40`}>
                 Espera
               </button>
-              <button
-                type="button"
-                disabled={enviando || !sessao.caixa || carrinho.length === 0}
-                onClick={() => void confirmar(false)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                {enviando ? 'Gravando…' : 'Confirmar'}
-                <span aria-hidden>→</span>
-              </button>
+              {modo === 'ambos' ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={enviando || carrinho.length === 0}
+                    onClick={() => void confirmar(false, 'orcamento')}
+                    className={`${botaoContorno} flex-1 disabled:opacity-40`}
+                  >
+                    {enviando ? 'Gravando…' : 'Gerar orçamento'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={enviando || !sessao.caixa || carrinho.length === 0}
+                    onClick={() => void confirmar(false, 'pedido')}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    {enviando ? 'Gravando…' : 'Confirmar pedido'}
+                    <span aria-hidden>→</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={
+                    enviando ||
+                    carrinho.length === 0 ||
+                    (destinoEfetivo === 'pedido' && !sessao.caixa)
+                  }
+                  onClick={() => void confirmar(false, destinoEfetivo)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  {enviando ? 'Gravando…' : destinoEfetivo === 'orcamento' ? 'Gerar orçamento' : 'Confirmar'}
+                  <span aria-hidden>→</span>
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -710,20 +817,60 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         </div>
       ) : null}
 
+      {painelOrcamentos ? (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-4 text-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <strong>Orçamentos para transformar</strong>
+              <button type="button" onClick={() => setPainelOrcamentos(false)} className={botaoContorno}>Fechar</button>
+            </div>
+            <p className="mb-2 text-xs text-[var(--pdv-muted)]">
+              Informe o pagamento no painel lateral e abra o caixa antes de transformar em pedido.
+            </p>
+            {orcamentos.length === 0 ? <p className="text-[var(--pdv-faint)]">Nenhum orçamento pendente.</p> : null}
+            <ul>
+              {orcamentos.map((v) => (
+                <li key={v.id} className="flex items-center justify-between gap-3 border-t border-[var(--pdv-line)] py-2">
+                  <span>
+                    #{v.id} · proposta {v.idPropostaNomus ?? '—'} · {brl(v.total)} · {v.clienteNome || 'Consumidor'}
+                  </span>
+                  <button
+                    type="button"
+                    className={botaoContorno}
+                    disabled={enviando || !sessao.caixa}
+                    onClick={() => void transformar(v.id)}
+                  >
+                    Transformar
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
       {comprovante ? (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-4 print:static print:bg-white print:p-0">
           <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-5 text-sm print:max-h-none print:border-0 print:bg-white print:text-black">
             <div className="mb-3 flex items-start justify-between gap-3">
               <strong>
-                {comprovante.qrCode
-                  ? `Cupom NFC-e da venda ${comprovante.id}`
-                  : comprovante.chave
-                    ? `DANFE da venda ${comprovante.id}`
-                    : `Comprovante da venda ${comprovante.id}`}
+                {comprovante.status === 'orcamento'
+                  ? `Orçamento ${comprovante.id}`
+                  : comprovante.qrCode
+                    ? `Cupom NFC-e da venda ${comprovante.id}`
+                    : comprovante.chave
+                      ? `DANFE da venda ${comprovante.id}`
+                      : `Comprovante da venda ${comprovante.id}`}
               </strong>
               <button type="button" onClick={() => window.print()} className={`${botaoContorno} print:hidden`}>Imprimir</button>
             </div>
-            <p>Pedido Nomus: {comprovante.idPedidoNomus ?? '—'} · Documento: {comprovante.idDocumentoNomus ?? '—'}</p>
+            <p>
+              Proposta Nomus: {comprovante.idPropostaNomus ?? '—'}
+              {' · '}
+              Pedido Nomus: {comprovante.idPedidoNomus ?? '—'}
+              {' · '}
+              Documento: {comprovante.idDocumentoNomus ?? '—'}
+            </p>
             <p>IPI médio lido do Nomus: {comprovante.aliquotaIpiMedia}%</p>
             <ul className="my-3 space-y-1">
               {comprovante.itens.map((item, i) => (

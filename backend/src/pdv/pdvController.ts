@@ -24,7 +24,9 @@ import {
   movimentarCaixa,
   PdvErro,
   retomarEspera,
+  transformarOrcamento,
 } from './pdvOperacao.js';
+import { normalizarModoOperacao } from './pdvNomusVenda.js';
 import { cifrar } from './secrets.js';
 
 export const uploadPfx = multer({
@@ -68,6 +70,7 @@ export async function getSessao(req: Request, res: Response): Promise<void> {
       crt: config?.crt ?? '',
       configurado: Boolean(config?.idTabelaPreco && config?.idSetorSaida),
       ignorarEstoque: Boolean(config?.ignorarEstoque),
+      modoOperacao: normalizarModoOperacao(config?.modoOperacao),
       certificado: cert
         ? {
             cnpj: cert.cnpj,
@@ -165,6 +168,45 @@ export async function getEspera(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function getOrcamentos(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const vendas = await prisma.pdvVenda.findMany({
+      where: { idEmpresa, status: 'orcamento' },
+      include: { itens: true, pagamentos: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json({ vendas });
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function postTransformar(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const fiscalRaw = String(req.body?.fiscal ?? 'nenhuma');
+    const fiscal = fiscalRaw === 'nfce' || fiscalRaw === 'nfe' ? fiscalRaw : 'nenhuma';
+    const venda = await transformarOrcamento({
+      usuarioId: ctx.usuarioId,
+      idEmpresa,
+      vendaId: Number(req.params.id),
+      pagamentos: Array.isArray(req.body?.pagamentos) ? req.body.pagamentos : undefined,
+      fiscal,
+      clienteDocumento: String(req.body?.clienteDocumento ?? ''),
+      clienteContribuinte: Boolean(req.body?.clienteContribuinte),
+      clienteIe: String(req.body?.clienteIe ?? ''),
+      clienteUf: String(req.body?.clienteUf ?? ''),
+    });
+    res.json(venda);
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
 export async function postVenda(req: Request, res: Response): Promise<void> {
   try {
     const ctx = await contextoPdv(req);
@@ -185,6 +227,7 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
       observacao: String(req.body?.observacao ?? ''),
       fiscal,
       espera: Boolean(req.body?.espera),
+      destino: req.body?.destino,
     });
     res.json(venda);
   } catch (err) {
@@ -304,6 +347,7 @@ export async function putEmpresaConfig(req: Request, res: Response): Promise<voi
       const n = Number(v);
       return Number.isFinite(n) && n > 0 ? n : null;
     };
+    const modoOperacao = normalizarModoOperacao(body.modoOperacao);
     const config = await prisma.pdvEmpresaConfig.upsert({
       where: { idEmpresa },
       create: {
@@ -321,6 +365,7 @@ export async function putEmpresaConfig(req: Request, res: Response): Promise<voi
         idContaBancaria: num(body.idContaBancaria),
         idPessoaVendedor: num(body.idPessoaVendedor),
         ignorarEstoque: Boolean(body.ignorarEstoque),
+        modoOperacao,
       },
       update: {
         nomeEmpresa: String(body.nomeEmpresa ?? ''),
@@ -336,6 +381,7 @@ export async function putEmpresaConfig(req: Request, res: Response): Promise<voi
         idContaBancaria: num(body.idContaBancaria),
         idPessoaVendedor: num(body.idPessoaVendedor),
         ignorarEstoque: Boolean(body.ignorarEstoque),
+        modoOperacao,
       },
     });
     res.json(config);
