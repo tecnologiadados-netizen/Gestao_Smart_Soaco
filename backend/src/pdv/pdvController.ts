@@ -7,6 +7,7 @@ import { abrirPfx } from './fiscal/certificado.js';
 import {
   buscarClientes,
   consultarCadastro,
+  criarCliente,
   buscarProdutos,
   listarCondicoes,
   listarEmpresas,
@@ -105,7 +106,46 @@ export async function getProdutos(req: Request, res: Response): Promise<void> {
 export async function getClientes(req: Request, res: Response): Promise<void> {
   try {
     await contextoPdv(req);
-    res.json({ clientes: await buscarClientes(String(req.query.q ?? '')) });
+    const lista = await buscarClientes(String(req.query.q ?? ''));
+    res.json({
+      clientes: lista.map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        cpf: String(c.extra?.cpf ?? ''),
+        cnpj: String(c.extra?.cnpj ?? ''),
+      })),
+    });
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function postCliente(req: Request, res: Response): Promise<void> {
+  try {
+    await contextoPdv(req);
+    const body = req.body ?? {};
+    const tipoPessoa = Number(body.tipoPessoa) === 1 ? 1 : 2;
+    const tipoContribuinteICMS = [1, 2, 3].includes(Number(body.tipoContribuinteICMS))
+      ? (Number(body.tipoContribuinteICMS) as 1 | 2 | 3)
+      : 3;
+    const cliente = await criarCliente({
+      tipoPessoa,
+      nome: String(body.nome ?? ''),
+      razaoSocial: String(body.razaoSocial ?? ''),
+      cpf: String(body.cpf ?? ''),
+      cnpj: String(body.cnpj ?? ''),
+      tipoContribuinteICMS,
+      inscricaoEstadual: String(body.inscricaoEstadual ?? ''),
+      email: String(body.email ?? ''),
+      telefone: String(body.telefone ?? ''),
+      cep: String(body.cep ?? ''),
+      endereco: String(body.endereco ?? ''),
+      numero: String(body.numero ?? ''),
+      bairro: String(body.bairro ?? ''),
+      municipio: String(body.municipio ?? ''),
+      uf: String(body.uf ?? ''),
+    });
+    res.status(201).json({ cliente: { id: cliente.id, nome: cliente.nome } });
   } catch (err) {
     res.status(statusDe(err)).json({ error: mensagem(err) });
   }

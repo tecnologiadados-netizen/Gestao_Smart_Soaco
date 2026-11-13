@@ -14,6 +14,7 @@ import {
   getVenda,
   postAbrirCaixa,
   postCertificado,
+  postCliente,
   postFecharCaixa,
   postMovimento,
   postRetomar,
@@ -37,6 +38,9 @@ router.get('/produtos', (req, res, next) => {
 });
 router.get('/clientes', (req, res, next) => {
   getClientes(req, res).catch(next);
+});
+router.post('/clientes', (req, res, next) => {
+  postCliente(req, res).catch(next);
 });
 router.get('/formas', (req, res, next) => {
   getFormas(req, res).catch(next);

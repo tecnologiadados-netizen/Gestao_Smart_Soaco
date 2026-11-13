@@ -44,7 +44,41 @@ type Produto = {
 type ItemCarrinho = Produto & { quantidade: number; descontoPercentual: number };
 
 type Forma = { id: number; nome: string };
-type Cliente = { id: number; nome: string };
+type Cliente = { id: number; nome: string; cpf?: string; cnpj?: string };
+
+type FormClienteNovo = {
+  tipoPessoa: 1 | 2;
+  nome: string;
+  razaoSocial: string;
+  documento: string;
+  tipoContribuinteICMS: 1 | 2 | 3;
+  inscricaoEstadual: string;
+  telefone: string;
+  email: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+};
+
+const formClienteVazio: FormClienteNovo = {
+  tipoPessoa: 2,
+  nome: '',
+  razaoSocial: '',
+  documento: '',
+  tipoContribuinteICMS: 3,
+  inscricaoEstadual: '',
+  telefone: '',
+  email: '',
+  cep: '',
+  endereco: '',
+  numero: '',
+  bairro: '',
+  municipio: '',
+  uf: '',
+};
 type Pagamento = { idFormaPagamento: number; valor: number };
 
 type VendaResposta = {
@@ -121,8 +155,64 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [movimentoTipo, setMovimentoTipo] = useState<'suprimento' | 'sangria'>('suprimento');
   const [painelCaixa, setPainelCaixa] = useState(false);
   const [mostrarCliente, setMostrarCliente] = useState(false);
+  const [modalCliente, setModalCliente] = useState(false);
+  const [formCliente, setFormCliente] = useState<FormClienteNovo>(formClienteVazio);
+  const [salvandoCliente, setSalvandoCliente] = useState(false);
   const [claro, setClaro] = useState(() => localStorage.getItem('pdv_tema') === 'claro');
   const tema = claro ? 'pdv-shell pdv-claro' : 'pdv-shell';
+
+  function selecionarCliente(c: Cliente) {
+    setCliente(c);
+    setClienteBusca(c.nome);
+    setClientes([]);
+    setMostrarCliente(true);
+    const doc = (c.cpf || c.cnpj || '').trim();
+    if (doc) setDocumento(doc);
+  }
+
+  async function salvarClienteNovo() {
+    if (!formCliente.nome.trim()) {
+      setAviso('Informe o nome do cliente.');
+      return;
+    }
+    if (!formCliente.documento.trim()) {
+      setAviso(formCliente.tipoPessoa === 1 ? 'Informe o CNPJ.' : 'Informe o CPF.');
+      return;
+    }
+    setSalvandoCliente(true);
+    setAviso('');
+    try {
+      const body = {
+        tipoPessoa: formCliente.tipoPessoa,
+        nome: formCliente.nome.trim(),
+        razaoSocial: (formCliente.razaoSocial || formCliente.nome).trim(),
+        cpf: formCliente.tipoPessoa === 2 ? formCliente.documento.trim() : '',
+        cnpj: formCliente.tipoPessoa === 1 ? formCliente.documento.trim() : '',
+        tipoContribuinteICMS: formCliente.tipoContribuinteICMS,
+        inscricaoEstadual: formCliente.inscricaoEstadual.trim(),
+        telefone: formCliente.telefone.trim(),
+        email: formCliente.email.trim(),
+        cep: formCliente.cep.trim(),
+        endereco: formCliente.endereco.trim(),
+        numero: formCliente.numero.trim(),
+        bairro: formCliente.bairro.trim(),
+        municipio: formCliente.municipio.trim(),
+        uf: formCliente.uf.trim().toUpperCase(),
+      };
+      const data = await pdvJson<{ cliente: Cliente }>('/api/pdv/clientes', { method: 'POST', body });
+      selecionarCliente(data.cliente);
+      setDocumento(formCliente.documento.trim());
+      setContribuinte(formCliente.tipoContribuinteICMS === 1);
+      setIe(formCliente.inscricaoEstadual.trim());
+      setUfCliente(formCliente.uf.trim().toUpperCase());
+      setModalCliente(false);
+      setFormCliente(formClienteVazio);
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'Não foi possível cadastrar o cliente.');
+    } finally {
+      setSalvandoCliente(false);
+    }
+  }
 
   function alternarTema() {
     setClaro((atual) => {
@@ -579,13 +669,63 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
       <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_24rem]">
         <section className="flex min-h-0 flex-col gap-4 overflow-hidden p-5">
-          <input
-            ref={buscaRef}
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por código, GTIN ou nome (ex.: SM 00852)."
-            className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-3 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
-          />
+          <div className="flex flex-col gap-2">
+            <input
+              ref={buscaRef}
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por código, GTIN ou nome (ex.: SM 00852)."
+              className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-3 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
+            />
+            <div className="relative">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={clienteRef}
+                  value={clienteBusca}
+                  onChange={(e) => {
+                    setClienteBusca(e.target.value);
+                    setMostrarCliente(true);
+                    if (cliente && e.target.value !== cliente.nome) setCliente(null);
+                  }}
+                  onFocus={() => setMostrarCliente(true)}
+                  placeholder="Cliente cadastrado (F4) — nome, CPF ou CNPJ"
+                  className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-2.5 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
+                />
+                {cliente ? (
+                  <button
+                    type="button"
+                    className={botaoContorno}
+                    title="Limpar cliente"
+                    onClick={() => {
+                      setCliente(null);
+                      setClienteBusca('');
+                      setDocumento('');
+                    }}
+                  >
+                    Limpar
+                  </button>
+                ) : null}
+              </div>
+              {mostrarCliente && clientes.length > 0 ? (
+                <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] text-sm shadow-lg">
+                  {clientes.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover:bg-[var(--pdv-hover)]"
+                        onClick={() => selecionarCliente(c)}
+                      >
+                        {c.nome}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {cliente ? (
+                <p className="mt-1 text-xs text-[var(--pdv-muted)]">Selecionado: {cliente.nome}</p>
+              ) : null}
+            </div>
+          </div>
           <div className="grid min-h-0 flex-1 content-start gap-3 overflow-auto sm:grid-cols-2 xl:grid-cols-3">
             {carregandoBusca ? <p className="text-sm text-[var(--pdv-faint)]">Buscando…</p> : null}
             {!carregandoBusca && produtos.length === 0 ? (
@@ -643,9 +783,28 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         </section>
 
         <aside className="flex min-h-0 flex-col overflow-hidden border-t border-[var(--pdv-line)] bg-[var(--pdv-panel)] lg:border-l lg:border-t-0">
-          <div className="flex items-center justify-between px-5 pb-2 pt-5">
+          <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-5">
             <h2 className="text-lg font-semibold">Carrinho</h2>
-            <span className="text-xs text-[var(--pdv-faint)]">{carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--pdv-faint)]">{carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}</span>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--pdv-line)] text-[var(--pdv-text)] hover:border-[#FFAD00]/70"
+                title="Cadastrar cliente"
+                aria-label="Cadastrar cliente"
+                onClick={() => {
+                  setFormCliente(formClienteVazio);
+                  setModalCliente(true);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <line x1="19" y1="8" x2="19" y2="14" />
+                  <line x1="22" y1="11" x2="16" y2="11" />
+                </svg>
+              </button>
+            </div>
           </div>
           <ul className="min-h-0 flex-1 space-y-2 overflow-auto px-5 py-2">
             {carrinho.length === 0 ? <li className="py-8 text-center text-sm text-[var(--pdv-faint)]">Toque em um produto para incluir.</li> : null}
@@ -669,13 +828,22 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--pdv-faint)]">
                     Desconto até {item.descontoMaximo}%
                     <input
-                      type="number"
-                      min={0}
-                      max={item.descontoMaximo}
-                      value={item.descontoPercentual}
+                      type="text"
+                      inputMode="decimal"
+                      value={item.descontoPercentual === 0 ? '' : String(item.descontoPercentual)}
+                      placeholder="0"
                       onChange={(e) => {
-                        const desc = Math.min(Math.max(Number(e.target.value) || 0, 0), item.descontoMaximo);
-                        setCarrinho((atual) => atual.map((row, i) => (i === index ? { ...row, descontoPercentual: desc } : row)));
+                        const raw = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
+                        if (raw === '' || raw === '.') {
+                          setCarrinho((atual) =>
+                            atual.map((row, i) => (i === index ? { ...row, descontoPercentual: 0 } : row)),
+                          );
+                          return;
+                        }
+                        const desc = Math.min(Math.max(Number(raw) || 0, 0), item.descontoMaximo);
+                        setCarrinho((atual) =>
+                          atual.map((row, i) => (i === index ? { ...row, descontoPercentual: desc } : row)),
+                        );
                       }}
                       className={`${campo} w-16 py-1`}
                     />
@@ -727,29 +895,27 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               <input ref={pagamentoRef} className="sr-only" tabIndex={-1} readOnly aria-hidden value="" />
             )}
 
-            <button type="button" onClick={() => setMostrarCliente((v) => !v)} className="text-left text-xs text-[var(--pdv-faint)] underline-offset-2 hover:text-[var(--pdv-text)]">
-              {cliente ? cliente.nome : 'Cliente (F4)'}
-            </button>
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setMostrarCliente((v) => !v)}
+                className="text-left text-xs text-[var(--pdv-faint)] underline-offset-2 hover:text-[var(--pdv-text)]"
+              >
+                {cliente ? `Cliente: ${cliente.nome}` : 'Dados fiscais do cliente'}
+              </button>
+              <button
+                type="button"
+                className="text-xs text-[#1E22AA] underline-offset-2 hover:underline"
+                onClick={() => {
+                  setFormCliente(formClienteVazio);
+                  setModalCliente(true);
+                }}
+              >
+                Novo
+              </button>
+            </div>
             {clienteAberto ? (
               <div className="space-y-2">
-                <input
-                  ref={clienteRef}
-                  value={clienteBusca}
-                  onChange={(e) => setClienteBusca(e.target.value)}
-                  placeholder="Buscar cliente"
-                  className={`${campo} w-full`}
-                />
-                {clientes.length > 0 ? (
-                  <ul className="max-h-24 overflow-auto rounded-lg border border-[var(--pdv-line)] text-xs">
-                    {clientes.map((c) => (
-                      <li key={c.id}>
-                        <button type="button" className="w-full px-2 py-1.5 text-left hover:bg-[var(--pdv-hover)]" onClick={() => { setCliente(c); setClientes([]); setClienteBusca(c.nome); }}>
-                          {c.nome}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
                 <input value={documento} onChange={(e) => setDocumento(e.target.value)} placeholder="CPF ou CNPJ" className={`${campo} w-full`} />
                 <label className="flex items-center gap-2 text-xs text-[var(--pdv-muted)]">
                   <input type="checkbox" checked={contribuinte} onChange={(e) => setContribuinte(e.target.checked)} />
@@ -881,6 +1047,175 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      ) : null}
+
+      {modalCliente ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4" onClick={() => !salvandoCliente && setModalCliente(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdv-cliente-titulo"
+            className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-5 text-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="pdv-cliente-titulo" className="text-base font-semibold">Cadastrar cliente</h3>
+                <p className="mt-1 text-xs text-[var(--pdv-muted)]">
+                  Obrigatórios: nome, CPF/CNPJ e tipo de contribuinte ICMS. Demais campos são opcionais.
+                </p>
+              </div>
+              <button type="button" className={botaoContorno} disabled={salvandoCliente} onClick={() => setModalCliente(false)}>
+                Fechar
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                Tipo de pessoa
+                <select
+                  value={formCliente.tipoPessoa}
+                  onChange={(e) =>
+                    setFormCliente((f) => ({ ...f, tipoPessoa: Number(e.target.value) === 1 ? 1 : 2 }))
+                  }
+                  className={`${campo} mt-1 w-full`}
+                >
+                  <option value={2}>Pessoa física</option>
+                  <option value={1}>Pessoa jurídica</option>
+                </select>
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                Nome *
+                <input
+                  value={formCliente.nome}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, nome: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                Razão social
+                <input
+                  value={formCliente.razaoSocial}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, razaoSocial: e.target.value }))}
+                  placeholder="Se vazio, usa o nome"
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                {formCliente.tipoPessoa === 1 ? 'CNPJ *' : 'CPF *'}
+                <input
+                  value={formCliente.documento}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, documento: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                Contribuinte ICMS *
+                <select
+                  value={formCliente.tipoContribuinteICMS}
+                  onChange={(e) =>
+                    setFormCliente((f) => ({
+                      ...f,
+                      tipoContribuinteICMS: ([1, 2, 3].includes(Number(e.target.value))
+                        ? Number(e.target.value)
+                        : 3) as 1 | 2 | 3,
+                    }))
+                  }
+                  className={`${campo} mt-1 w-full`}
+                >
+                  <option value={3}>Não contribuinte</option>
+                  <option value={1}>Contribuinte</option>
+                  <option value={2}>Isento</option>
+                </select>
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                IE
+                <input
+                  value={formCliente.inscricaoEstadual}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, inscricaoEstadual: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                Telefone
+                <input
+                  value={formCliente.telefone}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, telefone: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                E-mail
+                <input
+                  value={formCliente.email}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, email: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                CEP
+                <input
+                  value={formCliente.cep}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, cep: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                UF
+                <input
+                  value={formCliente.uf}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, uf: e.target.value.toUpperCase() }))}
+                  maxLength={2}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                Endereço
+                <input
+                  value={formCliente.endereco}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, endereco: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                Número
+                <input
+                  value={formCliente.numero}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, numero: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)]">
+                Bairro
+                <input
+                  value={formCliente.bairro}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, bairro: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+              <label className="block text-xs text-[var(--pdv-muted)] sm:col-span-2">
+                Município
+                <input
+                  value={formCliente.municipio}
+                  onChange={(e) => setFormCliente((f) => ({ ...f, municipio: e.target.value }))}
+                  className={`${campo} mt-1 w-full`}
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className={botaoContorno} disabled={salvandoCliente} onClick={() => setModalCliente(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={salvandoCliente}
+                onClick={() => void salvarClienteNovo()}
+                className="rounded-xl bg-[#1E22AA] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {salvandoCliente ? 'Salvando…' : 'Salvar no Nomus'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

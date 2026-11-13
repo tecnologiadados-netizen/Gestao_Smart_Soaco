@@ -227,15 +227,92 @@ export async function buscarProdutos(
 
 export async function buscarClientes(q: string): Promise<NomusRef[]> {
   const termo = q.trim();
-  const path = termo
-    ? `/clientes?query=${encodeURIComponent(`nome==*${termo}*`)}&pagina=1&tamanhoPagina=20`
+  const tokens = termo.split(/[\s/\\|_-]+/).filter((t) => t.trim().length >= 1);
+  const principal = [...tokens].sort((a, b) => b.length - a.length)[0];
+  const path = principal
+    ? `/clientes?query=${encodeURIComponent(`nome==*${principal}*,razaoSocial==*${principal}*,cpf==*${principal}*,cnpj==*${principal}*`)}&pagina=1&tamanhoPagina=20`
     : '/clientes?pagina=1&tamanhoPagina=20';
   try {
-    return refs(await nomusRest(path, { cacheMs: 0 })).slice(0, 20);
+    const lista = refs(await nomusRest(path, { cacheMs: 0 }));
+    if (!termo) return lista.slice(0, 20);
+    const match = criarMatcherTextoLivre(termo);
+    return lista.filter((c) => match(c.nome) || match(String(c.extra?.cpf ?? '')) || match(String(c.extra?.cnpj ?? ''))).slice(0, 20);
   } catch {
     const all = refs(await nomusRest('/clientes?pagina=1&tamanhoPagina=50'));
-    const needle = termo.toLowerCase();
-    return all.filter((c) => !needle || c.nome.toLowerCase().includes(needle)).slice(0, 20);
+    if (!termo) return all.slice(0, 20);
+    const match = criarMatcherTextoLivre(termo);
+    return all.filter((c) => match(c.nome)).slice(0, 20);
+  }
+}
+
+export type CadastroClientePdv = {
+  tipoPessoa: 1 | 2;
+  nome: string;
+  razaoSocial?: string;
+  cpf?: string;
+  cnpj?: string;
+  tipoContribuinteICMS: 1 | 2 | 3;
+  inscricaoEstadual?: string;
+  email?: string;
+  telefone?: string;
+  cep?: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  municipio?: string;
+  uf?: string;
+};
+
+export async function criarCliente(input: CadastroClientePdv): Promise<NomusRef> {
+  const nome = String(input.nome ?? '').trim();
+  if (!nome) throw Object.assign(new Error('Informe o nome do cliente.'), { status: 400 });
+  const tipoPessoa = input.tipoPessoa === 1 ? 1 : 2;
+  const tipoContribuinteICMS = [1, 2, 3].includes(Number(input.tipoContribuinteICMS))
+    ? Number(input.tipoContribuinteICMS)
+    : 3;
+  const razaoSocial = String(input.razaoSocial ?? nome).trim() || nome;
+  const cpf = String(input.cpf ?? '').trim();
+  const cnpj = String(input.cnpj ?? '').trim();
+  if (tipoPessoa === 2 && !cpf) {
+    throw Object.assign(new Error('Informe o CPF do cliente.'), { status: 400 });
+  }
+  if (tipoPessoa === 1 && !cnpj) {
+    throw Object.assign(new Error('Informe o CNPJ do cliente.'), { status: 400 });
+  }
+
+  const body: Record<string, unknown> = {
+    ativo: true,
+    nome,
+    razaoSocial,
+    tipoPessoa,
+    tipoContribuinteICMS,
+    email: String(input.email ?? '').trim() || undefined,
+    telefone: String(input.telefone ?? '').trim() || undefined,
+    cep: String(input.cep ?? '').trim() || undefined,
+    endereco: String(input.endereco ?? '').trim() || undefined,
+    numero: String(input.numero ?? '').trim() || undefined,
+    bairro: String(input.bairro ?? '').trim() || undefined,
+    municipio: String(input.municipio ?? '').trim() || undefined,
+    uf: String(input.uf ?? '').trim().toUpperCase() || undefined,
+    inscricaoEstadual: String(input.inscricaoEstadual ?? '').trim() || undefined,
+  };
+  if (tipoPessoa === 2) body.cpf = cpf;
+  else body.cnpj = cnpj;
+
+  try {
+    const criado = await nomusRest<Record<string, unknown>>('/clientes', {
+      method: 'POST',
+      cacheMs: 0,
+      body: JSON.stringify(body),
+    });
+    const id = Number(criado.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error('Nomus não retornou o id do cliente.');
+    }
+    return { id, nome: String(criado.nome ?? nome), extra: criado };
+  } catch (err) {
+    const detalhe = err instanceof Error ? err.message : 'Falha ao cadastrar cliente.';
+    throw Object.assign(new Error(detalhe), { status: 502 });
   }
 }
 
