@@ -680,15 +680,27 @@ export async function buscarDadosPdfPreCompra(
   if (!pool) throw new Error('Conexão Nomus indisponível.');
 
   const fornecedorIds = await listarIdsFornecedorMesmaEmpresa(nomeCotacao, fornecedorId);
+  const inFornecedores = fornecedorIds.map(() => '?').join(',');
+  // A coleta Nomus pode ter preço em todos os itens da cotação, mesmo os
+  // vinculados a outro fornecedor em `itemcotacaocompra_fornecedor`. O PDF
+  // só deve listar itens em que o fornecedor (ou filial da mesma empresa)
+  // está na coluna "Fornecedores para cotação".
   const sql =
     PDF_QUERY +
-    ` AND c.nome = ? AND pcole.id IN (${fornecedorIds.map(() => '?').join(',')}) ` +
+    ` AND c.nome = ? AND pcole.id IN (${inFornecedores}) ` +
+    ` AND EXISTS (
+        SELECT 1
+        FROM itemcotacaocompra_fornecedor icf
+        WHERE icf.IdItemCotacaoCompra = icc.id
+          AND icf.idFornecedor IN (${inFornecedores})
+      ) ` +
     'ORDER BY prod.nome, pcole.id';
 
   // 1º param do PDF_JOINS: COALESCE(?, cc.idContato)
   const [rows] = await pool.query<RowDataPacket[]>(sql, [
     contatoId != null && contatoId > 0 ? contatoId : null,
     nomeCotacao,
+    ...fornecedorIds,
     ...fornecedorIds,
   ]);
   if (!rows.length) return null;
