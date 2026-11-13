@@ -4,7 +4,11 @@
  */
 
 import { arredondarAliquotaIpi } from '../data/doubleCheckInIpi.js';
-import { normalizarUnitarioExato, textoReaisCasasUtilizadas } from '../data/doubleCheckInPeso.js';
+import {
+  nfToneladaExibidaEmKg,
+  normalizarUnitarioExato,
+  textoReaisCasasUtilizadas,
+} from '../data/doubleCheckInPeso.js';
 import type { DoubleCheckInComparativoLinha } from '../data/doubleCheckInRepository.js';
 import type {
   DoubleCheckInCampoComparativo,
@@ -231,17 +235,23 @@ function montarCampo(
     const partes = linha.partesQtdePc ?? [];
     const qtdePc = partes.length > 1 && linha.qtdePcSoma != null ? linha.qtdePcSoma : linha.qtdePC;
     const dif = diffQtde(linha.qtdeNF, qtdePc);
-    const um = linha.umNF || linha.umPC ? ` ${linha.umNF ?? linha.umPC}` : '';
+    const convertidaTonParaKg = nfToneladaExibidaEmKg(linha.umNF, linha.umPC);
+    const umNf = convertidaTonParaKg ? linha.umPC || 'QUILOGRAMA' : linha.umNF;
+    const um = umNf || linha.umPC ? ` ${umNf ?? linha.umPC}` : '';
+    const detalhePartes: string[] = [];
+    if (convertidaTonParaKg) detalhePartes.push('Convertido de tonelada (NF).');
+    if (partes.length > 1) {
+      detalhePartes.push(
+        `Soma de ${partes.length} linhas do pedido: ${partes.map((parte) => fmtNum(parte.qtde)).join(' + ')}.`
+      );
+    }
     return {
       ...base,
-      nf: `${fmtNum(linha.qtdeNF)}${linha.umNF ? ` ${linha.umNF}` : um}`,
+      nf: `${fmtNum(linha.qtdeNF)}${umNf ? ` ${umNf}` : um}`,
       pc: `${fmtNum(qtdePc)}${linha.umPC ? ` ${linha.umPC}` : um}`,
       diferenca: dif.texto,
       sinal: dif.sinal,
-      detalhe:
-        partes.length > 1
-          ? `Soma de ${partes.length} linhas do pedido: ${partes.map((parte) => fmtNum(parte.qtde)).join(' + ')}.`
-          : null,
+      detalhe: detalhePartes.length > 0 ? detalhePartes.join(' ') : null,
     };
   }
   if (campo === 'ipi' && linha.conferenciaIpi === 'percentual') {

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   entradaPorPeso,
+  nfToneladaExibidaEmKg,
   textoContemUnidadePeso,
   textoReaisCasasUtilizadas,
   unidadeEhPeso,
+  unidadeEhQuilograma,
+  unidadeEhTonelada,
   unitarioExatoNfMaior,
   unitariosExatosIguais,
 } from './doubleCheckInPeso.js';
@@ -25,6 +28,14 @@ describe('unidade de peso', () => {
     expect(entradaPorPeso('UN', 'UN')).toBe(false);
     expect(textoContemUnidadePeso('124,8 QUILOGRAMA')).toBe(true);
     expect(textoContemUnidadePeso('10 UNIDADE')).toBe(false);
+  });
+
+  it('detecta NF em tonelada exibida contra PC em quilograma', () => {
+    expect(unidadeEhTonelada('TONELADA')).toBe(true);
+    expect(unidadeEhQuilograma('QUILOGRAMA')).toBe(true);
+    expect(nfToneladaExibidaEmKg('TONELADA', 'QUILOGRAMA')).toBe(true);
+    expect(nfToneladaExibidaEmKg('QUILOGRAMA', 'QUILOGRAMA')).toBe(false);
+    expect(nfToneladaExibidaEmKg('TONELADA', 'TONELADA')).toBe(false);
   });
 });
 

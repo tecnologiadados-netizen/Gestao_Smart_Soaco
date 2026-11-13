@@ -23,6 +23,62 @@ const nfBrl4 = new Intl.NumberFormat('pt-BR', {
 });
 const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
 
+const UNIDADES_TONELADA = new Set(['t', 'ton', 'tonelada', 'toneladas']);
+const UNIDADES_QUILOGRAMA = new Set([
+  'kg',
+  'kgs',
+  'quilo',
+  'quilos',
+  'quilograma',
+  'quilogramas',
+  'kilograma',
+  'kilogramas',
+]);
+
+function normalizarUnidadeMedida(nome: string | null | undefined): string {
+  return String(nome ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.\s]+/g, ' ')
+    .trim();
+}
+
+function tokenUnidadeMedida(nome: string | null | undefined): string {
+  const n = normalizarUnidadeMedida(nome);
+  return n.split(' ')[0] ?? '';
+}
+
+function unidadeEhTonelada(nome: string | null | undefined): boolean {
+  const n = normalizarUnidadeMedida(nome);
+  return UNIDADES_TONELADA.has(n) || UNIDADES_TONELADA.has(tokenUnidadeMedida(nome));
+}
+
+function unidadeEhQuilograma(nome: string | null | undefined): boolean {
+  const n = normalizarUnidadeMedida(nome);
+  return UNIDADES_QUILOGRAMA.has(n) || UNIDADES_QUILOGRAMA.has(tokenUnidadeMedida(nome));
+}
+
+/**
+ * Nomus pode converter a quantidade para kg e manter o rótulo "TONELADA".
+ * Exibir "2.125 TONELADA" parece 2 mil toneladas — alinhamos ao kg do pedido.
+ */
+function legendaQtdeNfConvertida(linha: DoubleCheckInComparativoLinha): {
+  nf: string;
+  nfDetalhe?: string;
+  nfTitle?: string;
+} | null {
+  if (!unidadeEhTonelada(linha.umNF) || !unidadeEhQuilograma(linha.umPC)) return null;
+  const qtde = nfNum.format(linha.qtdeNF);
+  const umKg = (linha.umPC ?? 'QUILOGRAMA').trim() || 'QUILOGRAMA';
+  const umTon = (linha.umNF ?? 'TONELADA').trim() || 'TONELADA';
+  return {
+    nf: `${qtde} ${umKg}`.trim(),
+    nfDetalhe: 'convertido de tonelada',
+    nfTitle: `${qtde} ${umKg} · NF original em ${umTon.toLowerCase()}`,
+  };
+}
+
 /** Mesma leitura do backend: 10 casas na comparação, no mínimo 4 no popup. */
 function textoReaisCasasUtilizadas(n: number | null | undefined): string {
   const v = Number(n);
@@ -188,6 +244,7 @@ function valoresExibicao(
     }
     case 'qtde': {
       const partes = linha.partesQtdePc ?? [];
+      const nfConvertida = legendaQtdeNfConvertida(linha);
       if (partes.length > 1 && linha.qtdePcSoma != null) {
         const um = (linha.umPC ?? linha.umNF ?? '').trim();
         const composicao = partes
@@ -197,13 +254,17 @@ function valoresExibicao(
           })
           .join(' + ');
         return {
-          nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+          nf: nfConvertida?.nf ?? `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+          nfDetalhe: nfConvertida?.nfDetalhe,
+          nfTitle: nfConvertida?.nfTitle,
           pc: `${nfNum.format(linha.qtdePcSoma)} ${um}`.trim(),
           pcDetalhe: `soma de ${partes.length} linhas do pedido: ${composicao}`,
         };
       }
       return {
-        nf: `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+        nf: nfConvertida?.nf ?? `${nfNum.format(linha.qtdeNF)} ${linha.umNF ?? ''}`.trim(),
+        nfDetalhe: nfConvertida?.nfDetalhe,
+        nfTitle: nfConvertida?.nfTitle,
         pc: `${nfNum.format(linha.qtdePC)} ${linha.umPC ?? ''}`.trim(),
       };
     }

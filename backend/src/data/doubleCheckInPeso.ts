@@ -40,12 +40,45 @@ function normalizarUnidade(nome: string | null | undefined): string {
     .trim();
 }
 
+const UNIDADES_TONELADA = new Set(['t', 'ton', 'tonelada', 'toneladas']);
+const UNIDADES_QUILOGRAMA = new Set([
+  'kg',
+  'kgs',
+  'quilo',
+  'quilos',
+  'quilograma',
+  'quilogramas',
+  'kilograma',
+  'kilogramas',
+]);
+
+function tokenUnidade(nome: string | null | undefined): string {
+  return normalizarUnidade(nome).split(' ')[0] ?? '';
+}
+
 export function unidadeEhPeso(nome: string | null | undefined): boolean {
   const n = normalizarUnidade(nome);
   if (!n) return false;
   if (UNIDADES_PESO.has(n)) return true;
-  const primeiro = n.split(' ')[0] ?? '';
-  return UNIDADES_PESO.has(primeiro);
+  return UNIDADES_PESO.has(tokenUnidade(nome));
+}
+
+export function unidadeEhTonelada(nome: string | null | undefined): boolean {
+  const n = normalizarUnidade(nome);
+  return UNIDADES_TONELADA.has(n) || UNIDADES_TONELADA.has(tokenUnidade(nome));
+}
+
+export function unidadeEhQuilograma(nome: string | null | undefined): boolean {
+  const n = normalizarUnidade(nome);
+  return UNIDADES_QUILOGRAMA.has(n) || UNIDADES_QUILOGRAMA.has(tokenUnidade(nome));
+}
+
+/**
+ * Nomus pode gravar a quantidade já em kg e manter o rótulo "TONELADA".
+ * Nesses casos a legenda deve exibir kg + observação da origem.
+ */
+export function nfToneladaExibidaEmKg(umNF: string | null | undefined, umPC: string | null | undefined): boolean {
+  return unidadeEhTonelada(umNF) && unidadeEhQuilograma(umPC);
 }
 
 export function entradaPorPeso(umNF: string | null | undefined, umPC: string | null | undefined): boolean {
