@@ -94,6 +94,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [aviso, setAviso] = useState('');
   const [busca, setBusca] = useState('');
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [paginaProdutos, setPaginaProdutos] = useState(1);
+  const [temMaisProdutos, setTemMaisProdutos] = useState(false);
   const [carregandoBusca, setCarregandoBusca] = useState(false);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [selecionado, setSelecionado] = useState(0);
@@ -153,16 +155,28 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   }, [recarregarSessao]);
 
   useEffect(() => {
+    setPaginaProdutos(1);
+  }, [busca]);
+
+  useEffect(() => {
     if (!sessao?.idEmpresa || !sessao.configurado) return;
     const t = window.setTimeout(() => {
       setCarregandoBusca(true);
-      pdvJson<{ produtos: Produto[] }>(`/api/pdv/produtos?q=${encodeURIComponent(busca)}`)
-        .then((data) => setProdutos(data.produtos))
+      const qs = new URLSearchParams({
+        q: busca,
+        pagina: String(paginaProdutos),
+        tamanho: '24',
+      });
+      pdvJson<{ produtos: Produto[]; pagina: number; temMais: boolean }>(`/api/pdv/produtos?${qs}`)
+        .then((data) => {
+          setProdutos(data.produtos);
+          setTemMaisProdutos(Boolean(data.temMais));
+        })
         .catch((e: unknown) => setAviso(e instanceof Error ? e.message : 'Falha na busca.'))
         .finally(() => setCarregandoBusca(false));
     }, 250);
     return () => window.clearTimeout(t);
-  }, [busca, sessao?.idEmpresa, sessao?.configurado]);
+  }, [busca, paginaProdutos, sessao?.idEmpresa, sessao?.configurado]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -569,7 +583,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             ref={buscaRef}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por código, GTIN ou nome."
+            placeholder="Buscar por código, GTIN ou nome (ex.: SM 00852)."
             className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-3 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
           />
           <div className="grid min-h-0 flex-1 content-start gap-3 overflow-auto sm:grid-cols-2 xl:grid-cols-3">
@@ -603,6 +617,28 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 </button>
               );
             })}
+          </div>
+          <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
+            <button
+              type="button"
+              className={`${botaoContorno} disabled:opacity-40`}
+              disabled={carregandoBusca || paginaProdutos <= 1}
+              onClick={() => setPaginaProdutos((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <span className="text-xs text-[var(--pdv-muted)]">
+              Página {paginaProdutos}
+              {produtos.length > 0 ? ` · ${produtos.length} itens` : ''}
+            </span>
+            <button
+              type="button"
+              className={`${botaoContorno} disabled:opacity-40`}
+              disabled={carregandoBusca || !temMaisProdutos}
+              onClick={() => setPaginaProdutos((p) => p + 1)}
+            >
+              Próxima
+            </button>
           </div>
         </section>
 

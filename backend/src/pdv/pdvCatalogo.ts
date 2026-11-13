@@ -1,5 +1,6 @@
 import { queryNomus } from '../config/nomusDb.js';
 import { prisma } from '../config/prisma.js';
+import { criarMatcherTextoLivre } from '../utils/textoLivreBusca.js';
 import { comoLista, nomusRest } from './nomusRest.js';
 import { saldoDisponivel } from './pdvEstoque.js';
 
@@ -110,31 +111,83 @@ export type ProdutoPdv = {
   vinculado: boolean;
 };
 
-export async function buscarProdutos(q: string, idEmpresa: number): Promise<ProdutoPdv[]> {
+export type BuscaProdutosPdv = {
+  produtos: ProdutoPdv[];
+  pagina: number;
+  tamanho: number;
+  temMais: boolean;
+};
+
+/** Nomus RSQL quebra com espaço dentro do valor (`*SM 00852*` → 400). Usa tokens sem espaço. */
+function montarQueryProdutosNomus(termo: string): string | null {
+  const tokens = termo
+    .trim()
+    .split(/[\s/\\|_-]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 1);
+  if (tokens.length === 0) return null;
+  // Preferir o token mais específico (mais longo) primeiro; AND entre tokens no nome.
+  const ordenados = [...tokens].sort((a, b) => b.length - a.length);
+  if (ordenados.length === 1) {
+    const t = ordenados[0];
+    return `nome==*${t}*,codigo==*${t}*`;
+  }
+  const andNome = ordenados.map((t) => `nome==*${t}*`).join(';');
+  const andCodigo = ordenados.map((t) => `codigo==*${t}*`).join(';');
+  // Também OR só no token mais longo (ex.: 00852) para não perder cadastro.
+  const principal = ordenados[0];
+  return `${andNome},${andCodigo},nome==*${principal}*,codigo==*${principal}*`;
+}
+
+export async function buscarProdutos(
+  q: string,
+  idEmpresa: number,
+  opts?: { pagina?: number; tamanho?: number },
+): Promise<BuscaProdutosPdv> {
   const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa } });
   if (!config?.idTabelaPreco || !config.idSetorSaida) {
     throw Object.assign(new Error('Configure a tabela de preço e o setor de saída desta empresa.'), { status: 409 });
   }
+  const pagina = Math.max(1, Math.floor(Number(opts?.pagina) || 1));
+  const tamanho = Math.min(48, Math.max(12, Math.floor(Number(opts?.tamanho) || 24)));
   const termo = q.trim();
-  const query = termo
-    ? `?query=${encodeURIComponent(`nome==*${termo}*,codigo==*${termo}*`)}&pagina=1&tamanhoPagina=40`
-    : '?pagina=1&tamanhoPagina=40';
-  let rows: Record<string, unknown>[] = [];
+  const rsql = termo ? montarQueryProdutosNomus(termo) : null;
+  const query = rsql
+    ? `?query=${encodeURIComponent(rsql)}&pagina=${pagina}&tamanhoPagina=${tamanho}`
+    : `?pagina=${pagina}&tamanhoPagina=${tamanho}`;
+
+  let rowsBrutos: Record<string, unknown>[] = [];
   try {
-    rows = comoLista(await nomusRest(`/produtos${query}`, { cacheMs: termo ? 0 : 60_000 }));
+    rowsBrutos = comoLista(await nomusRest(`/produtos${query}`, { cacheMs: termo ? 0 : 60_000 }));
   } catch (err) {
-    try {
-      rows = comoLista(await nomusRest('/produtos?pagina=1&tamanhoPagina=80', { cacheMs: 60_000 }));
-    } catch {
+    // Fallback: token principal sem espaços (ex.: 00852) se a query composta falhar.
+    if (termo) {
+      const tokens = termo.split(/[\s/\\|_-]+/).filter((t) => t.trim().length >= 2);
+      const principal = [...tokens].sort((a, b) => b.length - a.length)[0];
+      if (principal) {
+        try {
+          const fb = `?query=${encodeURIComponent(`nome==*${principal}*,codigo==*${principal}*`)}&pagina=${pagina}&tamanhoPagina=${tamanho}`;
+          rowsBrutos = comoLista(await nomusRest(`/produtos${fb}`, { cacheMs: 0 }));
+        } catch {
+          const detalhe = err instanceof Error ? err.message : 'Falha ao consultar produtos.';
+          throw Object.assign(new Error(`Não foi possível consultar os produtos no Nomus. ${detalhe}`), { status: 502 });
+        }
+      } else {
+        const detalhe = err instanceof Error ? err.message : 'Falha ao consultar produtos.';
+        throw Object.assign(new Error(`Não foi possível consultar os produtos no Nomus. ${detalhe}`), { status: 502 });
+      }
+    } else {
       const detalhe = err instanceof Error ? err.message : 'Falha ao consultar produtos.';
       throw Object.assign(new Error(`Não foi possível consultar os produtos no Nomus. ${detalhe}`), { status: 502 });
     }
   }
-  const needle = termo.toLowerCase();
-  if (needle) {
+
+  const match = criarMatcherTextoLivre(termo);
+  let rows = rowsBrutos;
+  if (termo) {
     rows = rows.filter((row) => {
-      const blob = `${row.codigo ?? ''} ${row.nome ?? ''} ${row.descricao ?? ''} ${row.codigoGTIN ?? ''}`.toLowerCase();
-      return blob.includes(needle);
+      const blob = `${row.codigo ?? ''} ${row.nome ?? ''} ${row.descricao ?? ''} ${row.codigoGTIN ?? ''}`;
+      return match(blob);
     });
   }
   const { itens, descontoMaximo } = await precosDaTabela(config.idTabelaPreco);
@@ -144,9 +197,8 @@ export async function buscarProdutos(q: string, idEmpresa: number): Promise<Prod
     return setores.some((s) => Number((s as { idEmpresa?: number }).idEmpresa) === idEmpresa);
   });
 
-  const lista = daEmpresa.slice(0, 30);
   const produtos: ProdutoPdv[] = [];
-  for (const row of lista) {
+  for (const row of daEmpresa) {
     const id = Number(row.id);
     if (!id) continue;
     const estoque = await saldoDisponivel(id, idEmpresa, config.idSetorSaida);
@@ -165,7 +217,12 @@ export async function buscarProdutos(q: string, idEmpresa: number): Promise<Prod
       vinculado: estoque.vinculado,
     });
   }
-  return produtos;
+  return {
+    produtos,
+    pagina,
+    tamanho,
+    temMais: rowsBrutos.length >= tamanho,
+  };
 }
 
 export async function buscarClientes(q: string): Promise<NomusRef[]> {

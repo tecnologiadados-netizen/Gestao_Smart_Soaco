@@ -94,7 +94,9 @@ export async function getProdutos(req: Request, res: Response): Promise<void> {
     const ctx = await contextoPdv(req);
     const idEmpresa = exigirEmpresa(ctx);
     const q = String(req.query.q ?? '');
-    res.json({ produtos: await buscarProdutos(q, idEmpresa) });
+    const pagina = Number(req.query.pagina) || 1;
+    const tamanho = Number(req.query.tamanho) || 24;
+    res.json(await buscarProdutos(q, idEmpresa, { pagina, tamanho }));
   } catch (err) {
     res.status(statusDe(err)).json({ error: mensagem(err) });
   }
