@@ -16,6 +16,7 @@ type Sessao = {
   configurado: boolean;
   ignorarEstoque: boolean;
   modoOperacao: ModoOperacao;
+  exigeAberturaCaixa?: boolean;
   idTipoMovimentacao?: number | null;
   idCondicaoPagamento?: number | null;
   idFormaPagamento?: number | null;
@@ -142,6 +143,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const buscaRef = useRef<HTMLInputElement>(null);
   const clienteRef = useRef<HTMLInputElement>(null);
   const pagamentoRef = useRef<HTMLInputElement>(null);
+  const fundoRef = useRef<HTMLInputElement>(null);
 
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [erroSessao, setErroSessao] = useState('');
@@ -444,6 +446,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
   const modo = sessao?.modoOperacao === 'orcamento' || sessao?.modoOperacao === 'ambos' ? sessao.modoOperacao : 'pedido';
   const destinoEfetivo: DestinoVenda = modo === 'orcamento' ? 'orcamento' : modo === 'pedido' ? 'pedido' : destino;
+  const exigeCaixa = sessao?.exigeAberturaCaixa !== false;
+  const caixaOk = !exigeCaixa || Boolean(sessao?.caixa);
+  /** Tela de abertura só no modo pedido; em "ambos" o balcão segue e o pedido fica bloqueado até abrir. */
+  const bloqueiaPorCaixa = exigeCaixa && !sessao?.caixa && modo === 'pedido';
 
   useEffect(() => {
     if (modo === 'orcamento') setDestino('orcamento');
@@ -587,7 +593,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'F2') {
         ev.preventDefault();
-        buscaRef.current?.focus();
+        if (bloqueiaPorCaixa) fundoRef.current?.focus();
+        else buscaRef.current?.focus();
       } else if (ev.key === 'F4') {
         ev.preventDefault();
         setMostrarCliente(true);
@@ -604,7 +611,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [confirmar, selecionado]);
+  }, [bloqueiaPorCaixa, confirmar, selecionado]);
 
   async function abrirCaixa() {
     try {
@@ -759,7 +766,11 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             <p className="truncate text-xs text-[var(--pdv-muted)]">
               {sessao.operador}
               {sessao.uf ? ` · ${sessao.uf}` : ''}
-              {sessao.caixa ? ' · Caixa aberto' : ' · Caixa fechado'}
+              {exigeCaixa
+                ? sessao.caixa
+                  ? ' · Caixa aberto'
+                  : ' · Caixa fechado'
+                : ' · Força de vendas'}
               {modo === 'orcamento' ? ' · só orçamento' : modo === 'ambos' ? ' · orçamento e pedido' : ' · pedido direto'}
               {sessao.ignorarEstoque ? ' · sem checagem de estoque' : ''}
             </p>
@@ -769,9 +780,11 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           <button type="button" onClick={alternarTema} className={botaoContorno}>
             {claro ? 'Modo escuro' : 'Modo claro'}
           </button>
-          <button type="button" onClick={() => setPainelCaixa((v) => !v)} className={botaoContorno}>
-            Caixa
-          </button>
+          {exigeCaixa ? (
+            <button type="button" onClick={() => setPainelCaixa((v) => !v)} className={botaoContorno}>
+              Caixa
+            </button>
+          ) : null}
           <button type="button" onClick={() => void abrirEsperas()} className={botaoContorno}>
             Em espera
           </button>
@@ -800,47 +813,85 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         <p className="mx-5 mt-3 rounded-lg border border-red-400/40 bg-red-950/60 px-3 py-2 text-sm text-red-100">{aviso}</p>
       ) : null}
 
-      {painelCaixa ? (
+      {exigeCaixa && painelCaixa && sessao.caixa ? (
         <section className="mx-5 mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-3 text-sm">
-          {sessao.caixa ? (
-            <>
-              <span className="text-xs text-[var(--pdv-muted)]">Fundo {brl(sessao.caixa.fundoTroco)}</span>
-              <select value={movimentoTipo} onChange={(e) => setMovimentoTipo(e.target.value as 'suprimento' | 'sangria')} className={campo}>
-                <option value="suprimento">Suprimento</option>
-                <option value="sangria">Sangria</option>
-              </select>
-              <input value={movimentoValor} onChange={(e) => setMovimentoValor(e.target.value)} placeholder="Valor" className={`${campo} w-28`} />
-              <button type="button" onClick={() => void movimentar()} className={botaoContorno}>Registrar</button>
-              <button type="button" onClick={() => void fecharCaixa()} className={botaoContorno}>Fechar caixa</button>
-            </>
-          ) : (
-            <>
-              <label className="text-xs text-[var(--pdv-muted)]">
-                Fundo de troco
-                <input value={fundo} onChange={(e) => setFundo(e.target.value)} className={`${campo} ml-2 w-28`} />
-              </label>
-              <button type="button" onClick={() => void abrirCaixa()} className="rounded-lg bg-[#1E22AA] px-3 py-2 text-sm font-medium text-white">
-                Abrir caixa
-              </button>
-            </>
-          )}
+          <span className="text-xs text-[var(--pdv-muted)]">Fundo {brl(sessao.caixa.fundoTroco)}</span>
+          <select value={movimentoTipo} onChange={(e) => setMovimentoTipo(e.target.value as 'suprimento' | 'sangria')} className={campo}>
+            <option value="suprimento">Suprimento</option>
+            <option value="sangria">Sangria</option>
+          </select>
+          <input value={movimentoValor} onChange={(e) => setMovimentoValor(e.target.value)} placeholder="Valor" className={`${campo} w-28`} />
+          <button type="button" onClick={() => void movimentar()} className={botaoContorno}>Registrar</button>
+          <button type="button" onClick={() => void fecharCaixa()} className={botaoContorno}>Fechar caixa</button>
         </section>
       ) : null}
 
-      {!sessao.caixa && !painelCaixa && modo !== 'orcamento' ? (
+      {exigeCaixa && !sessao.caixa && !bloqueiaPorCaixa && modo === 'ambos' ? (
         <section className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#FFAD00]/30 bg-[var(--pdv-field)] px-3 py-2 text-sm">
           <span className="text-xs text-[var(--pdv-muted)]">
-            {modo === 'ambos'
-              ? 'Caixa fechado. Orçamento pode ser gerado; pedido e transformação exigem caixa aberto.'
-              : 'Caixa fechado. Informe o fundo para vender.'}
+            Caixa fechado. Orçamento liberado; pedido e transformação exigem abertura.
           </span>
-          <input value={fundo} onChange={(e) => setFundo(e.target.value)} placeholder="Fundo" className={`${campo} w-28`} />
+          <input ref={fundoRef} value={fundo} onChange={(e) => setFundo(e.target.value)} placeholder="0,00" className={`${campo} w-28`} />
           <button type="button" onClick={() => void abrirCaixa()} className="rounded-lg bg-[#1E22AA] px-3 py-2 text-sm font-medium text-white">
             Abrir caixa
           </button>
         </section>
       ) : null}
 
+      {bloqueiaPorCaixa ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 py-8">
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-6 shadow-xl">
+            <div className="mb-1 flex items-center gap-2 text-base font-semibold">
+              <span aria-hidden className="text-lg">🖥️</span>
+              Abra o caixa para começar a vender
+            </div>
+            <p className="mb-5 text-sm text-[var(--pdv-muted)]">
+              Informe o dinheiro disponível no caixa antes da primeira venda.
+              {modo === 'ambos' ? ' Orçamento pode ser gerado sem abrir o caixa.' : ''}
+            </p>
+            <label className="block text-sm text-[var(--pdv-muted)]">
+              Valor da abertura
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-sm font-medium text-[var(--pdv-text)]">R$</span>
+                <input
+                  ref={fundoRef}
+                  value={fundo}
+                  onChange={(e) => setFundo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void abrirCaixa();
+                    }
+                  }}
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  className={`${campo} w-full`}
+                  autoFocus
+                />
+              </div>
+            </label>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void sair()}
+                className={botaoContorno}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void abrirCaixa()}
+                className="rounded-xl bg-[#1E22AA] px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Abrir caixa
+              </button>
+            </div>
+            <p className="mt-4 text-[11px] text-[var(--pdv-faint)]">
+              F2 foca o valor · Enter confirma a abertura
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_24rem]">
         <section className="flex min-h-0 flex-col gap-4 overflow-hidden p-5">
           <div className="flex flex-col gap-2">
@@ -1308,7 +1359,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   </button>
                   <button
                     type="button"
-                    disabled={enviando || !sessao.caixa || carrinho.length === 0}
+                    disabled={enviando || !caixaOk || carrinho.length === 0}
                     onClick={() => void confirmar(false, 'pedido')}
                     className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
                   >
@@ -1322,7 +1373,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   disabled={
                     enviando ||
                     carrinho.length === 0 ||
-                    (destinoEfetivo === 'pedido' && !sessao.caixa)
+                    (destinoEfetivo === 'pedido' && !caixaOk)
                   }
                   onClick={() => void confirmar(false, destinoEfetivo)}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
@@ -1335,6 +1386,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           </div>
         </aside>
       </div>
+      )}
 
       {painelEspera ? (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-4">
@@ -1364,7 +1416,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               <button type="button" onClick={() => setPainelOrcamentos(false)} className={botaoContorno}>Fechar</button>
             </div>
             <p className="mb-2 text-xs text-[var(--pdv-muted)]">
-              Informe o pagamento no painel lateral e abra o caixa antes de transformar em pedido.
+              {exigeCaixa
+                ? 'Informe o pagamento no painel lateral e abra o caixa antes de transformar em pedido.'
+                : 'Informe o pagamento no painel lateral e transforme o orçamento em pedido.'}
             </p>
             {orcamentos.length === 0 ? <p className="text-[var(--pdv-faint)]">Nenhum orçamento pendente.</p> : null}
             <ul>
@@ -1389,7 +1443,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                     <button
                       type="button"
                       className={botaoContorno}
-                      disabled={enviando || !sessao.caixa}
+                      disabled={enviando || !caixaOk}
                       onClick={() => void transformar(v.id)}
                     >
                       Transformar

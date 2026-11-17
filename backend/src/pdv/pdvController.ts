@@ -77,6 +77,7 @@ export async function getSessao(req: Request, res: Response): Promise<void> {
       configurado: Boolean(config?.idTabelaPreco && config?.idSetorSaida),
       ignorarEstoque: Boolean(config?.ignorarEstoque),
       modoOperacao: normalizarModoOperacao(config?.modoOperacao),
+      exigeAberturaCaixa: config?.exigeAberturaCaixa !== false,
       idTipoMovimentacao: config?.idTipoMovimentacao ?? null,
       idCondicaoPagamento: config?.idCondicaoPagamento ?? null,
       idFormaPagamento: config?.idFormaPagamento ?? null,
@@ -530,6 +531,7 @@ export async function putEmpresaConfig(req: Request, res: Response): Promise<voi
         idPessoaVendedor: num(body.idPessoaVendedor),
         ignorarEstoque: Boolean(body.ignorarEstoque),
         modoOperacao,
+        exigeAberturaCaixa: body.exigeAberturaCaixa !== false && body.exigeAberturaCaixa !== 'false',
       },
       update: {
         nomeEmpresa: String(body.nomeEmpresa ?? ''),
@@ -546,6 +548,7 @@ export async function putEmpresaConfig(req: Request, res: Response): Promise<voi
         idPessoaVendedor: num(body.idPessoaVendedor),
         ignorarEstoque: Boolean(body.ignorarEstoque),
         modoOperacao,
+        exigeAberturaCaixa: body.exigeAberturaCaixa !== false && body.exigeAberturaCaixa !== 'false',
       },
     });
     res.json(config);

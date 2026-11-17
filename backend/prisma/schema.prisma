@@ -3004,6 +3004,8 @@ model PdvEmpresaConfig {
   ignorarEstoque       Boolean @default(false) @map("ignorar_estoque")
   /// pedido | orcamento | ambos
   modoOperacao         String  @default("pedido") @map("modo_operacao")
+  /// Se true, pedido exige caixa aberto (tela de abertura). Se false, força de vendas sem caixa.
+  exigeAberturaCaixa   Boolean @default(true) @map("exige_abertura_caixa")
 
   @@map("pdv_empresa_config")
 }

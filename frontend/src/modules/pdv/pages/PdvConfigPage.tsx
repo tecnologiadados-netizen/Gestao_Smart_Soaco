@@ -25,6 +25,7 @@ type Config = {
   idPessoaVendedor: number | null;
   ignorarEstoque: boolean;
   modoOperacao: ModoOperacao;
+  exigeAberturaCaixa: boolean;
 };
 
 const MODOS_OPERACAO: { id: ModoOperacao; label: string; ajuda: string }[] = [
@@ -77,6 +78,7 @@ const vazio: Omit<Config, 'idEmpresa'> = {
   idPessoaVendedor: null,
   ignorarEstoque: false,
   modoOperacao: 'pedido',
+  exigeAberturaCaixa: true,
 };
 
 function num(v: string): number | null {
@@ -162,6 +164,7 @@ export default function PdvConfigPage() {
           configAtual.modoOperacao === 'orcamento' || configAtual.modoOperacao === 'ambos'
             ? configAtual.modoOperacao
             : 'pedido',
+        exigeAberturaCaixa: configAtual.exigeAberturaCaixa !== false,
       });
     } else if (empresaAberta) {
       setForm({ ...vazio, nomeEmpresa: empresaAberta.nome, uf: empresaAberta.uf, crt: empresaAberta.crt });
@@ -328,6 +331,7 @@ export default function PdvConfigPage() {
                   {cert?.temCertificado ? 'Certificado cadastrado' : 'Sem certificado'}
                   {' · '}
                   {operadores.length === 1 ? '1 operador' : `${operadores.length} operadores`}
+                  {config?.exigeAberturaCaixa === false ? ' · força de vendas' : ' · com caixa'}
                   {config?.ignorarEstoque ? ' · vende sem saldo' : ''}
                 </p>
               </button>
@@ -407,6 +411,21 @@ export default function PdvConfigPage() {
                     </select>
                     <span className="mt-1 block text-xs text-slate-500">
                       {MODOS_OPERACAO.find((m) => m.id === form.modoOperacao)?.ajuda}
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={form.exigeAberturaCaixa}
+                      onChange={(e) => setForm({ ...form, exigeAberturaCaixa: e.target.checked })}
+                    />
+                    <span>
+                      Exigir abertura de caixa
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        Ligado: mostra a tela de abertura e bloqueia pedido sem caixa. Desligado: força de
+                        vendas (sem abertura de caixa).
+                      </span>
                     </span>
                   </label>
                   <label className="flex items-center gap-2 text-sm">

@@ -171,8 +171,9 @@ export async function confirmarVenda(input: {
   if (!input.espera && destino === 'pedido' && (input.fiscal === 'nfce' || input.fiscal === 'nfe')) {
     await garantirCertificado(input.idEmpresa, input.fiscal);
   }
+  const exigeCaixa = config.exigeAberturaCaixa !== false;
   const caixa = await caixaAberto(input.usuarioId, input.idEmpresa);
-  if (!caixa && !input.espera && destino === 'pedido') {
+  if (exigeCaixa && !caixa && !input.espera && destino === 'pedido') {
     throw new PdvErro('Abra o caixa para concluir a venda.', 409);
   }
 
@@ -496,8 +497,11 @@ export async function transformarOrcamento(input: {
   });
   if (!venda?.idPropostaNomus) throw new PdvErro('Orçamento não encontrado ou sem proposta no Nomus.', 404);
 
+  const exigeCaixa = config.exigeAberturaCaixa !== false;
   const caixa = await caixaAberto(input.usuarioId, input.idEmpresa);
-  if (!caixa) throw new PdvErro('Abra o caixa para transformar o orçamento em pedido.', 409);
+  if (exigeCaixa && !caixa) {
+    throw new PdvErro('Abra o caixa para transformar o orçamento em pedido.', 409);
+  }
 
   const idCliente = venda.idPessoaCliente || config.idPessoaConsumidor;
   if (!idCliente) throw new PdvErro('Cadastre o cliente consumidor padrão desta empresa.', 409);
@@ -625,7 +629,7 @@ export async function transformarOrcamento(input: {
         data: {
           status: 'concluida',
           concluidaEm: new Date(),
-          caixaId: caixa.id,
+          caixaId: caixa?.id ?? null,
           destinoNomus: 'pedido',
           idPedidoNomus: idPedido,
           idDocumentoNomus: idDocumento,
@@ -655,16 +659,23 @@ export async function transformarOrcamento(input: {
     });
   }
 
-  await prisma.pdvCaixaMovimento.create({
-    data: { caixaId: caixa.id, tipo: 'venda', valor: venda.total, observacao: `Transformação orçamento ${venda.id}` },
-  });
+  if (caixa) {
+    await prisma.pdvCaixaMovimento.create({
+      data: {
+        caixaId: caixa.id,
+        tipo: 'venda',
+        valor: venda.total,
+        observacao: `Transformação orçamento ${venda.id}`,
+      },
+    });
+  }
 
   return prisma.pdvVenda.update({
     where: { id: venda.id },
     data: {
       status: 'concluida',
       concluidaEm: new Date(),
-      caixaId: caixa.id,
+      caixaId: caixa?.id ?? null,
       destinoNomus: 'pedido',
       idPedidoNomus: idPedido,
       idDocumentoNomus: idDocumento,
