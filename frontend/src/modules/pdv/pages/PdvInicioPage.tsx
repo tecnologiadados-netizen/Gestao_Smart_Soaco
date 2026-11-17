@@ -194,7 +194,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [fundo, setFundo] = useState('0');
   const [movimentoValor, setMovimentoValor] = useState('');
   const [movimentoTipo, setMovimentoTipo] = useState<'suprimento' | 'sangria'>('suprimento');
-  const [painelCaixa, setPainelCaixa] = useState(false);
+  const [painelOperacoes, setPainelOperacoes] = useState(false);
+  const [operacaoForm, setOperacaoForm] = useState<null | 'sangria' | 'suprimento' | 'fechamento' | 'devolucao'>(null);
+  const movimentoValorRef = useRef<HTMLInputElement>(null);
   const [mostrarCliente, setMostrarCliente] = useState(false);
   const [modalCliente, setModalCliente] = useState(false);
   const [formCliente, setFormCliente] = useState<FormClienteNovo>(formClienteVazio);
@@ -681,8 +683,47 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     ],
   );
 
+  function abrirOperacoes(form: null | 'sangria' | 'suprimento' | 'fechamento' | 'devolucao' = null) {
+    setPainelOperacoes(true);
+    setOperacaoForm(form);
+    setMovimentoValor('');
+    if (form === 'sangria' || form === 'suprimento') {
+      setMovimentoTipo(form);
+      window.setTimeout(() => movimentoValorRef.current?.focus(), 0);
+    }
+  }
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
+      if (painelOperacoes && ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
+        const k = ev.key.toLowerCase();
+        if (k === 's') {
+          ev.preventDefault();
+          abrirOperacoes('sangria');
+          return;
+        }
+        if (k === 'r') {
+          ev.preventDefault();
+          abrirOperacoes('suprimento');
+          return;
+        }
+        if (k === 'd') {
+          ev.preventDefault();
+          abrirOperacoes('devolucao');
+          return;
+        }
+        if (k === 'f') {
+          ev.preventDefault();
+          abrirOperacoes('fechamento');
+          return;
+        }
+      }
+      if (ev.key === 'Escape' && painelOperacoes) {
+        ev.preventDefault();
+        if (operacaoForm) setOperacaoForm(null);
+        else setPainelOperacoes(false);
+        return;
+      }
       if (ev.key === 'F2') {
         ev.preventDefault();
         if (bloqueiaPorCaixa) fundoRef.current?.focus();
@@ -711,7 +752,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [bloqueiaPorCaixa, confirmar, destinoEfetivo, etapa, selecionado]);
+  }, [bloqueiaPorCaixa, confirmar, destinoEfetivo, etapa, operacaoForm, painelOperacoes, selecionado]);
 
   async function abrirCaixa() {
     try {
@@ -723,12 +764,20 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   }
 
   async function movimentar() {
+    const valor = Number(movimentoValor.replace(',', '.')) || 0;
+    if (valor <= 0) {
+      setAviso('Informe o valor do movimento.');
+      return;
+    }
     try {
       await pdvJson('/api/pdv/caixa/movimento', {
         method: 'POST',
-        body: { tipo: movimentoTipo, valor: Number(movimentoValor.replace(',', '.')) || 0 },
+        body: { tipo: movimentoTipo, valor },
       });
       setMovimentoValor('');
+      setOperacaoForm(null);
+      setPainelOperacoes(false);
+      setAviso('');
       recarregarSessao();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'Não foi possível registrar o movimento.');
@@ -738,6 +787,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   async function fecharCaixa() {
     try {
       await pdvJson('/api/pdv/caixa/fechar', { method: 'POST', body: {} });
+      setOperacaoForm(null);
+      setPainelOperacoes(false);
+      setAviso('');
       recarregarSessao();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'Não foi possível fechar o caixa.');
@@ -882,7 +934,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             {claro ? 'Modo escuro' : 'Modo claro'}
           </button>
           {exigeCaixa ? (
-            <button type="button" onClick={() => setPainelCaixa((v) => !v)} className={botaoContorno}>
+            <button type="button" onClick={() => abrirOperacoes()} className={botaoContorno}>
               Caixa
             </button>
           ) : null}
@@ -912,19 +964,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       ) : null}
       {aviso ? (
         <p className="mx-5 mt-3 rounded-lg border border-red-400/40 bg-red-950/60 px-3 py-2 text-sm text-red-100">{aviso}</p>
-      ) : null}
-
-      {exigeCaixa && painelCaixa && sessao.caixa ? (
-        <section className="mx-5 mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-3 text-sm">
-          <span className="text-xs text-[var(--pdv-muted)]">Fundo {brl(sessao.caixa.fundoTroco)}</span>
-          <select value={movimentoTipo} onChange={(e) => setMovimentoTipo(e.target.value as 'suprimento' | 'sangria')} className={campo}>
-            <option value="suprimento">Suprimento</option>
-            <option value="sangria">Sangria</option>
-          </select>
-          <input value={movimentoValor} onChange={(e) => setMovimentoValor(e.target.value)} placeholder="Valor" className={`${campo} w-28`} />
-          <button type="button" onClick={() => void movimentar()} className={botaoContorno}>Registrar</button>
-          <button type="button" onClick={() => void fecharCaixa()} className={botaoContorno}>Fechar caixa</button>
-        </section>
       ) : null}
 
       {exigeCaixa && !sessao.caixa && !bloqueiaPorCaixa && modo === 'ambos' ? (
@@ -1001,7 +1040,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 <h2 className="text-sm font-semibold text-slate-800">Localize um produto ou serviço</h2>
                 <p className="text-xs text-slate-500">Digite o código ou o nome, ou passe o leitor de código de barras.</p>
               </div>
-              <button type="button" className={botaoContorno} onClick={() => void abrirEsperas()}>
+              <button type="button" className={botaoContorno} onClick={() => abrirOperacoes()}>
                 Operações
               </button>
             </div>
@@ -1475,6 +1514,182 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       </div>
 
       )}
+
+      {painelOperacoes ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4" onClick={() => { setPainelOperacoes(false); setOperacaoForm(null); }}>
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden>▦</span>
+                <h2 className="text-base font-semibold text-slate-800">Operações do PDV</h2>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-xl leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => { setPainelOperacoes(false); setOperacaoForm(null); }}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            {operacaoForm === 'sangria' || operacaoForm === 'suprimento' ? (
+              <div className="space-y-4 p-5">
+                <button type="button" className="text-xs font-medium text-[#1E22AA]" onClick={() => setOperacaoForm(null)}>
+                  ← Voltar
+                </button>
+                <h3 className="text-sm font-semibold text-slate-800">
+                  {operacaoForm === 'sangria' ? 'Realizar sangria' : 'Realizar reforço'}
+                </h3>
+                {!sessao.caixa ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    Abra o caixa antes de registrar movimentos.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500">
+                      Fundo atual: {brl(sessao.caixa.fundoTroco)}
+                    </p>
+                    <label className="block text-xs text-slate-600">
+                      Valor
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-slate-500">R$</span>
+                        <input
+                          ref={movimentoValorRef}
+                          value={movimentoValor}
+                          onChange={(e) => setMovimentoValor(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void movimentar();
+                            }
+                          }}
+                          inputMode="decimal"
+                          placeholder="0,00"
+                          className={`${campoClaro} w-full`}
+                        />
+                      </div>
+                    </label>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className={botaoContorno} onClick={() => setOperacaoForm(null)}>Cancelar</button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-[#3d4654] px-4 py-2 text-sm font-semibold text-white"
+                        onClick={() => void movimentar()}
+                      >
+                        Confirmar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : operacaoForm === 'fechamento' ? (
+              <div className="space-y-4 p-5">
+                <button type="button" className="text-xs font-medium text-[#1E22AA]" onClick={() => setOperacaoForm(null)}>
+                  ← Voltar
+                </button>
+                <h3 className="text-sm font-semibold text-slate-800">Fechar caixa</h3>
+                {!sessao.caixa ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    Não há caixa aberto neste momento.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-600">
+                      Confira os valores da gaveta com os registros de entradas e saídas antes de encerrar.
+                      Fundo registrado: <strong>{brl(sessao.caixa.fundoTroco)}</strong>.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className={botaoContorno} onClick={() => setOperacaoForm(null)}>Cancelar</button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-[#1E22AA] px-4 py-2 text-sm font-semibold text-white"
+                        onClick={() => void fecharCaixa()}
+                      >
+                        Confirmar fechamento
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : operacaoForm === 'devolucao' ? (
+              <div className="space-y-4 p-5">
+                <button type="button" className="text-xs font-medium text-[#1E22AA]" onClick={() => setOperacaoForm(null)}>
+                  ← Voltar
+                </button>
+                <h3 className="text-sm font-semibold text-slate-800">Troca ou devolução</h3>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                  Esta operação ainda não está disponível neste PDV. Use o fluxo de vendas/orçamentos no Nomus para devoluções.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  <article className="rounded-xl border border-slate-100 p-4">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-pink-100 text-lg text-pink-600" aria-hidden>↗</div>
+                    <h3 className="text-sm font-semibold text-slate-800">Sangria</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      A sangria caracteriza-se pela retirada de valor do caixa, ou seja, você retira um determinado valor da gaveta do operador para guardar em outro local mais seguro.
+                    </p>
+                    <button type="button" className="mt-3 text-xs font-semibold text-[#1E22AA]" onClick={() => abrirOperacoes('sangria')}>
+                      Realizar sangria (Shift + S) ›
+                    </button>
+                  </article>
+                  <article className="rounded-xl border border-slate-100 p-4">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-lg text-emerald-600" aria-hidden>↘</div>
+                    <h3 className="text-sm font-semibold text-slate-800">Reforço</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      O reforço consiste em incluir valor no seu caixa, sempre que necessário. Esta transação ocorre normalmente quando é adicionado troco na gaveta do operador.
+                    </p>
+                    <button type="button" className="mt-3 text-xs font-semibold text-[#1E22AA]" onClick={() => abrirOperacoes('suprimento')}>
+                      Realizar reforço (Shift + R) ›
+                    </button>
+                  </article>
+                  <article className="rounded-xl border border-slate-100 p-4">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-lg text-orange-600" aria-hidden>↩</div>
+                    <h3 className="text-sm font-semibold text-slate-800">Troca ou devolução</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      A troca ou devolução ocorre quando o cliente desistir de uma compra ou o produto apresenta algum defeito. O produto é trocado ou volta para o estoque.
+                    </p>
+                    <button type="button" className="mt-3 text-xs font-semibold text-[#1E22AA]" onClick={() => abrirOperacoes('devolucao')}>
+                      Realizar devolução (Shift + D) ›
+                    </button>
+                  </article>
+                  <article className="rounded-xl border border-slate-100 p-4">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-lg text-sky-600" aria-hidden>$</div>
+                    <h3 className="text-sm font-semibold text-slate-800">Fechamento</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      O fechamento de caixa envolve um trabalho cuidadoso de conferência e checagem dos valores que estão no caixa com o saldo dos registros de entradas e saídas.
+                    </p>
+                    <button type="button" className="mt-3 text-xs font-semibold text-[#1E22AA]" onClick={() => abrirOperacoes('fechamento')}>
+                      Fechar caixa (Shift + F) ›
+                    </button>
+                  </article>
+                </div>
+                <div className="flex items-center gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm" aria-hidden>🖥</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-slate-700">Se a internet cair, este computador para de vender</div>
+                    <div className="text-xs text-slate-500">Venda offline ainda não está disponível neste PDV.</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="relative h-6 w-11 shrink-0 rounded-full bg-slate-300 opacity-60"
+                    title="Indisponível"
+                    aria-label="Venda offline indisponível"
+                  >
+                    <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {painelEspera ? (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-4">
