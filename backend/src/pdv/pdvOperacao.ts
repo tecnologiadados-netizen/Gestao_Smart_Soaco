@@ -146,6 +146,7 @@ export async function confirmarVenda(input: {
   idPessoaVendedor?: number | null;
   dataValidade?: string;
   atributosProposta?: Array<{ nomeAtributo: string; valorAtributo: string }>;
+  atributosItemProposta?: Array<{ nomeAtributo: string; valorAtributo: string }>;
   localRetiradaDifEnderecoRemetente?: boolean;
   idEnderecoLocalRetirada?: number | null;
   localEntregaDifEnderecoDestinatario?: boolean;
@@ -296,6 +297,7 @@ export async function confirmarVenda(input: {
     dataValidade: input.dataValidade,
     observacao: input.observacao,
     atributos: input.atributosProposta,
+    atributosItem: input.atributosItemProposta,
     localRetiradaDifEnderecoRemetente: Boolean(input.localRetiradaDifEnderecoRemetente),
     idEnderecoLocalRetirada: input.idEnderecoLocalRetirada,
     localEntregaDifEnderecoDestinatario: Boolean(input.localEntregaDifEnderecoDestinatario),

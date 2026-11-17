@@ -85,6 +85,8 @@ export type DadosPropostaPdv = {
   dataValidade?: string;
   observacao?: string;
   atributos?: AtributoPropostaValor[];
+  /** Atributos de item (LIPROP) aplicados a todos os itens da proposta. */
+  atributosItem?: AtributoPropostaValor[];
   localRetiradaDifEnderecoRemetente?: boolean;
   idEnderecoLocalRetirada?: number | null;
   localEntregaDifEnderecoDestinatario?: boolean;
@@ -167,6 +169,7 @@ export async function criarPropostaNomus(input: {
   const dataValidade = normalizarDataBr(proposta?.dataValidade, maisDiasBr(30));
   const observacao = String(proposta?.observacao ?? input.observacao ?? '').trim();
   const atributos = montarAtributos(proposta?.atributos);
+  const atributosItem = montarAtributos(proposta?.atributosItem);
 
   const body: Record<string, unknown> = {
     idEmpresa: config.idEmpresa,
@@ -181,19 +184,23 @@ export async function criarPropostaNomus(input: {
     dataEmissao: data,
     dataValidade,
     observacao,
-    itensProposta: input.itens.map((item, idx) => ({
-      item: itemLabel(idx),
-      idProduto: item.idProduto,
-      qtde: String(item.quantidade),
-      precoUnitario: String(item.valorUnitario),
-      valorUnitario: String(item.valorUnitario),
-      percentualDesconto: String(item.descontoPercentual || 0),
-      prazoEntregaDias: '1',
-      prazoEntrega: '1',
-      idUnidadeMedida: item.idUnidadeMedida,
-      idTabelaPreco: config.idTabelaPreco,
-      idTipoMovimentacao: idTipoMov,
-    })),
+    itensProposta: input.itens.map((item, idx) => {
+      const linha: Record<string, unknown> = {
+        item: itemLabel(idx),
+        idProduto: item.idProduto,
+        qtde: String(item.quantidade),
+        precoUnitario: String(item.valorUnitario),
+        valorUnitario: String(item.valorUnitario),
+        percentualDesconto: String(item.descontoPercentual || 0),
+        prazoEntregaDias: '1',
+        prazoEntrega: '1',
+        idUnidadeMedida: item.idUnidadeMedida,
+        idTabelaPreco: config.idTabelaPreco,
+        idTipoMovimentacao: idTipoMov,
+      };
+      if (atributosItem.length) linha.atributosItemProposta = atributosItem;
+      return linha;
+    }),
   };
 
   if (atributos.length) body.atributosProposta = atributos;

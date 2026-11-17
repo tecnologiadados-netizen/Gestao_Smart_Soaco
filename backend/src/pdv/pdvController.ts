@@ -315,12 +315,15 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
     const fiscalRaw = String(req.body?.fiscal ?? 'nenhuma');
     const fiscal = fiscalRaw === 'nfce' || fiscalRaw === 'nfe' ? fiscalRaw : 'nenhuma';
     const body = req.body ?? {};
-    const atributosProposta = Array.isArray(body.atributosProposta)
-      ? body.atributosProposta.map((a: { nomeAtributo?: unknown; valorAtributo?: unknown }) => ({
-          nomeAtributo: String(a?.nomeAtributo ?? ''),
-          valorAtributo: String(a?.valorAtributo ?? ''),
-        }))
-      : [];
+    const mapAtributos = (lista: unknown) =>
+      Array.isArray(lista)
+        ? lista.map((a: { nomeAtributo?: unknown; valorAtributo?: unknown }) => ({
+            nomeAtributo: String(a?.nomeAtributo ?? ''),
+            valorAtributo: String(a?.valorAtributo ?? ''),
+          }))
+        : [];
+    const atributosProposta = mapAtributos(body.atributosProposta);
+    const atributosItemProposta = mapAtributos(body.atributosItemProposta);
     const venda = await confirmarVenda({
       usuarioId: ctx.usuarioId,
       idEmpresa,
@@ -343,6 +346,7 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
       idPessoaVendedor: Number(body.idPessoaVendedor) || null,
       dataValidade: String(body.dataValidade ?? ''),
       atributosProposta,
+      atributosItemProposta,
       localRetiradaDifEnderecoRemetente: Boolean(body.localRetiradaDifEnderecoRemetente),
       idEnderecoLocalRetirada: Number(body.idEnderecoLocalRetirada) || null,
       localEntregaDifEnderecoDestinatario: Boolean(body.localEntregaDifEnderecoDestinatario),

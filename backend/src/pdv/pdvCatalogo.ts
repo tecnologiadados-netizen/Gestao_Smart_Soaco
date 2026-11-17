@@ -185,17 +185,26 @@ export type AtributoPropostaPdv = {
   obrigatorio: boolean;
   formato: 'texto' | 'data' | 'lista';
   opcoes: string[];
+  /** cabecalho = IPROP/LPROP; item = LIPROP/IIPROP (vai em cada item da proposta). */
+  escopo: 'cabecalho' | 'item';
 };
 
-/** Atributos de proposta (IPROP/LPROP) com opções ativas do Nomus. */
+/** Atributos de proposta: cabeçalho (IPROP/LPROP) e de item (LIPROP/IIPROP). */
 export async function listarAtributosProposta(): Promise<AtributoPropostaPdv[]> {
   const [attrs] = await queryNomus<
     Array<{ id: number; nome: string; formato: number; obrigatorio: number; discriminador: string }>
   >(
     `SELECT id, nome, formato, obrigatorio, discriminador
      FROM atributo
-     WHERE ativo = 1 AND discriminador IN ('IPROP', 'LPROP')
+     WHERE ativo = 1 AND discriminador IN ('IPROP', 'LPROP', 'LIPROP', 'IIPROP')
      ORDER BY
+       CASE discriminador
+         WHEN 'IPROP' THEN 1
+         WHEN 'LPROP' THEN 2
+         WHEN 'IIPROP' THEN 3
+         WHEN 'LIPROP' THEN 4
+         ELSE 9
+       END,
        CASE nome
          WHEN 'Data de entrega' THEN 1
          WHEN 'Método de entrega' THEN 2
@@ -204,6 +213,7 @@ export async function listarAtributosProposta(): Promise<AtributoPropostaPdv[]> 
          WHEN 'Projeto' THEN 5
          WHEN 'Tipo de venda' THEN 6
          WHEN 'FRETE' THEN 7
+         WHEN 'Produto Montado ?' THEN 8
          ELSE 99
        END,
        nome`,
@@ -232,11 +242,15 @@ export async function listarAtributosProposta(): Promise<AtributoPropostaPdv[]> 
     const formatoNum = Number(a.formato);
     const formato: AtributoPropostaPdv['formato'] =
       formatoNum === 3 ? 'data' : formatoNum === 4 || (porAtributo.get(a.id)?.length ?? 0) > 0 ? 'lista' : 'texto';
+    const disc = String(a.discriminador || '').toUpperCase();
+    const escopo: AtributoPropostaPdv['escopo'] =
+      disc === 'LIPROP' || disc === 'IIPROP' ? 'item' : 'cabecalho';
     return {
       nome: String(a.nome),
       obrigatorio: Boolean(a.obrigatorio),
       formato,
       opcoes: porAtributo.get(a.id) ?? [],
+      escopo,
     };
   });
 }

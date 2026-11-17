@@ -58,6 +58,7 @@ type AtributoOpcao = {
   obrigatorio: boolean;
   formato: 'texto' | 'data' | 'lista';
   opcoes: string[];
+  escopo?: 'cabecalho' | 'item';
 };
 type Cliente = { id: number; nome: string; cpf?: string; cnpj?: string };
 type Vendedor = { id: number; nome: string };
@@ -443,20 +444,29 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
   const atributosPrincipais = useMemo(
     () =>
-      atributosOpcoes.filter((a) =>
-        [
-          'Data de entrega',
-          'Método de entrega',
-          'Montagem',
-          'Primeiro contato efetivado através de:',
-          'Projeto',
-          'Tipo de venda',
-        ].includes(a.nome),
+      atributosOpcoes.filter(
+        (a) =>
+          (a.escopo ?? 'cabecalho') === 'cabecalho' &&
+          [
+            'Data de entrega',
+            'Método de entrega',
+            'Montagem',
+            'Primeiro contato efetivado através de:',
+            'Projeto',
+            'Tipo de venda',
+          ].includes(a.nome),
+      ),
+    [atributosOpcoes],
+  );
+  const atributosItem = useMemo(
+    () =>
+      atributosOpcoes.filter(
+        (a) => a.escopo === 'item' || a.nome === 'Produto Montado ?',
       ),
     [atributosOpcoes],
   );
   const atributoOutrasInfo = useMemo(
-    () => atributosOpcoes.find((a) => a.nome === 'FRETE') ?? null,
+    () => atributosOpcoes.find((a) => a.nome === 'FRETE' && (a.escopo ?? 'cabecalho') === 'cabecalho') ?? null,
     [atributosOpcoes],
   );
 
@@ -593,7 +603,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             setAviso('Selecione o tipo de movimentação.');
             return;
           }
-          for (const atr of atributosPrincipais) {
+          for (const atr of [...atributosPrincipais, ...atributosItem]) {
             if (atr.obrigatorio && !String(atributosValores[atr.nome] ?? '').trim()) {
               setAviso(`Preencha o atributo: ${atr.nome}`);
               return;
@@ -617,17 +627,24 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       setEnviando(true);
       setAviso('');
       try {
-        const atributosProposta = Object.entries(atributosValores)
-          .map(([nomeAtributo, valorBruto]) => {
-            let valorAtributo = String(valorBruto ?? '').trim();
-            const meta = atributosOpcoes.find((a) => a.nome === nomeAtributo);
-            if (meta?.formato === 'data') {
-              const m = valorAtributo.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (m) valorAtributo = `${m[3]}/${m[2]}/${m[1]}`;
-            }
-            return { nomeAtributo, valorAtributo };
-          })
-          .filter((a) => a.nomeAtributo && a.valorAtributo);
+        const montarAttrs = (escopo: 'cabecalho' | 'item') =>
+          Object.entries(atributosValores)
+            .map(([nomeAtributo, valorBruto]) => {
+              const meta = atributosOpcoes.find((a) => a.nome === nomeAtributo);
+              const metaEscopo = meta?.escopo ?? (nomeAtributo === 'Produto Montado ?' ? 'item' : 'cabecalho');
+              if (metaEscopo !== escopo) return null;
+              let valorAtributo = String(valorBruto ?? '').trim();
+              if (meta?.formato === 'data') {
+                const m = valorAtributo.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (m) valorAtributo = `${m[3]}/${m[2]}/${m[1]}`;
+              }
+              return { nomeAtributo, valorAtributo };
+            })
+            .filter((a): a is { nomeAtributo: string; valorAtributo: string } =>
+              Boolean(a && a.nomeAtributo && a.valorAtributo),
+            );
+        const atributosProposta = montarAttrs('cabecalho');
+        const atributosItemProposta = montarAttrs('item');
         const idFormaFinal =
           pagamentosLista[0]?.idFormaPagamento || formaReceberId || formaAtualId || null;
         const pags =
@@ -671,6 +688,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             dataValidade: destinoEscolhido === 'orcamento' ? dataValidade : undefined,
             atributosProposta:
               destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosProposta : [],
+            atributosItemProposta:
+              destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosItemProposta : [],
             localRetiradaDifEnderecoRemetente: localRetiradaDif,
             idEnderecoLocalRetirada: localRetiradaDif ? idEnderecoRetirada || null : null,
             localEntregaDifEnderecoDestinatario: localEntregaDif,
@@ -704,6 +723,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       }
     },
     [
+      atributosItem,
       atributosOpcoes,
       atributosPrincipais,
       atributosValores,
@@ -1564,6 +1584,36 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   )}
                 </label>
               ))}
+              {atributosItem.length > 0 ? (
+                <div className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div className="text-xs font-semibold text-slate-700">Atributos dos itens</div>
+                  <p className="text-[11px] text-slate-500">
+                    Aplicado a todos os produtos desta proposta.
+                  </p>
+                  {atributosItem.map((atr) => (
+                    <label key={atr.nome} className="block text-xs text-slate-600">
+                      {atr.nome}{atr.obrigatorio ? ' *' : ''}
+                      {atr.formato === 'lista' ? (
+                        <select
+                          value={atributosValores[atr.nome] ?? ''}
+                          onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                          className={`${campoClaro} mt-1 w-full bg-white`}
+                        >
+                          <option value="">Selecione…</option>
+                          {atr.opcoes.map((op) => <option key={op} value={op}>{op}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type={atr.formato === 'data' ? 'date' : 'text'}
+                          value={atributosValores[atr.nome] ?? ''}
+                          onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                          className={`${campoClaro} mt-1 w-full bg-white`}
+                        />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
               {atributoOutrasInfo ? (
                 <label className="block text-xs text-slate-600">
                   Outras informações ({atributoOutrasInfo.nome})
