@@ -298,6 +298,7 @@ const CAMPOS_DETALHE: { keys: string[]; label: string; decimals?: boolean; date?
   { keys: ['Saldo em Estoque Antes UE', 'saldo em estoque antes ue'], label: 'Saldo em Estoque Antes da Última Entrada', decimals: true },
   { keys: ['Qtde Empenhada', 'qtde empenhada', 'Qtdempenhada'], label: 'Qtde Empenhada', decimals: true },
   { keys: ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag'], label: 'Pré-compra', decimals: true },
+  { keys: ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada'], label: 'Pré-entrada', decimals: true },
 ];
 
 function valorCampo(obj: Record<string, unknown>, keys: string[]): unknown {
