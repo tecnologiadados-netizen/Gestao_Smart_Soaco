@@ -763,7 +763,13 @@ export function valoresIguaisComparativo(a: number, b: number, casas: number): b
   return arredondarComparativo(a, casas) === arredondarComparativo(b, casas);
 }
 
-/** Unitário líquido: prioriza totalComDesconto/qtde; senão bruto − desconto/qtde. */
+/**
+ * Unitário líquido.
+ * Sem desconto: usa o valor unitário do Nomus. Dividir o total (já arredondado em
+ * 2 casas) pela quantidade inventa casas — ex.: 524,10 / 60,8 = 8,620065…, e o
+ * card de peso marcava divergência real contra o pedido em 8,62.
+ * Com desconto: prioriza totalComDesconto/qtde; senão bruto − desconto/qtde.
+ */
 export function unitarioLiquidoComDesconto(params: {
   unitarioBruto: number;
   qtde: number;
@@ -771,10 +777,14 @@ export function unitarioLiquidoComDesconto(params: {
   totalComDesconto: number;
 }): number {
   const qtde = params.qtde;
+  const descontoCentavos = Math.round((Number(params.desconto) || 0) * 100);
+  if (descontoCentavos <= 0) {
+    return params.unitarioBruto;
+  }
   if (qtde > 0 && Number.isFinite(params.totalComDesconto)) {
     return params.totalComDesconto / qtde;
   }
-  if (qtde > 0 && params.desconto > 0) {
+  if (qtde > 0) {
     return (params.unitarioBruto * qtde - params.desconto) / qtde;
   }
   return params.unitarioBruto;
