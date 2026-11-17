@@ -20,6 +20,7 @@ type Sessao = {
   idTipoMovimentacao?: number | null;
   idCondicaoPagamento?: number | null;
   idFormaPagamento?: number | null;
+  idPessoaVendedor?: number | null;
   certificado: {
     cnpj: string;
     titular: string;
@@ -59,6 +60,14 @@ type AtributoOpcao = {
   opcoes: string[];
 };
 type Cliente = { id: number; nome: string; cpf?: string; cnpj?: string };
+type Vendedor = { id: number; nome: string };
+
+function rotuloItemCarrinho(item: { codigo?: string; descricao?: string; quantidade: number }) {
+  const cod = String(item.codigo ?? '').trim();
+  const desc = String(item.descricao ?? '').trim();
+  const nome = cod && desc ? `${cod} — ${desc}` : desc || cod || 'Item';
+  return `${item.quantidade} × ${nome}`;
+}
 
 function dataIsoMaisDias(dias: number): string {
   const d = new Date();
@@ -146,6 +155,7 @@ function liquido(item: ItemCarrinho): number {
 export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const buscaRef = useRef<HTMLInputElement>(null);
   const clienteRef = useRef<HTMLInputElement>(null);
+  const vendedorRef = useRef<HTMLInputElement>(null);
   const pagamentoRef = useRef<HTMLInputElement>(null);
   const fundoRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +208,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [operacaoForm, setOperacaoForm] = useState<null | 'sangria' | 'suprimento' | 'fechamento' | 'devolucao'>(null);
   const movimentoValorRef = useRef<HTMLInputElement>(null);
   const [mostrarCliente, setMostrarCliente] = useState(false);
+  const [mostrarVendedor, setMostrarVendedor] = useState(false);
+  const [vendedor, setVendedor] = useState<Vendedor | null>(null);
+  const [vendedorBusca, setVendedorBusca] = useState('');
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [modalCliente, setModalCliente] = useState(false);
   const [formCliente, setFormCliente] = useState<FormClienteNovo>(formClienteVazio);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
@@ -320,6 +334,40 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           .catch(() => setFormas([]));
       });
   }, [recarregarSessao]);
+
+  useEffect(() => {
+    if (!sessao?.idEmpresa) return;
+    const idPadrao = sessao.idPessoaVendedor || 0;
+    const qs = idPadrao ? `?id=${idPadrao}` : '';
+    pdvJson<{ vendedores: Vendedor[] }>(`/api/pdv/vendedores${qs}`)
+      .then((data) => {
+        const lista = data.vendedores ?? [];
+        setVendedores(lista);
+        setVendedor((atual) => {
+          if (atual) return atual;
+          const padrao = lista.find((v) => v.id === idPadrao) || lista[0] || null;
+          if (padrao) setVendedorBusca(padrao.nome);
+          return padrao;
+        });
+      })
+      .catch(() => {
+        /* lista opcional */
+      });
+  }, [sessao?.idEmpresa, sessao?.idPessoaVendedor]);
+
+  useEffect(() => {
+    if (!mostrarVendedor) return;
+    const t = window.setTimeout(() => {
+      const q = vendedorBusca.trim();
+      const qs = new URLSearchParams();
+      if (q.length >= 2) qs.set('q', q);
+      if (vendedor?.id) qs.set('id', String(vendedor.id));
+      pdvJson<{ vendedores: Vendedor[] }>(`/api/pdv/vendedores?${qs}`)
+        .then((data) => setVendedores(data.vendedores ?? []))
+        .catch(() => setVendedores([]));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [mostrarVendedor, vendedor?.id, vendedorBusca]);
 
   useEffect(() => {
     if (!cliente?.id) {
@@ -619,6 +667,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             idCondicaoPagamento: idCondicaoPagamento || null,
             idTipoMovimentacao: idTipoMovimentacao || null,
             idContato: idContato || null,
+            idPessoaVendedor: vendedor?.id || null,
             dataValidade: destinoEscolhido === 'orcamento' ? dataValidade : undefined,
             atributosProposta:
               destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosProposta : [],
@@ -680,6 +729,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       recarregarSessao,
       total,
       ufCliente,
+      vendedor,
     ],
   );
 
@@ -724,12 +774,26 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         else setPainelOperacoes(false);
         return;
       }
+      if (ev.shiftKey && !ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === 'v' && !painelOperacoes) {
+        ev.preventDefault();
+        setMostrarVendedor(true);
+        setMostrarCliente(false);
+        window.setTimeout(() => vendedorRef.current?.focus(), 0);
+        return;
+      }
+      if (ev.shiftKey && !ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === 'c' && !painelOperacoes) {
+        ev.preventDefault();
+        setMostrarCliente(true);
+        setMostrarVendedor(false);
+        window.setTimeout(() => clienteRef.current?.focus(), 0);
+        return;
+      }
       if (ev.key === 'F2') {
         ev.preventDefault();
         if (bloqueiaPorCaixa) fundoRef.current?.focus();
         else if (etapa === 'fechamento') pagamentoRef.current?.focus();
         else buscaRef.current?.focus();
-      } else if (ev.key === 'F3' && etapa === 'fechamento') {
+      } else if (ev.key === 'F3' && etapa === 'fechamento' && destinoEfetivo === 'pedido') {
         ev.preventDefault();
         confirmarPagamentoRecebido();
       } else if (ev.key === 'F4') {
@@ -1164,10 +1228,18 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">Cliente · Shift C</div>
                 <div className="truncate font-medium text-slate-800">{cliente?.nome || 'Ao consumidor'}</div>
               </button>
-              <div className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs hover:border-[#1E22AA]/50"
+                onClick={() => {
+                  setMostrarVendedor(true);
+                  setMostrarCliente(false);
+                  window.setTimeout(() => vendedorRef.current?.focus(), 0);
+                }}
+              >
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">Vendedor · Shift V</div>
-                <div className="truncate font-medium text-slate-800">{sessao.operador}</div>
-              </div>
+                <div className="truncate font-medium text-slate-800">{vendedor?.nome || sessao.operador}</div>
+              </button>
             </div>
             {mostrarCliente ? (
               <div className="relative border-b border-slate-100 px-3 py-2">
@@ -1202,6 +1274,46 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 ) : null}
               </div>
             ) : null}
+            {mostrarVendedor ? (
+              <div className="relative border-b border-slate-100 px-3 py-2">
+                <input
+                  ref={vendedorRef}
+                  value={vendedorBusca}
+                  onChange={(e) => {
+                    setVendedorBusca(e.target.value);
+                    if (vendedor && e.target.value !== vendedor.nome) setVendedor(null);
+                  }}
+                  placeholder="Buscar vendedor"
+                  className={`${campoClaro} w-full`}
+                />
+                <div className="mt-1 flex gap-2">
+                  <button type="button" className="text-xs text-slate-500" onClick={() => setMostrarVendedor(false)}>
+                    Fechar
+                  </button>
+                </div>
+                {vendedores.length > 0 ? (
+                  <ul className="absolute z-10 mt-1 max-h-40 w-[calc(100%-1.5rem)] overflow-auto rounded-lg border border-slate-200 bg-white text-sm shadow">
+                    {vendedores.map((v) => (
+                      <li key={v.id}>
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover:bg-slate-50"
+                          onClick={() => {
+                            setVendedor(v);
+                            setVendedorBusca(v.nome);
+                            setMostrarVendedor(false);
+                          }}
+                        >
+                          {v.nome}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">Digite ao menos 2 letras para buscar.</p>
+                )}
+              </div>
+            ) : null}
             <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-2">
               {carrinho.length === 0 ? (
                 <li className="flex h-full min-h-[10rem] flex-col items-center justify-center text-center text-sm text-slate-400">
@@ -1211,8 +1323,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 carrinho.map((item, index) => (
                   <li key={`${item.id}-${index}`} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2 py-2 text-sm">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelecionado(index)}>
-                      <div className="truncate text-slate-800">
-                        {item.quantidade} × {item.codigo || item.descricao}
+                      <div className="truncate text-slate-800" title={rotuloItemCarrinho(item)}>
+                        {rotuloItemCarrinho(item)}
                       </div>
                       <div className="text-xs text-slate-500">{brl(liquido(item))}</div>
                     </button>
@@ -1255,6 +1367,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           <span><b>F4</b> Adicionar produto</span>
           <span><b>F6</b> Finalizar venda</span>
           <span><b>Shift+C</b> Cliente</span>
+          <span><b>Shift+V</b> Vendedor</span>
         </footer>
       </div>
       ) : (
@@ -1264,8 +1377,14 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-800">Receber</h2>
-                  <p className="text-xs text-slate-500">Escolha a forma e confirme o valor recebido.</p>
+                  <h2 className="text-sm font-semibold text-slate-800">
+                    {destinoEfetivo === 'orcamento' ? 'Pagamento da proposta' : 'Receber'}
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    {destinoEfetivo === 'orcamento'
+                      ? 'Informe a forma e a condição de pagamento do orçamento.'
+                      : 'Escolha a forma e confirme o valor recebido.'}
+                  </p>
                 </div>
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">F2</span>
               </div>
@@ -1283,28 +1402,44 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                     ))}
                   </select>
                 </label>
-                <label className="block text-xs text-slate-600">
-                  Valor recebido
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-slate-500">R$</span>
-                    <input
-                      ref={pagamentoRef}
-                      value={valorReceber}
-                      onChange={(e) => setValorReceber(e.target.value)}
-                      className={`${campoClaro} w-full`}
-                      inputMode="decimal"
-                    />
-                  </div>
-                </label>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => confirmarPagamentoRecebido()}
-                    className="w-full rounded-lg bg-[#3d4654] px-3 py-2.5 text-sm font-semibold text-white"
-                  >
-                    ✓ Confirmar <span className="ml-1 text-[10px] opacity-80">F3</span>
-                  </button>
-                </div>
+                {destinoEfetivo === 'orcamento' ? (
+                  <label className="block text-xs text-slate-600 sm:col-span-2">
+                    Condição de pagamento
+                    <select
+                      value={idCondicaoPagamento || ''}
+                      onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)}
+                      className={`${campoClaro} mt-1 w-full`}
+                    >
+                      <option value="">Selecione…</option>
+                      {condicoes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <>
+                    <label className="block text-xs text-slate-600">
+                      Valor recebido
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-slate-500">R$</span>
+                        <input
+                          ref={pagamentoRef}
+                          value={valorReceber}
+                          onChange={(e) => setValorReceber(e.target.value)}
+                          className={`${campoClaro} w-full`}
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </label>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => confirmarPagamentoRecebido()}
+                        className="w-full rounded-lg bg-[#3d4654] px-3 py-2.5 text-sm font-semibold text-white"
+                      >
+                        ✓ Confirmar <span className="ml-1 text-[10px] opacity-80">F3</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -1313,8 +1448,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               <ul className="space-y-1 text-sm">
                 {carrinho.map((item, i) => (
                   <li key={`${item.id}-${i}`} className="flex justify-between gap-2 border-b border-slate-100 py-2">
-                    <span className="truncate text-slate-700">
-                      {item.quantidade} × {item.codigo || item.descricao}
+                    <span className="min-w-0 truncate text-slate-700" title={rotuloItemCarrinho(item)}>
+                      {rotuloItemCarrinho(item)}
                     </span>
                     <span className="shrink-0 font-medium">{brl(liquido(item))}</span>
                   </li>
@@ -1329,27 +1464,37 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 <div className="text-[10px] uppercase text-slate-400">Cliente</div>
                 <div className="truncate font-medium text-slate-800">{cliente?.nome || 'Ao consumidor'}</div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs shadow-sm hover:border-[#1E22AA]/50"
+                onClick={() => {
+                  setMostrarVendedor(true);
+                  setEtapa('balcao');
+                  window.setTimeout(() => vendedorRef.current?.focus(), 0);
+                }}
+              >
                 <div className="text-[10px] uppercase text-slate-400">Vendedor</div>
-                <div className="truncate font-medium text-slate-800">{sessao.operador}</div>
-              </div>
+                <div className="truncate font-medium text-slate-800">{vendedor?.nome || sessao.operador}</div>
+              </button>
             </div>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-2 text-sm font-semibold text-slate-800">Pagamentos recebidos</h2>
-              {pagamentosLista.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-400">Nenhum pagamento ainda. Confirme à esquerda.</p>
-              ) : (
-                <ul className="space-y-1 text-sm">
-                  {pagamentosLista.map((p, i) => (
-                    <li key={i} className="flex justify-between border-b border-slate-100 py-1.5">
-                      <span>{formas.find((f) => f.id === p.idFormaPagamento)?.nome || `Forma ${p.idFormaPagamento}`}</span>
-                      <span className="font-medium">{brl(p.valor)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            {destinoEfetivo === 'pedido' ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-2 text-sm font-semibold text-slate-800">Pagamentos recebidos</h2>
+                {pagamentosLista.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">Nenhum pagamento ainda. Confirme à esquerda.</p>
+                ) : (
+                  <ul className="space-y-1 text-sm">
+                    {pagamentosLista.map((p, i) => (
+                      <li key={i} className="flex justify-between border-b border-slate-100 py-1.5">
+                        <span>{formas.find((f) => f.id === p.idFormaPagamento)?.nome || `Forma ${p.idFormaPagamento}`}</span>
+                        <span className="font-medium">{brl(p.valor)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ) : null}
 
             <section className="max-h-[42vh] space-y-2 overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800">Dados da proposta (Nomus)</h2>
@@ -1363,13 +1508,15 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   </label>
                 </fieldset>
               ) : null}
-              <label className="block text-xs text-slate-600">
-                Condição de pagamento
-                <select value={idCondicaoPagamento || ''} onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)} className={`${campoClaro} mt-1 w-full`}>
-                  <option value="">Selecione…</option>
-                  {condicoes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-              </label>
+              {destinoEfetivo !== 'orcamento' ? (
+                <label className="block text-xs text-slate-600">
+                  Condição de pagamento
+                  <select value={idCondicaoPagamento || ''} onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)} className={`${campoClaro} mt-1 w-full`}>
+                    <option value="">Selecione…</option>
+                    {condicoes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+              ) : null}
               {cliente && contatos.length > 0 ? (
                 <label className="block text-xs text-slate-600">
                   Contato
@@ -1507,7 +1654,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         </div>
         <footer className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
           <span><b>F2</b> Forma de pagamento</span>
-          <span><b>F3</b> Confirmar pagamento</span>
+          {destinoEfetivo === 'pedido' ? <span><b>F3</b> Confirmar pagamento</span> : null}
           <span><b>F6</b> Finalizar (Nomus)</span>
           <span><b>F8</b> Cancelar</span>
         </footer>

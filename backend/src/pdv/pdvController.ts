@@ -81,6 +81,7 @@ export async function getSessao(req: Request, res: Response): Promise<void> {
       idTipoMovimentacao: config?.idTipoMovimentacao ?? null,
       idCondicaoPagamento: config?.idCondicaoPagamento ?? null,
       idFormaPagamento: config?.idFormaPagamento ?? null,
+      idPessoaVendedor: config?.idPessoaVendedor ?? null,
       certificado: cert
         ? {
             cnpj: cert.cnpj,
@@ -339,6 +340,7 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
       idCondicaoPagamento: Number(body.idCondicaoPagamento) || null,
       idTipoMovimentacao: Number(body.idTipoMovimentacao) || null,
       idContato: Number(body.idContato) || null,
+      idPessoaVendedor: Number(body.idPessoaVendedor) || null,
       dataValidade: String(body.dataValidade ?? ''),
       atributosProposta,
       localRetiradaDifEnderecoRemetente: Boolean(body.localRetiradaDifEnderecoRemetente),
@@ -347,6 +349,19 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
       idEnderecoLocalEntrega: Number(body.idEnderecoLocalEntrega) || null,
     });
     res.json(venda);
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function getVendedores(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const q = String(req.query.q ?? '');
+    const id = Number(req.query.id) || 0;
+    const itens = await consultarCadastro('vendedor', q, idEmpresa, id);
+    res.json({ vendedores: itens.map((item) => ({ id: item.id, nome: item.nome })) });
   } catch (err) {
     res.status(statusDe(err)).json({ error: mensagem(err) });
   }

@@ -143,6 +143,7 @@ export async function confirmarVenda(input: {
   idCondicaoPagamento?: number | null;
   idTipoMovimentacao?: number | null;
   idContato?: number | null;
+  idPessoaVendedor?: number | null;
   dataValidade?: string;
   atributosProposta?: Array<{ nomeAtributo: string; valorAtributo: string }>;
   localRetiradaDifEnderecoRemetente?: boolean;
@@ -277,7 +278,12 @@ export async function confirmarVenda(input: {
 
   if (input.espera) return venda;
 
-  const nomusCfg = configNomusDe({ ...config, idEmpresa: input.idEmpresa });
+  const idVendedor = input.idPessoaVendedor || config.idPessoaVendedor;
+  const nomusCfg = configNomusDe({
+    ...config,
+    idEmpresa: input.idEmpresa,
+    idPessoaVendedor: idVendedor,
+  });
   const idForma =
     input.idFormaPagamento || input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento;
   const idTipoMov = input.idTipoMovimentacao || config.idTipoMovimentacao;

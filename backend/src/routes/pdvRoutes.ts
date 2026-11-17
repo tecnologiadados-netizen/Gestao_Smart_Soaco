@@ -16,6 +16,7 @@ import {
   getPropostaPdf,
   getSessao,
   getVenda,
+  getVendedores,
   postAbrirCaixa,
   postCertificado,
   postCliente,
@@ -48,6 +49,9 @@ router.post('/clientes', (req, res, next) => {
 });
 router.get('/formas', (req, res, next) => {
   getFormas(req, res).catch(next);
+});
+router.get('/vendedores', (req, res, next) => {
+  getVendedores(req, res).catch(next);
 });
 router.get('/orcamento/opcoes', (req, res, next) => {
   getOrcamentoOpcoes(req, res).catch(next);
