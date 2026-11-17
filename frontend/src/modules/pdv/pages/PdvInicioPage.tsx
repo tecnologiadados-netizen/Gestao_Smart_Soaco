@@ -135,6 +135,10 @@ type VendaResposta = {
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
 function liquido(item: ItemCarrinho): number {
   return item.quantidade * item.preco * (1 - item.descontoPercentual / 100);
 }
@@ -151,7 +155,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [busca, setBusca] = useState('');
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [paginaProdutos, setPaginaProdutos] = useState(1);
-  const [temMaisProdutos, setTemMaisProdutos] = useState(false);
+  const [, setTemMaisProdutos] = useState(false);
   const [carregandoBusca, setCarregandoBusca] = useState(false);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [selecionado, setSelecionado] = useState(0);
@@ -195,8 +199,15 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [modalCliente, setModalCliente] = useState(false);
   const [formCliente, setFormCliente] = useState<FormClienteNovo>(formClienteVazio);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
-  const [claro, setClaro] = useState(() => localStorage.getItem('pdv_tema') === 'claro');
+  const [claro, setClaro] = useState(() => localStorage.getItem('pdv_tema') !== 'escuro');
   const tema = claro ? 'pdv-shell pdv-claro' : 'pdv-shell';
+  const [etapa, setEtapa] = useState<'balcao' | 'fechamento'>('balcao');
+  const [rascunho, setRascunho] = useState<Produto | null>(null);
+  const [rascunhoQtd, setRascunhoQtd] = useState('1');
+  const [rascunhoDesc, setRascunhoDesc] = useState('');
+  const [formaReceberId, setFormaReceberId] = useState(0);
+  const [valorReceber, setValorReceber] = useState('');
+  const [pagamentosLista, setPagamentosLista] = useState<Pagamento[]>([]);
 
   function selecionarCliente(c: Cliente) {
     setCliente(c);
@@ -285,9 +296,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         const formaPadrao =
           data.formas.find((f) => f.id === data.padrao?.idFormaPagamento) || ordenarFormas(data.formas)[0];
         if (formaPadrao) {
-          setPagamentos((atual) =>
-            atual.map((p, i) => (i === 0 && !p.idFormaPagamento ? { ...p, idFormaPagamento: formaPadrao.id } : p)),
-          );
+          setFormaReceberId(formaPadrao.id);
+          setPagamentos([{ idFormaPagamento: formaPadrao.id, valor: 0 }]);
         }
         if (data.padrao?.idCondicaoPagamento) setIdCondicaoPagamento(data.padrao.idCondicaoPagamento);
         else if (data.condicoes[0]) setIdCondicaoPagamento(data.condicoes[0].id);
@@ -301,9 +311,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             setCondicoes(data.condicoes ?? []);
             const primeira = ordenarFormas(data.formas)[0];
             if (primeira) {
-              setPagamentos((atual) =>
-                atual.map((p, i) => (i === 0 && !p.idFormaPagamento ? { ...p, idFormaPagamento: primeira.id } : p)),
-              );
+              setFormaReceberId(primeira.id);
+              setPagamentos([{ idFormaPagamento: primeira.id, valor: 0 }]);
             }
           })
           .catch(() => setFormas([]));
@@ -369,21 +378,18 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
   const total = useMemo(() => carrinho.reduce((s, item) => s + liquido(item), 0), [carrinho]);
   const formasVisiveis = useMemo(() => ordenarFormas(formas), [formas]);
-  const formaAtualId = pagamentos[0]?.idFormaPagamento ?? 0;
-
-  function escolherForma(id: number) {
-    setPagamentos([{ idFormaPagamento: id, valor: total }]);
-    setAviso('');
-  }
+  const pagoTotal = useMemo(
+    () => round2(pagamentosLista.reduce((s, p) => s + (Number(p.valor) || 0), 0)),
+    [pagamentosLista],
+  );
+  const faltaPagar = Math.max(0, round2(total - pagoTotal));
+  const formaAtualId = pagamentosLista[0]?.idFormaPagamento || formaReceberId || pagamentos[0]?.idFormaPagamento || 0;
 
   useEffect(() => {
-    if (!formaAtualId) return;
-    setPagamentos((atual) => {
-      if (atual.length !== 1 || atual[0].idFormaPagamento !== formaAtualId) return atual;
-      if (Math.abs(atual[0].valor - total) < 0.009) return atual;
-      return [{ idFormaPagamento: formaAtualId, valor: total }];
-    });
-  }, [formaAtualId, total]);
+    if (etapa === 'fechamento' && !valorReceber) {
+      setValorReceber(faltaPagar > 0 ? String(faltaPagar) : String(total || ''));
+    }
+  }, [etapa, faltaPagar, total, valorReceber]);
 
   const atributosPrincipais = useMemo(
     () =>
@@ -406,27 +412,88 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
   const ignorarEstoque = Boolean(sessao?.ignorarEstoque);
 
-  const adicionar = (produto: Produto) => {
+  function confirmarPagamentoRecebido() {
+    const idForma = formaReceberId || formasVisiveis[0]?.id || 0;
+    const valor = Number(String(valorReceber).replace(',', '.')) || 0;
+    if (!idForma) {
+      setAviso('Selecione a forma de pagamento.');
+      return;
+    }
+    if (valor <= 0) {
+      setAviso('Informe o valor recebido.');
+      return;
+    }
+    setPagamentosLista((atual) => {
+      const nova = [...atual, { idFormaPagamento: idForma, valor: round2(valor) }];
+      setPagamentos(nova);
+      return nova;
+    });
+    setValorReceber('');
+    setAviso('');
+  }
+
+  function escolherProdutoRascunho(produto: Produto) {
     if (!ignorarEstoque && (!produto.vinculado || produto.saldo <= 0)) {
       setAviso(`${produto.codigo || produto.descricao} está sem estoque nesta empresa.`);
       return;
     }
+    setRascunho(produto);
+    setRascunhoQtd('1');
+    setRascunhoDesc('');
     setAviso('');
+  }
+
+  function adicionarRascunho() {
+    if (!rascunho) {
+      setAviso('Localize e selecione um produto.');
+      return;
+    }
+    const qtd = Number(String(rascunhoQtd).replace(',', '.')) || 0;
+    const desc = Math.min(
+      Math.max(Number(String(rascunhoDesc).replace(',', '.')) || 0, 0),
+      rascunho.descontoMaximo || 100,
+    );
+    if (qtd <= 0) {
+      setAviso('Informe a quantidade.');
+      return;
+    }
+    if (!ignorarEstoque && qtd > rascunho.saldo + 0.0001) {
+      setAviso(`Só há ${rascunho.saldo} em estoque.`);
+      return;
+    }
     setCarrinho((atual) => {
-      const idx = atual.findIndex((i) => i.id === produto.id);
+      const idx = atual.findIndex((i) => i.id === rascunho.id && i.descontoPercentual === desc);
       if (idx >= 0) {
-        const item = atual[idx];
-        if (!ignorarEstoque && item.quantidade + 1 > produto.saldo) {
-          setAviso(`Só há ${produto.saldo} em estoque.`);
+        const copia = [...atual];
+        const novaQtd = copia[idx].quantidade + qtd;
+        if (!ignorarEstoque && novaQtd > rascunho.saldo + 0.0001) {
+          setAviso(`Só há ${rascunho.saldo} em estoque.`);
           return atual;
         }
-        const copia = [...atual];
-        copia[idx] = { ...item, quantidade: item.quantidade + 1, saldo: produto.saldo };
+        copia[idx] = { ...copia[idx], quantidade: novaQtd, saldo: rascunho.saldo };
         return copia;
       }
-      return [...atual, { ...produto, quantidade: 1, descontoPercentual: 0 }];
+      return [...atual, { ...rascunho, quantidade: qtd, descontoPercentual: desc }];
     });
-  };
+    setRascunho(null);
+    setRascunhoQtd('1');
+    setRascunhoDesc('');
+    setBusca('');
+    setAviso('');
+    window.setTimeout(() => buscaRef.current?.focus(), 0);
+  }
+
+  function irParaFechamento() {
+    if (!carrinho.length) {
+      setAviso('Inclua ao menos um produto.');
+      return;
+    }
+    setPagamentosLista([]);
+    setFormaReceberId((id) => id || formasVisiveis[0]?.id || 0);
+    setValorReceber(String(round2(total)));
+    setEtapa('fechamento');
+    setAviso('');
+  }
 
   function ajustarQtd(index: number, delta: number) {
     setCarrinho((atual) =>
@@ -462,28 +529,39 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         setAviso('Inclua ao menos um produto.');
         return;
       }
-      if (!espera && destinoEscolhido === 'orcamento') {
-        if (!dataValidade) {
-          setAviso('Informe a data de validade da proposta.');
-          return;
+      if (!espera) {
+        if (destinoEscolhido === 'orcamento') {
+          if (!dataValidade) {
+            setAviso('Informe a data de validade da proposta.');
+            return;
+          }
+          if (!idCondicaoPagamento) {
+            setAviso('Selecione a condição de pagamento.');
+            return;
+          }
+          if (!idTipoMovimentacao) {
+            setAviso('Selecione o tipo de movimentação.');
+            return;
+          }
+          for (const atr of atributosPrincipais) {
+            if (atr.obrigatorio && !String(atributosValores[atr.nome] ?? '').trim()) {
+              setAviso(`Preencha o atributo: ${atr.nome}`);
+              return;
+            }
+          }
         }
-        if (!idCondicaoPagamento) {
-          setAviso('Selecione a condição de pagamento.');
-          return;
-        }
-        if (!idTipoMovimentacao) {
-          setAviso('Selecione o tipo de movimentação.');
-          return;
-        }
-        if (!formaAtualId) {
+        const idForma =
+          formaAtualId ||
+          formaReceberId ||
+          pagamentosLista[0]?.idFormaPagamento ||
+          0;
+        if (!idForma) {
           setAviso('Selecione a forma de pagamento.');
           return;
         }
-        for (const atr of atributosPrincipais) {
-          if (atr.obrigatorio && !String(atributosValores[atr.nome] ?? '').trim()) {
-            setAviso(`Preencha o atributo: ${atr.nome}`);
-            return;
-          }
+        if (destinoEscolhido === 'pedido' && pagamentosLista.length === 0) {
+          setAviso('Confirme ao menos um pagamento recebido.');
+          return;
         }
       }
       setEnviando(true);
@@ -500,6 +578,16 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             return { nomeAtributo, valorAtributo };
           })
           .filter((a) => a.nomeAtributo && a.valorAtributo);
+        const idFormaFinal =
+          pagamentosLista[0]?.idFormaPagamento || formaReceberId || formaAtualId || null;
+        const pags =
+          espera || destinoEscolhido === 'orcamento'
+            ? []
+            : pagamentosLista.length
+              ? pagamentosLista
+              : idFormaFinal
+                ? [{ idFormaPagamento: idFormaFinal, valor: total }]
+                : [];
         const venda = await pdvJson<VendaResposta>('/api/pdv/vendas', {
           method: 'POST',
           body: {
@@ -517,10 +605,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               origem: item.origem,
               idUnidadeMedida: item.idUnidadeMedida,
             })),
-            pagamentos:
-              espera || destinoEscolhido === 'orcamento'
-                ? []
-                : pagamentos.filter((p) => p.valor > 0 && p.idFormaPagamento),
+            pagamentos: pags,
             idPessoaCliente: cliente?.id ?? null,
             clienteNome: cliente?.nome ?? '',
             clienteDocumento: documento,
@@ -528,12 +613,13 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             clienteIe: ie,
             clienteUf: ufCliente,
             observacao,
-            idFormaPagamento: formaAtualId || null,
+            idFormaPagamento: idFormaFinal,
             idCondicaoPagamento: idCondicaoPagamento || null,
             idTipoMovimentacao: idTipoMovimentacao || null,
             idContato: idContato || null,
             dataValidade: destinoEscolhido === 'orcamento' ? dataValidade : undefined,
-            atributosProposta: destinoEscolhido === 'orcamento' ? atributosProposta : [],
+            atributosProposta:
+              destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosProposta : [],
             localRetiradaDifEnderecoRemetente: localRetiradaDif,
             idEnderecoLocalRetirada: localRetiradaDif ? idEnderecoRetirada || null : null,
             localEntregaDifEnderecoDestinatario: localEntregaDif,
@@ -542,8 +628,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         });
         if (espera) {
           setAviso(`Venda ${venda.id} ficou em espera.`);
+          setEtapa('balcao');
         } else {
           setComprovante(venda);
+          setEtapa('balcao');
           if (venda.status === 'orcamento' && venda.idPropostaNomus) {
             try {
               await abrirPropostaPdf(venda.id, true);
@@ -553,8 +641,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           }
         }
         setCarrinho([]);
+        setPagamentosLista([]);
         setPagamentos((atual) => atual.map((p) => ({ ...p, valor: 0 })));
         setObservacao('');
+        setRascunho(null);
         recarregarSessao();
       } catch (e) {
         setAviso(e instanceof Error ? e.message : 'Não foi possível concluir a venda.');
@@ -574,6 +664,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       documento,
       fiscal,
       formaAtualId,
+      formaReceberId,
       idCondicaoPagamento,
       idContato,
       idEnderecoEntrega,
@@ -583,8 +674,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       localEntregaDif,
       localRetiradaDif,
       observacao,
-      pagamentos,
+      pagamentosLista,
       recarregarSessao,
+      total,
       ufCliente,
     ],
   );
@@ -594,24 +686,32 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       if (ev.key === 'F2') {
         ev.preventDefault();
         if (bloqueiaPorCaixa) fundoRef.current?.focus();
+        else if (etapa === 'fechamento') pagamentoRef.current?.focus();
         else buscaRef.current?.focus();
+      } else if (ev.key === 'F3' && etapa === 'fechamento') {
+        ev.preventDefault();
+        confirmarPagamentoRecebido();
       } else if (ev.key === 'F4') {
         ev.preventDefault();
-        setMostrarCliente(true);
-        window.setTimeout(() => clienteRef.current?.focus(), 0);
+        if (etapa === 'balcao') adicionarRascunho();
+        else {
+          setMostrarCliente(true);
+          window.setTimeout(() => clienteRef.current?.focus(), 0);
+        }
+      } else if (ev.key === 'F6') {
+        ev.preventDefault();
+        if (etapa === 'balcao') irParaFechamento();
+        else void confirmar(false, destinoEfetivo);
       } else if (ev.key === 'F8') {
         ev.preventDefault();
-        pagamentoRef.current?.focus();
-      } else if (ev.key === 'F9') {
-        ev.preventDefault();
-        void confirmar(false);
+        if (etapa === 'fechamento') setEtapa('balcao');
       } else if (ev.key === 'Delete' && document.activeElement?.tagName !== 'INPUT') {
         setCarrinho((atual) => atual.filter((_, i) => i !== selecionado));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [bloqueiaPorCaixa, confirmar, selecionado]);
+  }, [bloqueiaPorCaixa, confirmar, destinoEfetivo, etapa, selecionado]);
 
   async function abrirCaixa() {
     try {
@@ -722,9 +822,11 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   }
   if (!sessao) return <TelaMensagem tema={tema} titulo="Abrindo o PDV…" texto="Carregando a empresa do operador." />;
 
+  const operadorAtual = sessao.operador;
+
   async function sair() {
     try {
-      await logout(sessao.operador);
+      await logout(operadorAtual);
     } catch {
       /* a tela de login volta mesmo se o servidor não confirmar */
     }
@@ -750,7 +852,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   }
 
   const certOk = Boolean(sessao.certificado?.cnpj && sessao.certificado.validoAte && new Date(sessao.certificado.validoAte) > new Date());
-  const clienteAberto = mostrarCliente || fiscal === 'nfe';
 
   return (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden ${tema}`}>
@@ -847,7 +948,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             </div>
             <p className="mb-5 text-sm text-[var(--pdv-muted)]">
               Informe o dinheiro disponível no caixa antes da primeira venda.
-              {modo === 'ambos' ? ' Orçamento pode ser gerado sem abrir o caixa.' : ''}
+              {sessao.modoOperacao === 'ambos' ? ' Orçamento pode ser gerado sem abrir o caixa.' : ''}
             </p>
             <label className="block text-sm text-[var(--pdv-muted)]">
               Valor da abertura
@@ -891,501 +992,488 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             </p>
           </div>
         </div>
-      ) : (
-      <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="flex min-h-0 flex-col gap-4 overflow-hidden p-5">
-          <div className="flex flex-col gap-2">
-            <input
-              ref={buscaRef}
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por código, GTIN ou nome (ex.: SM 00852)."
-              className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-3 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
-            />
-            <div className="relative">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={clienteRef}
-                  value={clienteBusca}
-                  onChange={(e) => {
-                    setClienteBusca(e.target.value);
-                    setMostrarCliente(true);
-                    if (cliente && e.target.value !== cliente.nome) setCliente(null);
-                  }}
-                  onFocus={() => setMostrarCliente(true)}
-                  placeholder="Cliente cadastrado (F4) — nome, CPF ou CNPJ"
-                  className="w-full rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-4 py-2.5 text-sm outline-none placeholder:text-[var(--pdv-faint)] focus:border-[#FFAD00]/60"
-                />
-                {cliente ? (
-                  <button
-                    type="button"
-                    className={botaoContorno}
-                    title="Limpar cliente"
-                    onClick={() => {
-                      setCliente(null);
-                      setClienteBusca('');
-                      setDocumento('');
-                    }}
-                  >
-                    Limpar
-                  </button>
-                ) : null}
+      ) : etapa === 'balcao' ? (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#eef1f4]">
+        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Localize um produto ou serviço</h2>
+                <p className="text-xs text-slate-500">Digite o código ou o nome, ou passe o leitor de código de barras.</p>
               </div>
-              {mostrarCliente && clientes.length > 0 ? (
-                <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] text-sm shadow-lg">
-                  {clientes.map((c) => (
-                    <li key={c.id}>
+              <button type="button" className={botaoContorno} onClick={() => void abrirEsperas()}>
+                Operações
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="relative">
+                <input
+                  ref={buscaRef}
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && produtos[0]) {
+                      e.preventDefault();
+                      escolherProdutoRascunho(produtos[0]);
+                    }
+                  }}
+                  placeholder="Digite o código ou o nome"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-12 text-sm outline-none focus:border-[#1E22AA]"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                  F2
+                </span>
+              </div>
+              {carregandoBusca ? <p className="text-xs text-slate-500">Buscando…</p> : null}
+              {busca.trim() && !carregandoBusca && produtos.length === 0 ? (
+                <p className="text-xs text-slate-500">Nenhum produto nesta busca.</p>
+              ) : null}
+              {busca.trim() && produtos.length > 0 ? (
+                <ul className="max-h-36 overflow-auto rounded-lg border border-slate-200 text-sm">
+                  {produtos.slice(0, 8).map((p) => (
+                    <li key={p.id}>
                       <button
                         type="button"
-                        className="w-full px-3 py-2 text-left hover:bg-[var(--pdv-hover)]"
-                        onClick={() => selecionarCliente(c)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                        onClick={() => escolherProdutoRascunho(p)}
                       >
-                        {c.nome}
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium text-slate-800">{p.codigo}</span>
+                          <span className="text-slate-500"> · {p.descricao}</span>
+                        </span>
+                        <span className="shrink-0 text-slate-700">{brl(p.preco)}</span>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : null}
-              {cliente ? (
-                <p className="mt-1 text-xs text-[var(--pdv-muted)]">Selecionado: {cliente.nome}</p>
-              ) : null}
-            </div>
-          </div>
-          <div className="grid min-h-0 flex-1 content-start gap-3 overflow-auto sm:grid-cols-2 xl:grid-cols-3">
-            {carregandoBusca ? <p className="text-sm text-[var(--pdv-faint)]">Buscando…</p> : null}
-            {!carregandoBusca && produtos.length === 0 ? (
-              <p className="text-sm text-[var(--pdv-faint)]">Nenhum produto nesta busca.</p>
-            ) : null}
-            {produtos.map((produto) => {
-              const semSaldo = !produto.vinculado || produto.saldo <= 0;
-              const sem = semSaldo && !sessao.ignorarEstoque;
-              return (
-                <button
-                  key={produto.id}
-                  type="button"
-                  disabled={sem}
-                  onClick={() => adicionar(produto)}
-                  className="flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-card)] p-4 text-left transition hover:border-[#FFAD00]/50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <div>
-                    <div className="line-clamp-2 text-sm font-medium leading-snug">{produto.descricao || produto.codigo}</div>
-                    {produto.codigo && produto.descricao ? (
-                      <div className="mt-1 text-[11px] text-[var(--pdv-faint)]">{produto.codigo}</div>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex items-end justify-between gap-2">
-                    <span className="text-base font-semibold">{brl(produto.preco)}</span>
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${semSaldo ? 'bg-red-950 text-red-200' : 'bg-[#FFAD00] text-black'}`}>
-                      {semSaldo ? 'sem saldo' : `saldo ${formatarSaldo(produto.saldo)}`}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
-            <button
-              type="button"
-              className={`${botaoContorno} disabled:opacity-40`}
-              disabled={carregandoBusca || paginaProdutos <= 1}
-              onClick={() => setPaginaProdutos((p) => Math.max(1, p - 1))}
-            >
-              Anterior
-            </button>
-            <span className="text-xs text-[var(--pdv-muted)]">
-              Página {paginaProdutos}
-              {produtos.length > 0 ? ` · ${produtos.length} itens` : ''}
-            </span>
-            <button
-              type="button"
-              className={`${botaoContorno} disabled:opacity-40`}
-              disabled={carregandoBusca || !temMaisProdutos}
-              onClick={() => setPaginaProdutos((p) => p + 1)}
-            >
-              Próxima
-            </button>
-          </div>
-        </section>
-
-        <aside className="flex min-h-0 flex-col overflow-hidden border-t border-[var(--pdv-line)] bg-[var(--pdv-panel)] lg:border-l lg:border-t-0">
-          <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-5">
-            <h2 className="text-lg font-semibold">Carrinho</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--pdv-faint)]">{carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}</span>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--pdv-line)] text-[var(--pdv-text)] hover:border-[#FFAD00]/70"
-                title="Cadastrar cliente"
-                aria-label="Cadastrar cliente"
-                onClick={() => {
-                  setFormCliente(formClienteVazio);
-                  setModalCliente(true);
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <line x1="19" y1="8" x2="19" y2="14" />
-                  <line x1="22" y1="11" x2="16" y2="11" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <ul className="min-h-0 flex-1 space-y-2 overflow-auto px-5 py-2">
-            {carrinho.length === 0 ? <li className="py-8 text-center text-sm text-[var(--pdv-faint)]">Toque em um produto para incluir.</li> : null}
-            {carrinho.map((item, index) => (
-              <li key={`${item.id}-${index}`} className={`rounded-xl p-2 ${index === selecionado ? 'bg-[var(--pdv-hover)]' : ''}`}>
-                <div className="flex items-start gap-3">
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelecionado(index)}>
-                    <div className="truncate text-sm font-medium">{item.descricao || item.codigo}</div>
-                    <div className="text-xs text-[var(--pdv-faint)]">{brl(liquido(item))}</div>
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button type="button" className={passo} onClick={() => ajustarQtd(index, -1)} aria-label="Diminuir">−</button>
-                    <span className="w-6 text-center text-sm">{item.quantidade}</span>
-                    <button type="button" className={passo} onClick={() => ajustarQtd(index, 1)} aria-label="Aumentar">+</button>
-                    <button type="button" className="ml-1 px-1 text-[var(--pdv-faint)] hover:text-red-300" onClick={() => setCarrinho((atual) => atual.filter((_, i) => i !== index))} aria-label="Remover">
-                      ✕
-                    </button>
-                  </div>
+              <div className="grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+                <div className="flex aspect-square items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">
+                  Sem imagem
                 </div>
-                {item.descontoMaximo > 0 ? (
-                  <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--pdv-faint)]">
-                    Desconto até {item.descontoMaximo}%
+                <div className="grid gap-2">
+                  <label className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2 text-xs text-slate-600">
+                    Código
+                    <input readOnly value={rascunho?.codigo ?? ''} className={`${campoClaro} w-full`} />
+                  </label>
+                  <label className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2 text-xs text-slate-600">
+                    Quantidade
                     <input
-                      type="text"
+                      value={rascunhoQtd}
+                      onChange={(e) => setRascunhoQtd(e.target.value)}
+                      className={`${campoClaro} w-full`}
                       inputMode="decimal"
-                      value={item.descontoPercentual === 0 ? '' : String(item.descontoPercentual)}
-                      placeholder="0"
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
-                        if (raw === '' || raw === '.') {
-                          setCarrinho((atual) =>
-                            atual.map((row, i) => (i === index ? { ...row, descontoPercentual: 0 } : row)),
-                          );
-                          return;
-                        }
-                        const desc = Math.min(Math.max(Number(raw) || 0, 0), item.descontoMaximo);
-                        setCarrinho((atual) =>
-                          atual.map((row, i) => (i === index ? { ...row, descontoPercentual: desc } : row)),
-                        );
-                      }}
-                      className={`${campo} w-16 py-1`}
                     />
                   </label>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-
-          <div className="max-h-[58%] shrink-0 space-y-3 overflow-y-auto border-t border-[var(--pdv-line)] px-5 py-3">
-            <div className="flex items-end justify-between">
-              <span className="text-sm text-[var(--pdv-muted)]">Total</span>
-              <span className="text-3xl font-semibold tracking-tight">{brl(total)}</span>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {formasVisiveis.map((forma) => {
-                const ativa = forma.id === formaAtualId;
-                return (
-                  <button
-                    key={forma.id}
-                    type="button"
-                    onClick={() => escolherForma(forma.id)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium ${ativa ? 'bg-[#FFAD00] text-black' : 'border border-[var(--pdv-line)] text-[var(--pdv-muted)]'}`}
-                  >
-                    {rotuloForma(forma.nome)}
-                  </button>
-                );
-              })}
-            </div>
-            <input ref={pagamentoRef} className="sr-only" tabIndex={-1} readOnly aria-hidden value="" />
-
-            <label className="block text-[11px] text-[var(--pdv-muted)]">
-              Condição de pagamento
-              <select
-                value={idCondicaoPagamento || ''}
-                onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)}
-                className={`${campo} mt-1 w-full`}
-              >
-                <option value="">Selecione…</option>
-                {condicoes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="flex items-center justify-between gap-2">
+                  <label className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2 text-xs text-slate-600">
+                    Valor unitário
+                    <input readOnly value={rascunho ? brl(rascunho.preco) : ''} className={`${campoClaro} w-full`} />
+                  </label>
+                  <label className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2 text-xs text-slate-600">
+                    Desconto %
+                    <input
+                      value={rascunhoDesc}
+                      onChange={(e) => setRascunhoDesc(e.target.value)}
+                      placeholder="0"
+                      className={`${campoClaro} w-full`}
+                      inputMode="decimal"
+                    />
+                  </label>
+                  <label className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-2 text-xs text-slate-600">
+                    Valor total
+                    <input
+                      readOnly
+                      value={
+                        rascunho
+                          ? brl(
+                              (Number(String(rascunhoQtd).replace(',', '.')) || 0) *
+                                rascunho.preco *
+                                (1 - (Number(String(rascunhoDesc).replace(',', '.')) || 0) / 100),
+                            )
+                          : ''
+                      }
+                      className={`${campoClaro} w-full bg-slate-50`}
+                    />
+                  </label>
+                </div>
+              </div>
+              {rascunho ? (
+                <p className="truncate text-xs text-slate-500">{rascunho.descricao}</p>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setMostrarCliente((v) => !v)}
-                className="text-left text-xs text-[var(--pdv-faint)] underline-offset-2 hover:text-[var(--pdv-text)]"
+                onClick={() => adicionarRascunho()}
+                disabled={!rascunho}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3d4654] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
               >
-                {cliente ? `Cliente: ${cliente.nome}` : 'Dados fiscais do cliente'}
+                + Adicionar produto
+                <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px]">F4</span>
               </button>
+            </div>
+          </section>
+
+          <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3">
               <button
                 type="button"
-                className="text-xs text-[#1E22AA] underline-offset-2 hover:underline"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs hover:border-[#1E22AA]/50"
                 onClick={() => {
-                  setFormCliente(formClienteVazio);
-                  setModalCliente(true);
+                  setMostrarCliente(true);
+                  window.setTimeout(() => clienteRef.current?.focus(), 0);
                 }}
               >
-                Novo
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">Cliente · Shift C</div>
+                <div className="truncate font-medium text-slate-800">{cliente?.nome || 'Ao consumidor'}</div>
               </button>
+              <div className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs">
+                <div className="text-[10px] uppercase tracking-wide text-slate-400">Vendedor · Shift V</div>
+                <div className="truncate font-medium text-slate-800">{sessao.operador}</div>
+              </div>
             </div>
-            {clienteAberto ? (
-              <div className="space-y-2">
-                <input value={documento} onChange={(e) => setDocumento(e.target.value)} placeholder="CPF ou CNPJ" className={`${campo} w-full`} />
-                <label className="flex items-center gap-2 text-xs text-[var(--pdv-muted)]">
-                  <input type="checkbox" checked={contribuinte} onChange={(e) => setContribuinte(e.target.checked)} />
-                  Contribuinte de ICMS
-                </label>
-                <div className="flex gap-2">
-                  <input value={ie} onChange={(e) => setIe(e.target.value)} placeholder="IE" className={`${campo} w-full`} />
-                  <input value={ufCliente} onChange={(e) => setUfCliente(e.target.value.toUpperCase())} placeholder="UF" className={`${campo} w-16`} />
+            {mostrarCliente ? (
+              <div className="relative border-b border-slate-100 px-3 py-2">
+                <input
+                  ref={clienteRef}
+                  value={clienteBusca}
+                  onChange={(e) => {
+                    setClienteBusca(e.target.value);
+                    if (cliente && e.target.value !== cliente.nome) setCliente(null);
+                  }}
+                  placeholder="Buscar cliente"
+                  className={`${campoClaro} w-full`}
+                />
+                <div className="mt-1 flex gap-2">
+                  <button type="button" className="text-xs text-[#1E22AA]" onClick={() => { setFormCliente(formClienteVazio); setModalCliente(true); }}>
+                    Novo
+                  </button>
+                  <button type="button" className="text-xs text-slate-500" onClick={() => setMostrarCliente(false)}>
+                    Fechar
+                  </button>
                 </div>
-                {contatos.length > 0 ? (
-                  <label className="block text-[11px] text-[var(--pdv-muted)]">
-                    Contato do cliente
-                    <select
-                      value={idContato || ''}
-                      onChange={(e) => setIdContato(Number(e.target.value) || 0)}
-                      className={`${campo} mt-1 w-full`}
-                    >
-                      {contatos.map((c) => (
-                        <option key={c.id} value={c.id}>
+                {clientes.length > 0 ? (
+                  <ul className="absolute z-10 mt-1 max-h-40 w-[calc(100%-1.5rem)] overflow-auto rounded-lg border border-slate-200 bg-white text-sm shadow">
+                    {clientes.map((c) => (
+                      <li key={c.id}>
+                        <button type="button" className="w-full px-3 py-2 text-left hover:bg-slate-50" onClick={() => { selecionarCliente(c); setMostrarCliente(false); }}>
                           {c.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </div>
             ) : null}
-
-            {destinoEfetivo === 'pedido' ? (
-              <fieldset className="flex flex-wrap gap-3 text-xs text-[var(--pdv-muted)]">
-                <label className="flex items-center gap-1.5">
-                  <input type="radio" checked={fiscal === 'nenhuma'} onChange={() => setFiscal('nenhuma')} /> Sem nota
-                </label>
-                <label className="flex items-center gap-1.5" title={certOk && sessao.certificado?.temCsc ? '' : 'Cadastre certificado e CSC'}>
-                  <input type="radio" checked={fiscal === 'nfce'} onChange={() => setFiscal('nfce')} disabled={!certOk || !sessao.certificado?.temCsc} /> NFC-e
-                </label>
-                <label className="flex items-center gap-1.5" title={certOk ? '' : 'Cadastre o certificado'}>
-                  <input type="radio" checked={fiscal === 'nfe'} onChange={() => setFiscal('nfe')} disabled={!certOk} /> NF-e
-                </label>
-              </fieldset>
-            ) : (
-              <div className="space-y-2 rounded-xl border border-[var(--pdv-line)] p-2">
-                <p className="text-[11px] text-[var(--pdv-muted)]">Dados da proposta (Nomus)</p>
-                {cliente && contatos.length > 0 ? (
-                  <label className="block text-[11px] text-[var(--pdv-muted)]">
-                    Contato
-                    <select
-                      value={idContato || ''}
-                      onChange={(e) => setIdContato(Number(e.target.value) || 0)}
-                      className={`${campo} mt-1 w-full`}
-                    >
-                      {contatos.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <p className="text-[11px] text-[var(--pdv-faint)]">Selecione um cliente para listar contatos.</p>
-                )}
-                <label className="block text-[11px] text-[var(--pdv-muted)]">
-                  Tipo de movimentação
-                  <select
-                    value={idTipoMovimentacao || ''}
-                    onChange={(e) => setIdTipoMovimentacao(Number(e.target.value) || 0)}
-                    className={`${campo} mt-1 w-full`}
-                  >
-                    <option value="">Selecione…</option>
-                    {tiposMov.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-[11px] text-[var(--pdv-muted)]">
-                  Validade da proposta
-                  <input
-                    type="date"
-                    value={dataValidade}
-                    onChange={(e) => setDataValidade(e.target.value)}
-                    className={`${campo} mt-1 w-full`}
-                  />
-                </label>
-                <label className="block text-[11px] text-[var(--pdv-muted)]">
-                  Observação
-                  <textarea
-                    value={observacao}
-                    onChange={(e) => setObservacao(e.target.value)}
-                    rows={2}
-                    className={`${campo} mt-1 w-full`}
-                  />
-                </label>
-                {atributosPrincipais.map((atr) => (
-                  <label key={atr.nome} className="block text-[11px] text-[var(--pdv-muted)]">
-                    {atr.nome}
-                    {atr.obrigatorio ? ' *' : ''}
-                    {atr.formato === 'lista' ? (
-                      <select
-                        value={atributosValores[atr.nome] ?? ''}
-                        onChange={(e) =>
-                          setAtributosValores((atual) => ({ ...atual, [atr.nome]: e.target.value }))
-                        }
-                        className={`${campo} mt-1 w-full`}
-                      >
-                        <option value="">Selecione…</option>
-                        {atr.opcoes.map((op) => (
-                          <option key={op} value={op}>
-                            {op}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type={atr.formato === 'data' ? 'date' : 'text'}
-                        value={atributosValores[atr.nome] ?? ''}
-                        onChange={(e) =>
-                          setAtributosValores((atual) => ({ ...atual, [atr.nome]: e.target.value }))
-                        }
-                        className={`${campo} mt-1 w-full`}
-                      />
-                    )}
-                  </label>
-                ))}
-                {atributoOutrasInfo ? (
-                  <label className="block text-[11px] text-[var(--pdv-muted)]">
-                    Outras informações ({atributoOutrasInfo.nome})
-                    <select
-                      value={atributosValores[atributoOutrasInfo.nome] ?? ''}
-                      onChange={(e) =>
-                        setAtributosValores((atual) => ({
-                          ...atual,
-                          [atributoOutrasInfo.nome]: e.target.value,
-                        }))
-                      }
-                      className={`${campo} mt-1 w-full`}
-                    >
-                      <option value="">Selecione…</option>
-                      {atributoOutrasInfo.opcoes.map((op) => (
-                        <option key={op} value={op}>
-                          {op}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label className="flex items-center gap-2 text-[11px] text-[var(--pdv-muted)]">
-                  <input
-                    type="checkbox"
-                    checked={localRetiradaDif}
-                    onChange={(e) => setLocalRetiradaDif(e.target.checked)}
-                  />
-                  Local de retirada diferente do remetente
-                </label>
-                {localRetiradaDif ? (
-                  <select
-                    value={idEnderecoRetirada || ''}
-                    onChange={(e) => setIdEnderecoRetirada(Number(e.target.value) || 0)}
-                    className={`${campo} w-full`}
-                  >
-                    <option value="">Selecione o endereço…</option>
-                    {enderecos.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.rotulo}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <label className="flex items-center gap-2 text-[11px] text-[var(--pdv-muted)]">
-                  <input
-                    type="checkbox"
-                    checked={localEntregaDif}
-                    onChange={(e) => setLocalEntregaDif(e.target.checked)}
-                  />
-                  Local de entrega diferente do destinatário
-                </label>
-                {localEntregaDif ? (
-                  <select
-                    value={idEnderecoEntrega || ''}
-                    onChange={(e) => setIdEnderecoEntrega(Number(e.target.value) || 0)}
-                    className={`${campo} w-full`}
-                  >
-                    <option value="">Selecione o endereço…</option>
-                    {enderecos.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.rotulo}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-              </div>
-            )}
-
-            {modo === 'ambos' ? (
-              <fieldset className="flex flex-wrap gap-3 text-xs text-[var(--pdv-muted)]">
-                <label className="flex items-center gap-1.5">
-                  <input type="radio" checked={destino === 'orcamento'} onChange={() => setDestino('orcamento')} /> Orçamento
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input type="radio" checked={destino === 'pedido'} onChange={() => setDestino('pedido')} /> Pedido
-                </label>
-              </fieldset>
-            ) : null}
-
-            <div className="flex gap-2">
-              <button type="button" disabled={enviando || carrinho.length === 0} onClick={() => void confirmar(true)} className={`${botaoContorno} disabled:opacity-40`}>
-                Espera
-              </button>
-              {modo === 'ambos' ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={enviando || carrinho.length === 0}
-                    onClick={() => void confirmar(false, 'orcamento')}
-                    className={`${botaoContorno} flex-1 disabled:opacity-40`}
-                  >
-                    {enviando ? 'Gravando…' : 'Gerar orçamento'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={enviando || !caixaOk || carrinho.length === 0}
-                    onClick={() => void confirmar(false, 'pedido')}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
-                  >
-                    {enviando ? 'Gravando…' : 'Confirmar pedido'}
-                    <span aria-hidden>→</span>
-                  </button>
-                </>
+            <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-2">
+              {carrinho.length === 0 ? (
+                <li className="flex h-full min-h-[10rem] flex-col items-center justify-center text-center text-sm text-slate-400">
+                  Nenhum item na venda. Busque um produto ao lado para começar.
+                </li>
               ) : (
+                carrinho.map((item, index) => (
+                  <li key={`${item.id}-${index}`} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2 py-2 text-sm">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelecionado(index)}>
+                      <div className="truncate text-slate-800">
+                        {item.quantidade} × {item.codigo || item.descricao}
+                      </div>
+                      <div className="text-xs text-slate-500">{brl(liquido(item))}</div>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <button type="button" className={passo} onClick={() => ajustarQtd(index, -1)}>−</button>
+                      <button type="button" className={passo} onClick={() => ajustarQtd(index, 1)}>+</button>
+                      <button type="button" className="px-1 text-slate-400 hover:text-red-500" onClick={() => setCarrinho((a) => a.filter((_, i) => i !== index))}>✕</button>
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+            <div className="border-t border-slate-100 px-4 py-3">
+              <div className="mb-3 flex items-end justify-between">
+                <span className="text-sm text-slate-500">
+                  Total do pedido · {carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}
+                </span>
+                <span className="text-2xl font-bold text-slate-900">{brl(total)}</span>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={enviando || carrinho.length === 0} onClick={() => void confirmar(true)} className={`${botaoContorno} disabled:opacity-40`}>
+                  Espera
+                </button>
                 <button
                   type="button"
-                  disabled={
-                    enviando ||
-                    carrinho.length === 0 ||
-                    (destinoEfetivo === 'pedido' && !caixaOk)
-                  }
-                  onClick={() => void confirmar(false, destinoEfetivo)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E22AA] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  disabled={enviando || carrinho.length === 0 || !sessao.configurado}
+                  onClick={() => irParaFechamento()}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#3d4654] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
                 >
-                  {enviando ? 'Gravando…' : destinoEfetivo === 'orcamento' ? 'Gerar orçamento' : 'Confirmar'}
-                  <span aria-hidden>→</span>
+                  ✓ Finalizar venda
+                  <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px]">F6</span>
                 </button>
-              )}
+              </div>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
+        <footer className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
+          <span><b>F1</b> Atalhos</span>
+          <span><b>F2</b> Nova busca</span>
+          <span><b>F4</b> Adicionar produto</span>
+          <span><b>F6</b> Finalizar venda</span>
+          <span><b>Shift+C</b> Cliente</span>
+        </footer>
       </div>
+      ) : (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#eef1f4]">
+        <div className="grid min-h-0 flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div className="flex min-h-0 flex-col gap-3">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">Receber</h2>
+                  <p className="text-xs text-slate-500">Escolha a forma e confirme o valor recebido.</p>
+                </div>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">F2</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block text-xs text-slate-600 sm:col-span-2">
+                  Forma de pagamento
+                  <select
+                    value={formaReceberId || ''}
+                    onChange={(e) => setFormaReceberId(Number(e.target.value) || 0)}
+                    className={`${campoClaro} mt-1 w-full`}
+                  >
+                    <option value="">Selecione</option>
+                    {formasVisiveis.map((f) => (
+                      <option key={f.id} value={f.id}>{f.nome}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs text-slate-600">
+                  Valor recebido
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-slate-500">R$</span>
+                    <input
+                      ref={pagamentoRef}
+                      value={valorReceber}
+                      onChange={(e) => setValorReceber(e.target.value)}
+                      className={`${campoClaro} w-full`}
+                      inputMode="decimal"
+                    />
+                  </div>
+                </label>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => confirmarPagamentoRecebido()}
+                    className="w-full rounded-lg bg-[#3d4654] px-3 py-2.5 text-sm font-semibold text-white"
+                  >
+                    ✓ Confirmar <span className="ml-1 text-[10px] opacity-80">F3</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-2 text-sm font-semibold text-slate-800">Itens da venda</h2>
+              <ul className="space-y-1 text-sm">
+                {carrinho.map((item, i) => (
+                  <li key={`${item.id}-${i}`} className="flex justify-between gap-2 border-b border-slate-100 py-2">
+                    <span className="truncate text-slate-700">
+                      {item.quantidade} × {item.codigo || item.descricao}
+                    </span>
+                    <span className="shrink-0 font-medium">{brl(liquido(item))}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+                <div className="text-[10px] uppercase text-slate-400">Cliente</div>
+                <div className="truncate font-medium text-slate-800">{cliente?.nome || 'Ao consumidor'}</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+                <div className="text-[10px] uppercase text-slate-400">Vendedor</div>
+                <div className="truncate font-medium text-slate-800">{sessao.operador}</div>
+              </div>
+            </div>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-2 text-sm font-semibold text-slate-800">Pagamentos recebidos</h2>
+              {pagamentosLista.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">Nenhum pagamento ainda. Confirme à esquerda.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {pagamentosLista.map((p, i) => (
+                    <li key={i} className="flex justify-between border-b border-slate-100 py-1.5">
+                      <span>{formas.find((f) => f.id === p.idFormaPagamento)?.nome || `Forma ${p.idFormaPagamento}`}</span>
+                      <span className="font-medium">{brl(p.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="max-h-[42vh] space-y-2 overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-800">Dados da proposta (Nomus)</h2>
+              {modo === 'ambos' ? (
+                <fieldset className="flex flex-wrap gap-3 text-xs text-slate-600">
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={destino === 'orcamento'} onChange={() => setDestino('orcamento')} /> Orçamento
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={destino === 'pedido'} onChange={() => setDestino('pedido')} /> Pedido
+                  </label>
+                </fieldset>
+              ) : null}
+              <label className="block text-xs text-slate-600">
+                Condição de pagamento
+                <select value={idCondicaoPagamento || ''} onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)} className={`${campoClaro} mt-1 w-full`}>
+                  <option value="">Selecione…</option>
+                  {condicoes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </label>
+              {cliente && contatos.length > 0 ? (
+                <label className="block text-xs text-slate-600">
+                  Contato
+                  <select value={idContato || ''} onChange={(e) => setIdContato(Number(e.target.value) || 0)} className={`${campoClaro} mt-1 w-full`}>
+                    {contatos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-xs text-slate-400">Selecione um cliente para listar contatos.</p>
+              )}
+              <label className="block text-xs text-slate-600">
+                Tipo de movimentação
+                <select value={idTipoMovimentacao || ''} onChange={(e) => setIdTipoMovimentacao(Number(e.target.value) || 0)} className={`${campoClaro} mt-1 w-full`}>
+                  <option value="">Selecione…</option>
+                  {tiposMov.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs text-slate-600">
+                Validade da proposta
+                <input type="date" value={dataValidade} onChange={(e) => setDataValidade(e.target.value)} className={`${campoClaro} mt-1 w-full`} />
+              </label>
+              <label className="block text-xs text-slate-600">
+                Observação
+                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={`${campoClaro} mt-1 w-full`} />
+              </label>
+              {atributosPrincipais.map((atr) => (
+                <label key={atr.nome} className="block text-xs text-slate-600">
+                  {atr.nome}{atr.obrigatorio ? ' *' : ''}
+                  {atr.formato === 'lista' ? (
+                    <select
+                      value={atributosValores[atr.nome] ?? ''}
+                      onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                      className={`${campoClaro} mt-1 w-full`}
+                    >
+                      <option value="">Selecione…</option>
+                      {atr.opcoes.map((op) => <option key={op} value={op}>{op}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={atr.formato === 'data' ? 'date' : 'text'}
+                      value={atributosValores[atr.nome] ?? ''}
+                      onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                      className={`${campoClaro} mt-1 w-full`}
+                    />
+                  )}
+                </label>
+              ))}
+              {atributoOutrasInfo ? (
+                <label className="block text-xs text-slate-600">
+                  Outras informações ({atributoOutrasInfo.nome})
+                  <select
+                    value={atributosValores[atributoOutrasInfo.nome] ?? ''}
+                    onChange={(e) => setAtributosValores((a) => ({ ...a, [atributoOutrasInfo.nome]: e.target.value }))}
+                    className={`${campoClaro} mt-1 w-full`}
+                  >
+                    <option value="">Selecione…</option>
+                    {atributoOutrasInfo.opcoes.map((op) => <option key={op} value={op}>{op}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={localRetiradaDif} onChange={(e) => setLocalRetiradaDif(e.target.checked)} />
+                Local de retirada diferente do remetente
+              </label>
+              {localRetiradaDif ? (
+                <select value={idEnderecoRetirada || ''} onChange={(e) => setIdEnderecoRetirada(Number(e.target.value) || 0)} className={`${campoClaro} w-full`}>
+                  <option value="">Selecione o endereço…</option>
+                  {enderecos.map((e) => <option key={e.id} value={e.id}>{e.rotulo}</option>)}
+                </select>
+              ) : null}
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={localEntregaDif} onChange={(e) => setLocalEntregaDif(e.target.checked)} />
+                Local de entrega diferente do destinatário
+              </label>
+              {localEntregaDif ? (
+                <select value={idEnderecoEntrega || ''} onChange={(e) => setIdEnderecoEntrega(Number(e.target.value) || 0)} className={`${campoClaro} w-full`}>
+                  <option value="">Selecione o endereço…</option>
+                  {enderecos.map((e) => <option key={e.id} value={e.id}>{e.rotulo}</option>)}
+                </select>
+              ) : null}
+              {destinoEfetivo === 'pedido' ? (
+                <fieldset className="flex flex-wrap gap-3 text-xs text-slate-600">
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={fiscal === 'nenhuma'} onChange={() => setFiscal('nenhuma')} /> Sem nota
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={fiscal === 'nfce'} onChange={() => setFiscal('nfce')} disabled={!certOk || !sessao.certificado?.temCsc} /> NFC-e
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={fiscal === 'nfe'} onChange={() => setFiscal('nfe')} disabled={!certOk} /> NF-e
+                  </label>
+                </fieldset>
+              ) : null}
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <div className="text-slate-400">Subtotal</div>
+                  <div className="font-semibold text-slate-800">{brl(total)}</div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <div className="text-slate-400">Pagamentos</div>
+                  <div className="font-semibold text-slate-800">{brl(pagoTotal)}</div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <div className="text-slate-400">Falta</div>
+                  <div className="font-semibold text-slate-800">{brl(faltaPagar)}</div>
+                </div>
+              </div>
+              <div className="mb-3 flex items-end justify-between">
+                <span className="text-sm text-slate-500">Total a pagar</span>
+                <span className="text-2xl font-bold text-slate-900">{brl(total)}</span>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setEtapa('balcao')} className="rounded-lg border border-red-300 px-3 py-3 text-sm font-medium text-red-600">
+                  Cancelar <span className="text-[10px]">F8</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={enviando || carrinho.length === 0 || (destinoEfetivo === 'pedido' && !caixaOk)}
+                  onClick={() => void confirmar(false, destinoEfetivo)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#3d4654] px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  {enviando
+                    ? 'Gravando no Nomus…'
+                    : destinoEfetivo === 'orcamento'
+                      ? '✓ Finalizar orçamento'
+                      : '✓ Finalizar venda'}
+                  <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px]">F6</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+        <footer className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
+          <span><b>F2</b> Forma de pagamento</span>
+          <span><b>F3</b> Confirmar pagamento</span>
+          <span><b>F6</b> Finalizar (Nomus)</span>
+          <span><b>F8</b> Cancelar</span>
+        </footer>
+      </div>
+
       )}
 
       {painelEspera ? (
@@ -1691,11 +1779,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
 const botaoContorno = 'inline-flex items-center rounded-lg border border-[var(--pdv-line)] px-3 py-2 text-xs font-medium text-[var(--pdv-text)] hover:border-[#FFAD00]/70';
 const campo = 'rounded-lg border border-[var(--pdv-line)] bg-[var(--pdv-field)] px-2 py-2 text-sm text-[var(--pdv-text)] outline-none placeholder:text-[var(--pdv-faint)]';
-const passo = 'flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--pdv-line)] text-sm';
-
-function formatarSaldo(valor: number) {
-  return Number.isInteger(valor) ? String(valor) : valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-}
+const campoClaro = 'rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400';
+const passo = 'flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 text-sm';
 
 function ordenarFormas(lista: Forma[]) {
   const peso = (nome: string) => {
@@ -1706,16 +1791,6 @@ function ordenarFormas(lista: Forma[]) {
     return 3;
   };
   return [...lista].sort((a, b) => peso(a.nome) - peso(b.nome) || a.nome.localeCompare(b.nome, 'pt-BR'));
-}
-
-function rotuloForma(nome: string) {
-  const n = nome.toLowerCase();
-  if (n.includes('dinheiro') || n.includes('espécie') || n.includes('especie')) return 'Dinheiro';
-  if (n.includes('pix')) return 'PIX';
-  if (n.includes('débito') || n.includes('debito')) return 'Débito';
-  if (n.includes('crédito') || n.includes('credito')) return 'Crédito';
-  if (n.includes('cart')) return 'Cartão';
-  return nome;
 }
 
 function TelaMensagem({ tema, titulo, texto, children }: { tema: string; titulo: string; texto: string; children?: ReactNode }) {
