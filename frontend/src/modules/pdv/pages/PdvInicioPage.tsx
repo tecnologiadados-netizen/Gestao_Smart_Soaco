@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { logout } from '@/api/auth';
-import { pdvJson } from '@pdv/pdvApi';
+import { abrirPropostaPdf, pdvJson } from '@pdv/pdvApi';
 
 type ModoOperacao = 'pedido' | 'orcamento' | 'ambos';
 type DestinoVenda = 'pedido' | 'orcamento';
@@ -16,6 +16,9 @@ type Sessao = {
   configurado: boolean;
   ignorarEstoque: boolean;
   modoOperacao: ModoOperacao;
+  idTipoMovimentacao?: number | null;
+  idCondicaoPagamento?: number | null;
+  idFormaPagamento?: number | null;
   certificado: {
     cnpj: string;
     titular: string;
@@ -44,7 +47,24 @@ type Produto = {
 type ItemCarrinho = Produto & { quantidade: number; descontoPercentual: number };
 
 type Forma = { id: number; nome: string };
+type Condicao = { id: number; nome: string };
+type TipoMov = { id: number; nome: string };
+type Contato = { id: number; nome: string; email?: string; telefone?: string };
+type Endereco = { id: number; rotulo: string; tipoEndereco?: string };
+type AtributoOpcao = {
+  nome: string;
+  obrigatorio: boolean;
+  formato: 'texto' | 'data' | 'lista';
+  opcoes: string[];
+};
 type Cliente = { id: number; nome: string; cpf?: string; cnpj?: string };
+
+function dataIsoMaisDias(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 type FormClienteNovo = {
   tipoPessoa: 1 | 2;
@@ -134,6 +154,21 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [selecionado, setSelecionado] = useState(0);
   const [formas, setFormas] = useState<Forma[]>([]);
+  const [condicoes, setCondicoes] = useState<Condicao[]>([]);
+  const [tiposMov, setTiposMov] = useState<TipoMov[]>([]);
+  const [atributosOpcoes, setAtributosOpcoes] = useState<AtributoOpcao[]>([]);
+  const [idCondicaoPagamento, setIdCondicaoPagamento] = useState(0);
+  const [idTipoMovimentacao, setIdTipoMovimentacao] = useState(0);
+  const [idContato, setIdContato] = useState(0);
+  const [contatos, setContatos] = useState<Contato[]>([]);
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
+  const [dataValidade, setDataValidade] = useState(() => dataIsoMaisDias(30));
+  const [observacao, setObservacao] = useState('');
+  const [atributosValores, setAtributosValores] = useState<Record<string, string>>({});
+  const [localRetiradaDif, setLocalRetiradaDif] = useState(false);
+  const [idEnderecoRetirada, setIdEnderecoRetirada] = useState(0);
+  const [localEntregaDif, setLocalEntregaDif] = useState(false);
+  const [idEnderecoEntrega, setIdEnderecoEntrega] = useState(0);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([{ idFormaPagamento: 0, valor: 0 }]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteBusca, setClienteBusca] = useState('');
@@ -233,16 +268,65 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
 
   useEffect(() => {
     recarregarSessao();
-    pdvJson<{ formas: Forma[] }>('/api/pdv/formas')
+    pdvJson<{
+      formas: Forma[];
+      condicoes: Condicao[];
+      tipos: TipoMov[];
+      atributos: AtributoOpcao[];
+      padrao: { idTipoMovimentacao: number | null; idCondicaoPagamento: number | null; idFormaPagamento: number | null };
+    }>('/api/pdv/orcamento/opcoes')
       .then((data) => {
         setFormas(data.formas);
-        const primeira = ordenarFormas(data.formas)[0];
-        setPagamentos((atual) =>
-          atual.map((p, i) => (i === 0 && !p.idFormaPagamento && primeira ? { ...p, idFormaPagamento: primeira.id } : p)),
-        );
+        setCondicoes(data.condicoes);
+        setTiposMov(data.tipos);
+        setAtributosOpcoes(data.atributos ?? []);
+        const formaPadrao =
+          data.formas.find((f) => f.id === data.padrao?.idFormaPagamento) || ordenarFormas(data.formas)[0];
+        if (formaPadrao) {
+          setPagamentos((atual) =>
+            atual.map((p, i) => (i === 0 && !p.idFormaPagamento ? { ...p, idFormaPagamento: formaPadrao.id } : p)),
+          );
+        }
+        if (data.padrao?.idCondicaoPagamento) setIdCondicaoPagamento(data.padrao.idCondicaoPagamento);
+        else if (data.condicoes[0]) setIdCondicaoPagamento(data.condicoes[0].id);
+        if (data.padrao?.idTipoMovimentacao) setIdTipoMovimentacao(data.padrao.idTipoMovimentacao);
+        else if (data.tipos[0]) setIdTipoMovimentacao(data.tipos[0].id);
       })
-      .catch(() => setFormas([]));
+      .catch(() => {
+        pdvJson<{ formas: Forma[]; condicoes: Condicao[] }>('/api/pdv/formas')
+          .then((data) => {
+            setFormas(data.formas);
+            setCondicoes(data.condicoes ?? []);
+            const primeira = ordenarFormas(data.formas)[0];
+            if (primeira) {
+              setPagamentos((atual) =>
+                atual.map((p, i) => (i === 0 && !p.idFormaPagamento ? { ...p, idFormaPagamento: primeira.id } : p)),
+              );
+            }
+          })
+          .catch(() => setFormas([]));
+      });
   }, [recarregarSessao]);
+
+  useEffect(() => {
+    if (!cliente?.id) {
+      setContatos([]);
+      setEnderecos([]);
+      setIdContato(0);
+      setIdEnderecoRetirada(0);
+      setIdEnderecoEntrega(0);
+      return;
+    }
+    pdvJson<{ contatos: Contato[] }>(`/api/pdv/clientes/${cliente.id}/contatos`)
+      .then((data) => {
+        setContatos(data.contatos);
+        setIdContato((atual) => atual || data.contatos[0]?.id || 0);
+      })
+      .catch(() => setContatos([]));
+    pdvJson<{ enderecos: Endereco[] }>(`/api/pdv/clientes/${cliente.id}/enderecos`)
+      .then((data) => setEnderecos(data.enderecos))
+      .catch(() => setEnderecos([]));
+  }, [cliente?.id]);
 
   useEffect(() => {
     setPaginaProdutos(1);
@@ -282,29 +366,41 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   }, [clienteBusca]);
 
   const total = useMemo(() => carrinho.reduce((s, item) => s + liquido(item), 0), [carrinho]);
-  const pago = pagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const troco = Math.max(0, pago - total);
-  const formasVisiveis = useMemo(() => ordenarFormas(formas).slice(0, 4), [formas]);
+  const formasVisiveis = useMemo(() => ordenarFormas(formas), [formas]);
   const formaAtualId = pagamentos[0]?.idFormaPagamento ?? 0;
-  const formaAtual = formas.find((f) => f.id === formaAtualId);
-  const pagamentoEmDinheiro = /dinheiro|espécie|especie/i.test(formaAtual?.nome ?? '');
 
   function escolherForma(id: number) {
-    const forma = formas.find((f) => f.id === id);
-    const dinheiro = /dinheiro|espécie|especie/i.test(forma?.nome ?? '');
     setPagamentos([{ idFormaPagamento: id, valor: total }]);
-    if (!dinheiro) setAviso('');
+    setAviso('');
   }
 
   useEffect(() => {
     if (!formaAtualId) return;
     setPagamentos((atual) => {
       if (atual.length !== 1 || atual[0].idFormaPagamento !== formaAtualId) return atual;
-      if (pagamentoEmDinheiro && atual[0].valor >= total - 0.009) return atual;
-      if (!pagamentoEmDinheiro && Math.abs(atual[0].valor - total) < 0.009) return atual;
+      if (Math.abs(atual[0].valor - total) < 0.009) return atual;
       return [{ idFormaPagamento: formaAtualId, valor: total }];
     });
-  }, [formaAtualId, pagamentoEmDinheiro, total]);
+  }, [formaAtualId, total]);
+
+  const atributosPrincipais = useMemo(
+    () =>
+      atributosOpcoes.filter((a) =>
+        [
+          'Data de entrega',
+          'Método de entrega',
+          'Montagem',
+          'Primeiro contato efetivado através de:',
+          'Projeto',
+          'Tipo de venda',
+        ].includes(a.nome),
+      ),
+    [atributosOpcoes],
+  );
+  const atributoOutrasInfo = useMemo(
+    () => atributosOpcoes.find((a) => a.nome === 'FRETE') ?? null,
+    [atributosOpcoes],
+  );
 
   const ignorarEstoque = Boolean(sessao?.ignorarEstoque);
 
@@ -360,9 +456,44 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         setAviso('Inclua ao menos um produto.');
         return;
       }
+      if (!espera && destinoEscolhido === 'orcamento') {
+        if (!dataValidade) {
+          setAviso('Informe a data de validade da proposta.');
+          return;
+        }
+        if (!idCondicaoPagamento) {
+          setAviso('Selecione a condição de pagamento.');
+          return;
+        }
+        if (!idTipoMovimentacao) {
+          setAviso('Selecione o tipo de movimentação.');
+          return;
+        }
+        if (!formaAtualId) {
+          setAviso('Selecione a forma de pagamento.');
+          return;
+        }
+        for (const atr of atributosPrincipais) {
+          if (atr.obrigatorio && !String(atributosValores[atr.nome] ?? '').trim()) {
+            setAviso(`Preencha o atributo: ${atr.nome}`);
+            return;
+          }
+        }
+      }
       setEnviando(true);
       setAviso('');
       try {
+        const atributosProposta = Object.entries(atributosValores)
+          .map(([nomeAtributo, valorBruto]) => {
+            let valorAtributo = String(valorBruto ?? '').trim();
+            const meta = atributosOpcoes.find((a) => a.nome === nomeAtributo);
+            if (meta?.formato === 'data') {
+              const m = valorAtributo.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (m) valorAtributo = `${m[3]}/${m[2]}/${m[1]}`;
+            }
+            return { nomeAtributo, valorAtributo };
+          })
+          .filter((a) => a.nomeAtributo && a.valorAtributo);
         const venda = await pdvJson<VendaResposta>('/api/pdv/vendas', {
           method: 'POST',
           body: {
@@ -390,15 +521,34 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             clienteContribuinte: contribuinte,
             clienteIe: ie,
             clienteUf: ufCliente,
+            observacao,
+            idFormaPagamento: formaAtualId || null,
+            idCondicaoPagamento: idCondicaoPagamento || null,
+            idTipoMovimentacao: idTipoMovimentacao || null,
+            idContato: idContato || null,
+            dataValidade: destinoEscolhido === 'orcamento' ? dataValidade : undefined,
+            atributosProposta: destinoEscolhido === 'orcamento' ? atributosProposta : [],
+            localRetiradaDifEnderecoRemetente: localRetiradaDif,
+            idEnderecoLocalRetirada: localRetiradaDif ? idEnderecoRetirada || null : null,
+            localEntregaDifEnderecoDestinatario: localEntregaDif,
+            idEnderecoLocalEntrega: localEntregaDif ? idEnderecoEntrega || null : null,
           },
         });
         if (espera) {
           setAviso(`Venda ${venda.id} ficou em espera.`);
         } else {
           setComprovante(venda);
+          if (venda.status === 'orcamento' && venda.idPropostaNomus) {
+            try {
+              await abrirPropostaPdf(venda.id, true);
+            } catch (e) {
+              setAviso(e instanceof Error ? e.message : 'Orçamento gravado, mas o PDF não abriu.');
+            }
+          }
         }
         setCarrinho([]);
         setPagamentos((atual) => atual.map((p) => ({ ...p, valor: 0 })));
+        setObservacao('');
         recarregarSessao();
       } catch (e) {
         setAviso(e instanceof Error ? e.message : 'Não foi possível concluir a venda.');
@@ -406,7 +556,31 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         setEnviando(false);
       }
     },
-    [carrinho, cliente, contribuinte, destinoEfetivo, documento, fiscal, ie, pagamentos, recarregarSessao, ufCliente],
+    [
+      atributosOpcoes,
+      atributosPrincipais,
+      atributosValores,
+      carrinho,
+      cliente,
+      contribuinte,
+      dataValidade,
+      destinoEfetivo,
+      documento,
+      fiscal,
+      formaAtualId,
+      idCondicaoPagamento,
+      idContato,
+      idEnderecoEntrega,
+      idEnderecoRetirada,
+      idTipoMovimentacao,
+      ie,
+      localEntregaDif,
+      localRetiradaDif,
+      observacao,
+      pagamentos,
+      recarregarSessao,
+      ufCliente,
+    ],
   );
 
   useEffect(() => {
@@ -874,26 +1048,23 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 );
               })}
             </div>
+            <input ref={pagamentoRef} className="sr-only" tabIndex={-1} readOnly aria-hidden value="" />
 
-            {pagamentoEmDinheiro ? (
-              <div className="flex items-center justify-between gap-2 text-xs text-[var(--pdv-muted)]">
-                <label className="flex items-center gap-2">
-                  Recebido
-                  <input
-                    ref={pagamentoRef}
-                    value={pagamentos[0]?.valor || ''}
-                    onChange={(e) => {
-                      const valor = Number(e.target.value.replace(',', '.')) || 0;
-                      setPagamentos([{ idFormaPagamento: formaAtualId, valor }]);
-                    }}
-                    className={`${campo} w-28`}
-                  />
-                </label>
-                <span>Troco {brl(troco)}</span>
-              </div>
-            ) : (
-              <input ref={pagamentoRef} className="sr-only" tabIndex={-1} readOnly aria-hidden value="" />
-            )}
+            <label className="block text-[11px] text-[var(--pdv-muted)]">
+              Condição de pagamento
+              <select
+                value={idCondicaoPagamento || ''}
+                onChange={(e) => setIdCondicaoPagamento(Number(e.target.value) || 0)}
+                className={`${campo} mt-1 w-full`}
+              >
+                <option value="">Selecione…</option>
+                {condicoes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <div className="flex items-center justify-between gap-2">
               <button
@@ -925,6 +1096,22 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   <input value={ie} onChange={(e) => setIe(e.target.value)} placeholder="IE" className={`${campo} w-full`} />
                   <input value={ufCliente} onChange={(e) => setUfCliente(e.target.value.toUpperCase())} placeholder="UF" className={`${campo} w-16`} />
                 </div>
+                {contatos.length > 0 ? (
+                  <label className="block text-[11px] text-[var(--pdv-muted)]">
+                    Contato do cliente
+                    <select
+                      value={idContato || ''}
+                      onChange={(e) => setIdContato(Number(e.target.value) || 0)}
+                      className={`${campo} mt-1 w-full`}
+                    >
+                      {contatos.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
             ) : null}
 
@@ -941,7 +1128,157 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 </label>
               </fieldset>
             ) : (
-              <p className="text-xs text-[var(--pdv-muted)]">Orçamento gera proposta no Nomus; nota fiscal só na transformação/pedido.</p>
+              <div className="space-y-2 rounded-xl border border-[var(--pdv-line)] p-2">
+                <p className="text-[11px] text-[var(--pdv-muted)]">Dados da proposta (Nomus)</p>
+                {cliente && contatos.length > 0 ? (
+                  <label className="block text-[11px] text-[var(--pdv-muted)]">
+                    Contato
+                    <select
+                      value={idContato || ''}
+                      onChange={(e) => setIdContato(Number(e.target.value) || 0)}
+                      className={`${campo} mt-1 w-full`}
+                    >
+                      {contatos.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="text-[11px] text-[var(--pdv-faint)]">Selecione um cliente para listar contatos.</p>
+                )}
+                <label className="block text-[11px] text-[var(--pdv-muted)]">
+                  Tipo de movimentação
+                  <select
+                    value={idTipoMovimentacao || ''}
+                    onChange={(e) => setIdTipoMovimentacao(Number(e.target.value) || 0)}
+                    className={`${campo} mt-1 w-full`}
+                  >
+                    <option value="">Selecione…</option>
+                    {tiposMov.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-[11px] text-[var(--pdv-muted)]">
+                  Validade da proposta
+                  <input
+                    type="date"
+                    value={dataValidade}
+                    onChange={(e) => setDataValidade(e.target.value)}
+                    className={`${campo} mt-1 w-full`}
+                  />
+                </label>
+                <label className="block text-[11px] text-[var(--pdv-muted)]">
+                  Observação
+                  <textarea
+                    value={observacao}
+                    onChange={(e) => setObservacao(e.target.value)}
+                    rows={2}
+                    className={`${campo} mt-1 w-full`}
+                  />
+                </label>
+                {atributosPrincipais.map((atr) => (
+                  <label key={atr.nome} className="block text-[11px] text-[var(--pdv-muted)]">
+                    {atr.nome}
+                    {atr.obrigatorio ? ' *' : ''}
+                    {atr.formato === 'lista' ? (
+                      <select
+                        value={atributosValores[atr.nome] ?? ''}
+                        onChange={(e) =>
+                          setAtributosValores((atual) => ({ ...atual, [atr.nome]: e.target.value }))
+                        }
+                        className={`${campo} mt-1 w-full`}
+                      >
+                        <option value="">Selecione…</option>
+                        {atr.opcoes.map((op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={atr.formato === 'data' ? 'date' : 'text'}
+                        value={atributosValores[atr.nome] ?? ''}
+                        onChange={(e) =>
+                          setAtributosValores((atual) => ({ ...atual, [atr.nome]: e.target.value }))
+                        }
+                        className={`${campo} mt-1 w-full`}
+                      />
+                    )}
+                  </label>
+                ))}
+                {atributoOutrasInfo ? (
+                  <label className="block text-[11px] text-[var(--pdv-muted)]">
+                    Outras informações ({atributoOutrasInfo.nome})
+                    <select
+                      value={atributosValores[atributoOutrasInfo.nome] ?? ''}
+                      onChange={(e) =>
+                        setAtributosValores((atual) => ({
+                          ...atual,
+                          [atributoOutrasInfo.nome]: e.target.value,
+                        }))
+                      }
+                      className={`${campo} mt-1 w-full`}
+                    >
+                      <option value="">Selecione…</option>
+                      {atributoOutrasInfo.opcoes.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="flex items-center gap-2 text-[11px] text-[var(--pdv-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={localRetiradaDif}
+                    onChange={(e) => setLocalRetiradaDif(e.target.checked)}
+                  />
+                  Local de retirada diferente do remetente
+                </label>
+                {localRetiradaDif ? (
+                  <select
+                    value={idEnderecoRetirada || ''}
+                    onChange={(e) => setIdEnderecoRetirada(Number(e.target.value) || 0)}
+                    className={`${campo} w-full`}
+                  >
+                    <option value="">Selecione o endereço…</option>
+                    {enderecos.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.rotulo}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <label className="flex items-center gap-2 text-[11px] text-[var(--pdv-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={localEntregaDif}
+                    onChange={(e) => setLocalEntregaDif(e.target.checked)}
+                  />
+                  Local de entrega diferente do destinatário
+                </label>
+                {localEntregaDif ? (
+                  <select
+                    value={idEnderecoEntrega || ''}
+                    onChange={(e) => setIdEnderecoEntrega(Number(e.target.value) || 0)}
+                    className={`${campo} w-full`}
+                  >
+                    <option value="">Selecione o endereço…</option>
+                    {enderecos.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.rotulo}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
             )}
 
             {modo === 'ambos' ? (
@@ -1036,14 +1373,28 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   <span>
                     #{v.id} · proposta {v.idPropostaNomus ?? '—'} · {brl(v.total)} · {v.clienteNome || 'Consumidor'}
                   </span>
-                  <button
-                    type="button"
-                    className={botaoContorno}
-                    disabled={enviando || !sessao.caixa}
-                    onClick={() => void transformar(v.id)}
-                  >
-                    Transformar
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={botaoContorno}
+                      disabled={!v.idPropostaNomus}
+                      onClick={() => {
+                        void abrirPropostaPdf(v.id, true).catch((e) =>
+                          setAviso(e instanceof Error ? e.message : 'Falha ao reimprimir.'),
+                        );
+                      }}
+                    >
+                      Reimprimir
+                    </button>
+                    <button
+                      type="button"
+                      className={botaoContorno}
+                      disabled={enviando || !sessao.caixa}
+                      onClick={() => void transformar(v.id)}
+                    >
+                      Transformar
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1233,7 +1584,24 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                       ? `DANFE da venda ${comprovante.id}`
                       : `Comprovante da venda ${comprovante.id}`}
               </strong>
-              <button type="button" onClick={() => window.print()} className={`${botaoContorno} print:hidden`}>Imprimir</button>
+              <div className="flex gap-2 print:hidden">
+                {comprovante.idPropostaNomus ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void abrirPropostaPdf(comprovante.id, true).catch((e) =>
+                        setAviso(e instanceof Error ? e.message : 'Falha ao reimprimir.'),
+                      );
+                    }}
+                    className={botaoContorno}
+                  >
+                    Reimprimir PDF
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => window.print()} className={botaoContorno}>
+                  Imprimir
+                </button>
+              </div>
             </div>
             <p>
               Proposta Nomus: {comprovante.idPropostaNomus ?? '—'}
@@ -1250,7 +1618,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 </li>
               ))}
             </ul>
-            <p>Total {brl(comprovante.total)} · troco {brl(comprovante.troco)}</p>
+            <p>Total {brl(comprovante.total)}</p>
             {comprovante.statusFiscal ? (
               <p className="mt-2">
                 {comprovante.statusFiscal}: {comprovante.motivoFiscal}

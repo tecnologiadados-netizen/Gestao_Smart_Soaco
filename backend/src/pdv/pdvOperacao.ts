@@ -12,6 +12,7 @@ import {
   normalizarDestino,
   normalizarModoOperacao,
   type ConfigNomusPdv,
+  type DadosPropostaPdv,
   type DestinoVendaPdv,
 } from './pdvNomusVenda.js';
 import { abrirPfx, type CertificadoAberto } from './fiscal/certificado.js';
@@ -138,6 +139,16 @@ export async function confirmarVenda(input: {
   fiscal: 'nenhuma' | 'nfce' | 'nfe';
   espera: boolean;
   destino?: DestinoVendaPdv | string;
+  idFormaPagamento?: number | null;
+  idCondicaoPagamento?: number | null;
+  idTipoMovimentacao?: number | null;
+  idContato?: number | null;
+  dataValidade?: string;
+  atributosProposta?: Array<{ nomeAtributo: string; valorAtributo: string }>;
+  localRetiradaDifEnderecoRemetente?: boolean;
+  idEnderecoLocalRetirada?: number | null;
+  localEntregaDifEnderecoDestinatario?: boolean;
+  idEnderecoLocalEntrega?: number | null;
 }) {
   const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa: input.idEmpresa } });
   if (!config?.idTabelaPreco || !config.idSetorSaida || !config.idTipoMovimentacao) {
@@ -266,7 +277,23 @@ export async function confirmarVenda(input: {
   if (input.espera) return venda;
 
   const nomusCfg = configNomusDe({ ...config, idEmpresa: input.idEmpresa });
-  const idForma = input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento;
+  const idForma =
+    input.idFormaPagamento || input.pagamentos[0]?.idFormaPagamento || config.idFormaPagamento;
+  const idTipoMov = input.idTipoMovimentacao || config.idTipoMovimentacao;
+  const idCondicao = input.idCondicaoPagamento || config.idCondicaoPagamento;
+  const dadosProposta: DadosPropostaPdv = {
+    idContato: input.idContato,
+    idTipoMovimentacao: idTipoMov,
+    idCondicaoPagamento: idCondicao,
+    idFormaPagamento: idForma,
+    dataValidade: input.dataValidade,
+    observacao: input.observacao,
+    atributos: input.atributosProposta,
+    localRetiradaDifEnderecoRemetente: Boolean(input.localRetiradaDifEnderecoRemetente),
+    idEnderecoLocalRetirada: input.idEnderecoLocalRetirada,
+    localEntregaDifEnderecoDestinatario: Boolean(input.localEntregaDifEnderecoDestinatario),
+    idEnderecoLocalEntrega: input.idEnderecoLocalEntrega,
+  };
   const itensNomus = venda.itens.map((item) => ({
     idProduto: item.idProduto,
     quantidade: item.quantidade,
@@ -285,6 +312,7 @@ export async function confirmarVenda(input: {
         observacao: input.observacao,
         itens: itensNomus,
         idFormaPagamento: idForma,
+        proposta: dadosProposta,
       });
     } catch (err) {
       await prisma.pdvVenda.update({
@@ -314,6 +342,8 @@ export async function confirmarVenda(input: {
       total,
       itens: itensNomus,
       idFormaPagamento: idForma,
+      idTipoMovimentacao: idTipoMov,
+      idCondicaoPagamento: idCondicao,
     });
   } catch (err) {
     await prisma.pdvVenda.update({
@@ -348,6 +378,7 @@ export async function confirmarVenda(input: {
       numero: `PDV-${venda.id}`,
       itens: itensNomus,
       idFormaPagamento: idForma,
+      idTipoMovimentacao: idTipoMov,
     });
   } catch (err) {
     await prisma.pdvVenda.update({

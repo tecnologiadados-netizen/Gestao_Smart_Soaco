@@ -39,6 +39,17 @@ function maisDiasBr(dias: number): string {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+/** Aceita YYYY-MM-DD ou DD/MM/YYYY e devolve DD/MM/YYYY. */
+export function normalizarDataBr(v: unknown, fallback?: string): string {
+  const raw = String(v ?? '').trim();
+  if (!raw) return fallback || maisDiasBr(30);
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[1]}/${br[2]}/${br[3]}`;
+  return fallback || maisDiasBr(30);
+}
+
 function itemLabel(idx: number): string {
   return String(idx + 1).padStart(2, '0');
 }
@@ -64,7 +75,30 @@ export type ConfigNomusPdv = {
   idPessoaVendedor: number | null;
 };
 
-export async function resolverContatoCliente(idCliente: number, nomeFallback: string): Promise<number> {
+export type AtributoPropostaValor = { nomeAtributo: string; valorAtributo: string };
+
+export type DadosPropostaPdv = {
+  idContato?: number | null;
+  idTipoMovimentacao?: number | null;
+  idCondicaoPagamento?: number | null;
+  idFormaPagamento?: number | null;
+  dataValidade?: string;
+  observacao?: string;
+  atributos?: AtributoPropostaValor[];
+  localRetiradaDifEnderecoRemetente?: boolean;
+  idEnderecoLocalRetirada?: number | null;
+  localEntregaDifEnderecoDestinatario?: boolean;
+  idEnderecoLocalEntrega?: number | null;
+};
+
+export async function resolverContatoCliente(
+  idCliente: number,
+  nomeFallback: string,
+  idContatoPreferido?: number | null,
+): Promise<number> {
+  if (idContatoPreferido && Number.isFinite(idContatoPreferido) && idContatoPreferido > 0) {
+    return idContatoPreferido;
+  }
   const [rows] = await queryNomus<Array<{ idContato: number }>>(
     `SELECT pc.idContato AS idContato
      FROM pessoa_contato pc
@@ -101,6 +135,15 @@ export async function resolverContatoCliente(idCliente: number, nomeFallback: st
   throw new PdvErro('Cliente sem contato no Nomus e a API não devolveu o id do contato criado.', 502);
 }
 
+function montarAtributos(attrs: AtributoPropostaValor[] | undefined): AtributoPropostaValor[] {
+  return (attrs ?? [])
+    .map((a) => ({
+      nomeAtributo: String(a.nomeAtributo ?? '').trim(),
+      valorAtributo: String(a.valorAtributo ?? '').trim(),
+    }))
+    .filter((a) => a.nomeAtributo && a.valorAtributo);
+}
+
 export async function criarPropostaNomus(input: {
   config: ConfigNomusPdv;
   idCliente: number;
@@ -108,26 +151,36 @@ export async function criarPropostaNomus(input: {
   observacao: string;
   itens: ItemNomusPdv[];
   idFormaPagamento: number | null;
+  proposta?: DadosPropostaPdv;
 }): Promise<number> {
-  const { config } = input;
-  if (!config.idCondicaoPagamento) {
-    throw new PdvErro('Configure a condição de pagamento desta empresa para gerar orçamento.', 409);
+  const { config, proposta } = input;
+  const idCondicao = proposta?.idCondicaoPagamento || config.idCondicaoPagamento;
+  if (!idCondicao) {
+    throw new PdvErro('Informe ou configure a condição de pagamento desta empresa para gerar orçamento.', 409);
   }
-  const idContato = await resolverContatoCliente(input.idCliente, input.clienteNome);
+  const idTipoMov = proposta?.idTipoMovimentacao || config.idTipoMovimentacao;
+  if (!idTipoMov) {
+    throw new PdvErro('Informe o tipo de movimentação da proposta.', 409);
+  }
+  const idContato = await resolverContatoCliente(input.idCliente, input.clienteNome, proposta?.idContato);
   const data = hojeBr();
-  const body = {
+  const dataValidade = normalizarDataBr(proposta?.dataValidade, maisDiasBr(30));
+  const observacao = String(proposta?.observacao ?? input.observacao ?? '').trim();
+  const atributos = montarAtributos(proposta?.atributos);
+
+  const body: Record<string, unknown> = {
     idEmpresa: config.idEmpresa,
     idCliente: input.idCliente,
     idContato,
-    idTipoMovimentacao: config.idTipoMovimentacao,
-    idCondicaoPagamento: config.idCondicaoPagamento,
-    idFormaPagamento: input.idFormaPagamento || config.idFormaPagamento,
+    idTipoMovimentacao: idTipoMov,
+    idCondicaoPagamento: idCondicao,
+    idFormaPagamento: proposta?.idFormaPagamento || input.idFormaPagamento || config.idFormaPagamento,
     idVendedor: config.idPessoaVendedor,
     idTabelaPreco: config.idTabelaPreco,
     dataHoraAbertura: data,
     dataEmissao: data,
-    dataValidade: maisDiasBr(30),
-    observacao: input.observacao,
+    dataValidade,
+    observacao,
     itensProposta: input.itens.map((item, idx) => ({
       item: itemLabel(idx),
       idProduto: item.idProduto,
@@ -139,9 +192,20 @@ export async function criarPropostaNomus(input: {
       prazoEntrega: '1',
       idUnidadeMedida: item.idUnidadeMedida,
       idTabelaPreco: config.idTabelaPreco,
-      idTipoMovimentacao: config.idTipoMovimentacao,
+      idTipoMovimentacao: idTipoMov,
     })),
   };
+
+  if (atributos.length) body.atributosProposta = atributos;
+
+  if (proposta?.localRetiradaDifEnderecoRemetente && proposta.idEnderecoLocalRetirada) {
+    body.localRetiradaDifEnderecoRemetente = true;
+    body.idEnderecoLocalRetirada = proposta.idEnderecoLocalRetirada;
+  }
+  if (proposta?.localEntregaDifEnderecoDestinatario && proposta.idEnderecoLocalEntrega) {
+    body.localEntregaDifEnderecoDestinatario = true;
+    body.idEnderecoLocalEntrega = proposta.idEnderecoLocalEntrega;
+  }
 
   try {
     const criado = await nomusRest<Record<string, unknown>>('/propostas', {
@@ -164,20 +228,23 @@ export async function criarPedidoNomus(input: {
   total: number;
   itens: ItemNomusPdv[];
   idFormaPagamento: number | null;
+  idTipoMovimentacao?: number | null;
+  idCondicaoPagamento?: number | null;
 }): Promise<number> {
   const { config } = input;
   if (!config.idTipoPedido) {
     throw new PdvErro('Configure o tipo de pedido desta empresa para emitir pedido.', 409);
   }
+  const idTipoMov = input.idTipoMovimentacao || config.idTipoMovimentacao;
   const data = hojeBr();
   const body = {
     dataEmissao: data,
-    idCondicaoPagamento: config.idCondicaoPagamento,
+    idCondicaoPagamento: input.idCondicaoPagamento || config.idCondicaoPagamento,
     idEmpresa: config.idEmpresa,
     idFormaPagamento: input.idFormaPagamento || config.idFormaPagamento,
     idPessoaCliente: input.idCliente,
     idPessoaVendedor: config.idPessoaVendedor,
-    idTipoMovimentacao: config.idTipoMovimentacao,
+    idTipoMovimentacao: idTipoMov,
     idTipoPedido: config.idTipoPedido,
     idTabelaPreco: config.idTabelaPreco,
     observacoes: input.observacao,
@@ -187,7 +254,7 @@ export async function criarPedidoNomus(input: {
       idProduto: item.idProduto,
       idSetorSaida: config.idSetorSaida,
       idTabelaPreco: config.idTabelaPreco,
-      idTipoMovimentacao: config.idTipoMovimentacao,
+      idTipoMovimentacao: idTipoMov,
       idUnidadeMedida: item.idUnidadeMedida,
       idItemProposta: item.idItemProposta || undefined,
       percentualDesconto: String(item.descontoPercentual || 0),
@@ -229,8 +296,10 @@ export async function criarDocumentoSaidaNomus(input: {
   numero: string;
   itens: ItemNomusPdv[];
   idFormaPagamento: number | null;
+  idTipoMovimentacao?: number | null;
 }): Promise<number> {
   const { config } = input;
+  const idTipoMov = input.idTipoMovimentacao || config.idTipoMovimentacao;
   try {
     const doc = await nomusRest<Record<string, unknown>>('/documentosSaida', {
       method: 'POST',
@@ -239,7 +308,7 @@ export async function criarDocumentoSaidaNomus(input: {
         numero: input.numero,
         idEmpresa: config.idEmpresa,
         idPessoa: input.idCliente,
-        idTipoMovimentacao: config.idTipoMovimentacao,
+        idTipoMovimentacao: idTipoMov,
         idSetorSaida: config.idSetorSaida,
         idTabelaPreco: config.idTabelaPreco,
         observacoes: input.observacao,
@@ -249,7 +318,7 @@ export async function criarDocumentoSaidaNomus(input: {
         idContaBancariaContaReceber: config.idContaBancaria,
         itens: input.itens.map((item) => ({
           idProduto: item.idProduto,
-          idTipoMovimentacao: config.idTipoMovimentacao,
+          idTipoMovimentacao: idTipoMov,
           idUnidadeMedida: item.idUnidadeMedida,
           idSetorSaida: config.idSetorSaida,
           idTabelaPreco: config.idTabelaPreco,
@@ -291,4 +360,8 @@ export async function itensPropostaNomus(idProposta: number): Promise<ItemNomusP
       idItemProposta: Number(row.id) || null,
     }))
     .filter((item) => item.idProduto > 0 && item.quantidade > 0);
+}
+
+export async function obterPropostaNomus(idProposta: number): Promise<Record<string, unknown>> {
+  return nomusRest<Record<string, unknown>>(`/propostas/${idProposta}`, { cacheMs: 0 });
 }

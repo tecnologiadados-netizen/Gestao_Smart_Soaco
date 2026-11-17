@@ -9,12 +9,16 @@ import {
   consultarCadastro,
   criarCliente,
   buscarProdutos,
+  listarAtributosProposta,
   listarCondicoes,
+  listarContatosCliente,
   listarEmpresas,
+  listarEnderecosCliente,
   listarFormas,
   listarSetores,
   listarTabelasPreco,
   listarTiposMovimentacao,
+  listarTiposMovimentacaoProposta,
 } from './pdvCatalogo.js';
 import { contextoPdv, exigirEmpresa } from './pdvContext.js';
 import {
@@ -27,7 +31,8 @@ import {
   retomarEspera,
   transformarOrcamento,
 } from './pdvOperacao.js';
-import { normalizarModoOperacao } from './pdvNomusVenda.js';
+import { montarHtmlPropostaPdv } from './pdvPropostaPdf.js';
+import { normalizarModoOperacao, obterPropostaNomus } from './pdvNomusVenda.js';
 import { cifrar } from './secrets.js';
 
 export const uploadPfx = multer({
@@ -72,6 +77,9 @@ export async function getSessao(req: Request, res: Response): Promise<void> {
       configurado: Boolean(config?.idTabelaPreco && config?.idSetorSaida),
       ignorarEstoque: Boolean(config?.ignorarEstoque),
       modoOperacao: normalizarModoOperacao(config?.modoOperacao),
+      idTipoMovimentacao: config?.idTipoMovimentacao ?? null,
+      idCondicaoPagamento: config?.idCondicaoPagamento ?? null,
+      idFormaPagamento: config?.idFormaPagamento ?? null,
       certificado: cert
         ? {
             cnpj: cert.cnpj,
@@ -159,6 +167,55 @@ export async function getFormas(req: Request, res: Response): Promise<void> {
       formas: formas.map((f) => ({ id: f.id, nome: f.nome, meio: String(f.extra?.meioPagamentoNfe ?? '') })),
       condicoes: condicoes.map((c) => ({ id: c.id, nome: c.nome })),
     });
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function getOrcamentoOpcoes(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa } });
+    const [formas, condicoes, tipos, atributos] = await Promise.all([
+      listarFormas(),
+      listarCondicoes(),
+      listarTiposMovimentacaoProposta(config?.idTipoMovimentacao),
+      listarAtributosProposta().catch(() => []),
+    ]);
+    res.json({
+      formas: formas.map((f) => ({ id: f.id, nome: f.nome })),
+      condicoes: condicoes.map((c) => ({ id: c.id, nome: c.nome })),
+      tipos: tipos.map((t) => ({ id: t.id, nome: t.nome })),
+      atributos,
+      padrao: {
+        idTipoMovimentacao: config?.idTipoMovimentacao ?? null,
+        idCondicaoPagamento: config?.idCondicaoPagamento ?? null,
+        idFormaPagamento: config?.idFormaPagamento ?? null,
+      },
+    });
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function getClienteContatos(req: Request, res: Response): Promise<void> {
+  try {
+    await contextoPdv(req);
+    const idCliente = Number(req.params.id);
+    if (!idCliente) throw new PdvErro('Cliente inválido.');
+    res.json({ contatos: await listarContatosCliente(idCliente) });
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function getClienteEnderecos(req: Request, res: Response): Promise<void> {
+  try {
+    await contextoPdv(req);
+    const idCliente = Number(req.params.id);
+    if (!idCliente) throw new PdvErro('Cliente inválido.');
+    res.json({ enderecos: await listarEnderecosCliente(idCliente) });
   } catch (err) {
     res.status(statusDe(err)).json({ error: mensagem(err) });
   }
@@ -255,23 +312,88 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
     const idEmpresa = exigirEmpresa(ctx);
     const fiscalRaw = String(req.body?.fiscal ?? 'nenhuma');
     const fiscal = fiscalRaw === 'nfce' || fiscalRaw === 'nfe' ? fiscalRaw : 'nenhuma';
+    const body = req.body ?? {};
+    const atributosProposta = Array.isArray(body.atributosProposta)
+      ? body.atributosProposta.map((a: { nomeAtributo?: unknown; valorAtributo?: unknown }) => ({
+          nomeAtributo: String(a?.nomeAtributo ?? ''),
+          valorAtributo: String(a?.valorAtributo ?? ''),
+        }))
+      : [];
     const venda = await confirmarVenda({
       usuarioId: ctx.usuarioId,
       idEmpresa,
-      itens: Array.isArray(req.body?.itens) ? req.body.itens : [],
-      pagamentos: Array.isArray(req.body?.pagamentos) ? req.body.pagamentos : [],
-      idPessoaCliente: Number(req.body?.idPessoaCliente) || null,
-      clienteNome: String(req.body?.clienteNome ?? ''),
-      clienteDocumento: String(req.body?.clienteDocumento ?? ''),
-      clienteContribuinte: Boolean(req.body?.clienteContribuinte),
-      clienteIe: String(req.body?.clienteIe ?? ''),
-      clienteUf: String(req.body?.clienteUf ?? ''),
-      observacao: String(req.body?.observacao ?? ''),
+      itens: Array.isArray(body.itens) ? body.itens : [],
+      pagamentos: Array.isArray(body.pagamentos) ? body.pagamentos : [],
+      idPessoaCliente: Number(body.idPessoaCliente) || null,
+      clienteNome: String(body.clienteNome ?? ''),
+      clienteDocumento: String(body.clienteDocumento ?? ''),
+      clienteContribuinte: Boolean(body.clienteContribuinte),
+      clienteIe: String(body.clienteIe ?? ''),
+      clienteUf: String(body.clienteUf ?? ''),
+      observacao: String(body.observacao ?? ''),
       fiscal,
-      espera: Boolean(req.body?.espera),
-      destino: req.body?.destino,
+      espera: Boolean(body.espera),
+      destino: body.destino,
+      idFormaPagamento: Number(body.idFormaPagamento) || null,
+      idCondicaoPagamento: Number(body.idCondicaoPagamento) || null,
+      idTipoMovimentacao: Number(body.idTipoMovimentacao) || null,
+      idContato: Number(body.idContato) || null,
+      dataValidade: String(body.dataValidade ?? ''),
+      atributosProposta,
+      localRetiradaDifEnderecoRemetente: Boolean(body.localRetiradaDifEnderecoRemetente),
+      idEnderecoLocalRetirada: Number(body.idEnderecoLocalRetirada) || null,
+      localEntregaDifEnderecoDestinatario: Boolean(body.localEntregaDifEnderecoDestinatario),
+      idEnderecoLocalEntrega: Number(body.idEnderecoLocalEntrega) || null,
     });
     res.json(venda);
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function getPropostaPdf(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const venda = await prisma.pdvVenda.findFirst({
+      where: { id: Number(req.params.id), idEmpresa },
+      include: { itens: true, pagamentos: true },
+    });
+    if (!venda) {
+      res.status(404).json({ error: 'Venda não encontrada.' });
+      return;
+    }
+    if (!venda.idPropostaNomus) {
+      res.status(409).json({ error: 'Esta venda não tem proposta no Nomus para imprimir.' });
+      return;
+    }
+    const config = await prisma.pdvEmpresaConfig.findUnique({ where: { idEmpresa } });
+    let proposta: Record<string, unknown> | null = null;
+    try {
+      proposta = await obterPropostaNomus(venda.idPropostaNomus);
+    } catch {
+      proposta = null;
+    }
+    const html = montarHtmlPropostaPdv({
+      venda: {
+        id: venda.id,
+        empresa: config?.nomeEmpresa ?? '',
+        clienteNome: venda.clienteNome,
+        observacao: venda.observacao,
+        total: venda.total,
+        itens: venda.itens.map((i) => ({
+          codigo: i.codigo,
+          descricao: i.descricao,
+          quantidade: i.quantidade,
+          valorUnitario: i.valorUnitario,
+          descontoPercentual: i.descontoPercentual,
+        })),
+        pagamentos: venda.pagamentos.map((p) => ({ nomeForma: p.nomeForma, valor: p.valor })),
+      },
+      proposta,
+    });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   } catch (err) {
     res.status(statusDe(err)).json({ error: mensagem(err) });
   }

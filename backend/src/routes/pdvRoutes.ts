@@ -3,13 +3,17 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import {
+  getClienteContatos,
+  getClienteEnderecos,
   getClientes,
   getConsultaConfig,
   getEspera,
   getFormas,
   getOpcoesConfig,
+  getOrcamentoOpcoes,
   getOrcamentos,
   getProdutos,
+  getPropostaPdf,
   getSessao,
   getVenda,
   postAbrirCaixa,
@@ -45,6 +49,15 @@ router.post('/clientes', (req, res, next) => {
 router.get('/formas', (req, res, next) => {
   getFormas(req, res).catch(next);
 });
+router.get('/orcamento/opcoes', (req, res, next) => {
+  getOrcamentoOpcoes(req, res).catch(next);
+});
+router.get('/clientes/:id/contatos', (req, res, next) => {
+  getClienteContatos(req, res).catch(next);
+});
+router.get('/clientes/:id/enderecos', (req, res, next) => {
+  getClienteEnderecos(req, res).catch(next);
+});
 router.post('/caixa/abrir', (req, res, next) => {
   postAbrirCaixa(req, res).catch(next);
 });
@@ -71,6 +84,9 @@ router.post('/vendas/:id/transformar', (req, res, next) => {
 });
 router.get('/vendas/:id', (req, res, next) => {
   getVenda(req, res).catch(next);
+});
+router.get('/vendas/:id/proposta-pdf', (req, res, next) => {
+  getPropostaPdf(req, res).catch(next);
 });
 
 router.get('/config/opcoes', (req, res, next) => {

@@ -57,7 +57,188 @@ export async function listarCondicoes(): Promise<NomusRef[]> {
 }
 
 export async function listarTiposMovimentacao(): Promise<NomusRef[]> {
-  return refs(await nomusRest('/tiposMovimentacao'));
+  // A REST do Nomus devolve o id em `codigo` (não em `id`).
+  return comoLista<Record<string, unknown>>(await nomusRest('/tiposMovimentacao'))
+    .map((row) => ({
+      id: Number(row.id ?? row.codigo),
+      nome: nomeDe(row) || `#${row.id ?? row.codigo}`,
+      extra: row,
+    }))
+    .filter((r) => Number.isFinite(r.id) && r.id > 0 && r.extra?.ativo !== false);
+}
+
+/** Tipos ativos permitidos/úteis para proposta e pedido de venda no PDV. */
+export async function listarTiposMovimentacaoProposta(idPadrao?: number | null): Promise<NomusRef[]> {
+  try {
+    const [rows] = await queryNomus<
+      Array<{ id: number; nome: string; natureza: number | null }>
+    >(
+      `SELECT id, nome, natureza
+       FROM tipomovimentacao
+       WHERE ativo = 1
+         AND (
+           natureza IN (1, 2)
+           OR id = ?
+           OR permitirTipoMovimentacaoCriacaoEdicaoPropostasEPedidoVenda = 1
+         )
+       ORDER BY nome`,
+      [Number(idPadrao) || 0],
+    );
+    const lista = (Array.isArray(rows) ? rows : [])
+      .map((row) => ({ id: Number(row.id), nome: String(row.nome ?? '').trim() || `#${row.id}` }))
+      .filter((row) => row.id > 0 && row.nome);
+    if (lista.length) return lista;
+  } catch {
+    /* fallback REST */
+  }
+  const todos = await listarTiposMovimentacao();
+  const filtrados = todos.filter((t) => {
+    const nome = t.nome.toUpperCase();
+    const natureza = Number(t.extra?.natureza);
+    return (
+      t.id === idPadrao ||
+      natureza === 1 ||
+      natureza === 2 ||
+      nome.includes('VENDA') ||
+      nome.includes('FATURAMENTO')
+    );
+  });
+  return filtrados.length ? filtrados : todos;
+}
+
+export type ContatoPdv = { id: number; nome: string; email: string; telefone: string };
+
+export async function listarContatosCliente(idCliente: number): Promise<ContatoPdv[]> {
+  if (!idCliente) return [];
+  try {
+    const data = await nomusRest(`/pessoas/${idCliente}/contatos`, { cacheMs: 0 });
+    return comoLista<Record<string, unknown>>(data)
+      .filter((row) => row.ativo !== false)
+      .map((row) => ({
+        id: Number(row.id),
+        nome: String(row.nomeCompleto ?? row.nome ?? '').trim() || `Contato #${row.id}`,
+        email: String(row.email_1 ?? row.email ?? '').trim(),
+        telefone: String(row.telefone_1 ?? row.telefone ?? row.celular ?? '').trim(),
+      }))
+      .filter((c) => c.id > 0);
+  } catch {
+    const [rows] = await queryNomus<Array<{ id: number; nome: string; email: string | null }>>(
+      `SELECT c.id, COALESCE(NULLIF(TRIM(c.nomeCompleto), ''), NULLIF(TRIM(c.nome), ''), CONCAT('Contato #', c.id)) AS nome,
+              COALESCE(c.email_1, '') AS email
+       FROM pessoa_contato pc
+       INNER JOIN contato c ON c.id = pc.idContato
+       WHERE pc.idParceiro = ?
+       ORDER BY c.id`,
+      [idCliente],
+    );
+    return (Array.isArray(rows) ? rows : []).map((row) => ({
+      id: Number(row.id),
+      nome: String(row.nome ?? '').trim() || `Contato #${row.id}`,
+      email: String(row.email ?? '').trim(),
+      telefone: '',
+    }));
+  }
+}
+
+export type EnderecoPdv = {
+  id: number;
+  rotulo: string;
+  tipoEndereco: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+  cep: string;
+};
+
+function rotuloEndereco(row: Record<string, unknown>): string {
+  const tipo = String(row.tipoEndereco ?? '').trim();
+  const end = [row.endereco, row.numero, row.bairro, row.municipio, row.uf]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+    .join(', ');
+  return [tipo, end].filter(Boolean).join(' · ') || `Endereço #${row.id}`;
+}
+
+export async function listarEnderecosCliente(idCliente: number): Promise<EnderecoPdv[]> {
+  if (!idCliente) return [];
+  const cliente = await nomusRest<Record<string, unknown>>(`/clientes/${idCliente}`, { cacheMs: 30_000 });
+  const lista = comoLista<Record<string, unknown>>(cliente.enderecos);
+  return lista
+    .map((row) => ({
+      id: Number(row.id),
+      rotulo: rotuloEndereco(row),
+      tipoEndereco: String(row.tipoEndereco ?? '').trim(),
+      endereco: String(row.endereco ?? '').trim(),
+      numero: String(row.numero ?? '').trim(),
+      bairro: String(row.bairro ?? '').trim(),
+      municipio: String(row.municipio ?? '').trim(),
+      uf: String(row.uf ?? '').trim(),
+      cep: String(row.cep ?? '').trim(),
+    }))
+    .filter((e) => e.id > 0);
+}
+
+export type AtributoPropostaPdv = {
+  nome: string;
+  obrigatorio: boolean;
+  formato: 'texto' | 'data' | 'lista';
+  opcoes: string[];
+};
+
+/** Atributos de proposta (IPROP/LPROP) com opções ativas do Nomus. */
+export async function listarAtributosProposta(): Promise<AtributoPropostaPdv[]> {
+  const [attrs] = await queryNomus<
+    Array<{ id: number; nome: string; formato: number; obrigatorio: number; discriminador: string }>
+  >(
+    `SELECT id, nome, formato, obrigatorio, discriminador
+     FROM atributo
+     WHERE ativo = 1 AND discriminador IN ('IPROP', 'LPROP')
+     ORDER BY
+       CASE nome
+         WHEN 'Data de entrega' THEN 1
+         WHEN 'Método de entrega' THEN 2
+         WHEN 'Montagem' THEN 3
+         WHEN 'Primeiro contato efetivado através de:' THEN 4
+         WHEN 'Projeto' THEN 5
+         WHEN 'Tipo de venda' THEN 6
+         WHEN 'FRETE' THEN 7
+         ELSE 99
+       END,
+       nome`,
+  );
+  const lista = Array.isArray(attrs) ? attrs : [];
+  if (!lista.length) return [];
+  const ids = lista.map((a) => a.id);
+  const [ops] = await queryNomus<Array<{ idAtributo: number; opcao: string }>>(
+    `SELECT idAtributo, opcao
+     FROM atributolistaopcao
+     WHERE idAtributo IN (${ids.map(() => '?').join(',')})
+       AND (ativo IS NULL OR ativo = 1)
+     ORDER BY idAtributo, posicao, opcao`,
+    ids,
+  );
+  const porAtributo = new Map<number, string[]>();
+  for (const op of Array.isArray(ops) ? ops : []) {
+    const id = Number(op.idAtributo);
+    const valor = String(op.opcao ?? '').trim();
+    if (!id || !valor) continue;
+    const arr = porAtributo.get(id) ?? [];
+    if (!arr.includes(valor)) arr.push(valor);
+    porAtributo.set(id, arr);
+  }
+  return lista.map((a) => {
+    const formatoNum = Number(a.formato);
+    const formato: AtributoPropostaPdv['formato'] =
+      formatoNum === 3 ? 'data' : formatoNum === 4 || (porAtributo.get(a.id)?.length ?? 0) > 0 ? 'lista' : 'texto';
+    return {
+      nome: String(a.nome),
+      obrigatorio: Boolean(a.obrigatorio),
+      formato,
+      opcoes: porAtributo.get(a.id) ?? [],
+    };
+  });
 }
 
 export async function listarSetores(idEmpresa: number): Promise<NomusRef[]> {
