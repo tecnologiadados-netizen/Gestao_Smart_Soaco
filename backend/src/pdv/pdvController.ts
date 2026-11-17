@@ -324,10 +324,16 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
         : [];
     const atributosProposta = mapAtributos(body.atributosProposta);
     const atributosItemProposta = mapAtributos(body.atributosItemProposta);
+    const itens = Array.isArray(body.itens)
+      ? body.itens.map((item: Record<string, unknown>) => ({
+          ...item,
+          atributosItem: mapAtributos(item?.atributosItem),
+        }))
+      : [];
     const venda = await confirmarVenda({
       usuarioId: ctx.usuarioId,
       idEmpresa,
-      itens: Array.isArray(body.itens) ? body.itens : [],
+      itens,
       pagamentos: Array.isArray(body.pagamentos) ? body.pagamentos : [],
       idPessoaCliente: Number(body.idPessoaCliente) || null,
       clienteNome: String(body.clienteNome ?? ''),

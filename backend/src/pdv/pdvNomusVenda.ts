@@ -54,6 +54,8 @@ function itemLabel(idx: number): string {
   return String(idx + 1).padStart(2, '0');
 }
 
+export type AtributoPropostaValor = { nomeAtributo: string; valorAtributo: string };
+
 export type ItemNomusPdv = {
   idProduto: number;
   quantidade: number;
@@ -61,6 +63,7 @@ export type ItemNomusPdv = {
   descontoPercentual: number;
   idUnidadeMedida: number | null;
   idItemProposta?: number | null;
+  atributosItem?: AtributoPropostaValor[];
 };
 
 export type ConfigNomusPdv = {
@@ -74,8 +77,6 @@ export type ConfigNomusPdv = {
   idContaBancaria: number | null;
   idPessoaVendedor: number | null;
 };
-
-export type AtributoPropostaValor = { nomeAtributo: string; valorAtributo: string };
 
 export type DadosPropostaPdv = {
   idContato?: number | null;
@@ -185,6 +186,7 @@ export async function criarPropostaNomus(input: {
     dataValidade,
     observacao,
     itensProposta: input.itens.map((item, idx) => {
+      const attrsDoItem = montarAtributos(item.atributosItem?.length ? item.atributosItem : atributosItem);
       const linha: Record<string, unknown> = {
         item: itemLabel(idx),
         idProduto: item.idProduto,
@@ -198,7 +200,13 @@ export async function criarPropostaNomus(input: {
         idTabelaPreco: config.idTabelaPreco,
         idTipoMovimentacao: idTipoMov,
       };
-      if (atributosItem.length) linha.atributosItemProposta = atributosItem;
+      if (attrsDoItem.length) {
+        linha.atributosItemProposta = attrsDoItem.map((a) => ({
+          nomeAtributo: a.nomeAtributo,
+          valorAtributo: a.valorAtributo,
+          valor: a.valorAtributo,
+        }));
+      }
       return linha;
     }),
   };

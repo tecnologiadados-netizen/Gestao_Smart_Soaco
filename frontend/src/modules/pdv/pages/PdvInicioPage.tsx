@@ -46,7 +46,11 @@ type Produto = {
   vinculado: boolean;
 };
 
-type ItemCarrinho = Produto & { quantidade: number; descontoPercentual: number };
+type ItemCarrinho = Produto & {
+  quantidade: number;
+  descontoPercentual: number;
+  atributosItem?: Record<string, string>;
+};
 
 type Forma = { id: number; nome: string };
 type Condicao = { id: number; nome: string };
@@ -222,6 +226,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [rascunho, setRascunho] = useState<Produto | null>(null);
   const [rascunhoQtd, setRascunhoQtd] = useState('1');
   const [rascunhoDesc, setRascunhoDesc] = useState('');
+  const [modalAtributosItem, setModalAtributosItem] = useState(false);
+  const [atributosItemDraft, setAtributosItemDraft] = useState<Record<string, string>>({});
   const [formaReceberId, setFormaReceberId] = useState(0);
   const [valorReceber, setValorReceber] = useState('');
   const [pagamentosLista, setPagamentosLista] = useState<Pagamento[]>([]);
@@ -360,15 +366,17 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     if (!mostrarVendedor) return;
     const t = window.setTimeout(() => {
       const q = vendedorBusca.trim();
+      // Evita refetch com nome completo já selecionado (Nomus às vezes responde 503).
+      if (vendedor && q === vendedor.nome) return;
       const qs = new URLSearchParams();
       if (q.length >= 2) qs.set('q', q);
-      if (vendedor?.id) qs.set('id', String(vendedor.id));
+      else if (vendedor?.id) qs.set('id', String(vendedor.id));
       pdvJson<{ vendedores: Vendedor[] }>(`/api/pdv/vendedores?${qs}`)
         .then((data) => setVendedores(data.vendedores ?? []))
         .catch(() => setVendedores([]));
-    }, 250);
+    }, 300);
     return () => window.clearTimeout(t);
-  }, [mostrarVendedor, vendedor?.id, vendedorBusca]);
+  }, [mostrarVendedor, vendedor, vendedorBusca]);
 
   useEffect(() => {
     if (!cliente?.id) {
@@ -503,16 +511,20 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     setAviso('');
   }
 
-  function adicionarRascunho() {
+  function chaveAtributosItem(attrs?: Record<string, string>) {
+    return Object.entries(attrs ?? {})
+      .filter(([, v]) => String(v ?? '').trim())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${String(v).trim()}`)
+      .join('|');
+  }
+
+  function abrirModalOuAdicionar() {
     if (!rascunho) {
       setAviso('Localize e selecione um produto.');
       return;
     }
     const qtd = Number(String(rascunhoQtd).replace(',', '.')) || 0;
-    const desc = Math.min(
-      Math.max(Number(String(rascunhoDesc).replace(',', '.')) || 0, 0),
-      rascunho.descontoMaximo || 100,
-    );
     if (qtd <= 0) {
       setAviso('Informe a quantidade.');
       return;
@@ -521,8 +533,43 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       setAviso(`Só há ${rascunho.saldo} em estoque.`);
       return;
     }
+    if (atributosItem.length > 0) {
+      const draft: Record<string, string> = {};
+      for (const atr of atributosItem) draft[atr.nome] = '';
+      setAtributosItemDraft(draft);
+      setModalAtributosItem(true);
+      setAviso('');
+      return;
+    }
+    confirmarAdicionarProduto({});
+  }
+
+  function confirmarAdicionarProduto(attrs: Record<string, string>) {
+    if (!rascunho) return;
+    const qtd = Number(String(rascunhoQtd).replace(',', '.')) || 0;
+    const desc = Math.min(
+      Math.max(Number(String(rascunhoDesc).replace(',', '.')) || 0, 0),
+      rascunho.descontoMaximo || 100,
+    );
+    const attrsLimpos: Record<string, string> = {};
+    for (const [k, v] of Object.entries(attrs)) {
+      const valor = String(v ?? '').trim();
+      if (valor) attrsLimpos[k] = valor;
+    }
+    for (const atr of atributosItem) {
+      if (atr.obrigatorio && !attrsLimpos[atr.nome]) {
+        setAviso(`Preencha o atributo: ${atr.nome}`);
+        return;
+      }
+    }
+    const chaveAttrs = chaveAtributosItem(attrsLimpos);
     setCarrinho((atual) => {
-      const idx = atual.findIndex((i) => i.id === rascunho.id && i.descontoPercentual === desc);
+      const idx = atual.findIndex(
+        (i) =>
+          i.id === rascunho.id &&
+          i.descontoPercentual === desc &&
+          chaveAtributosItem(i.atributosItem) === chaveAttrs,
+      );
       if (idx >= 0) {
         const copia = [...atual];
         const novaQtd = copia[idx].quantidade + qtd;
@@ -533,14 +580,28 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         copia[idx] = { ...copia[idx], quantidade: novaQtd, saldo: rascunho.saldo };
         return copia;
       }
-      return [...atual, { ...rascunho, quantidade: qtd, descontoPercentual: desc }];
+      return [
+        ...atual,
+        {
+          ...rascunho,
+          quantidade: qtd,
+          descontoPercentual: desc,
+          atributosItem: Object.keys(attrsLimpos).length ? attrsLimpos : undefined,
+        },
+      ];
     });
+    setModalAtributosItem(false);
+    setAtributosItemDraft({});
     setRascunho(null);
     setRascunhoQtd('1');
     setRascunhoDesc('');
     setBusca('');
     setAviso('');
     window.setTimeout(() => buscaRef.current?.focus(), 0);
+  }
+
+  function adicionarRascunho() {
+    abrirModalOuAdicionar();
   }
 
   function irParaFechamento() {
@@ -603,10 +664,18 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             setAviso('Selecione o tipo de movimentação.');
             return;
           }
-          for (const atr of [...atributosPrincipais, ...atributosItem]) {
+          for (const atr of atributosPrincipais) {
             if (atr.obrigatorio && !String(atributosValores[atr.nome] ?? '').trim()) {
               setAviso(`Preencha o atributo: ${atr.nome}`);
               return;
+            }
+          }
+          for (const item of carrinho) {
+            for (const atr of atributosItem) {
+              if (atr.obrigatorio && !String(item.atributosItem?.[atr.nome] ?? '').trim()) {
+                setAviso(`Preencha "${atr.nome}" no item ${item.codigo || item.descricao}.`);
+                return;
+              }
             }
           }
         }
@@ -627,24 +696,20 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       setEnviando(true);
       setAviso('');
       try {
-        const montarAttrs = (escopo: 'cabecalho' | 'item') =>
-          Object.entries(atributosValores)
-            .map(([nomeAtributo, valorBruto]) => {
-              const meta = atributosOpcoes.find((a) => a.nome === nomeAtributo);
-              const metaEscopo = meta?.escopo ?? (nomeAtributo === 'Produto Montado ?' ? 'item' : 'cabecalho');
-              if (metaEscopo !== escopo) return null;
-              let valorAtributo = String(valorBruto ?? '').trim();
-              if (meta?.formato === 'data') {
-                const m = valorAtributo.match(/^(\d{4})-(\d{2})-(\d{2})/);
-                if (m) valorAtributo = `${m[3]}/${m[2]}/${m[1]}`;
-              }
-              return { nomeAtributo, valorAtributo };
-            })
-            .filter((a): a is { nomeAtributo: string; valorAtributo: string } =>
-              Boolean(a && a.nomeAtributo && a.valorAtributo),
-            );
-        const atributosProposta = montarAttrs('cabecalho');
-        const atributosItemProposta = montarAttrs('item');
+        const atributosProposta = Object.entries(atributosValores)
+          .map(([nomeAtributo, valorBruto]) => {
+            const meta = atributosOpcoes.find((a) => a.nome === nomeAtributo);
+            if ((meta?.escopo ?? 'cabecalho') === 'item') return null;
+            let valorAtributo = String(valorBruto ?? '').trim();
+            if (meta?.formato === 'data') {
+              const m = valorAtributo.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (m) valorAtributo = `${m[3]}/${m[2]}/${m[1]}`;
+            }
+            return { nomeAtributo, valorAtributo };
+          })
+          .filter((a): a is { nomeAtributo: string; valorAtributo: string } =>
+            Boolean(a && a.nomeAtributo && a.valorAtributo),
+          );
         const idFormaFinal =
           pagamentosLista[0]?.idFormaPagamento || formaReceberId || formaAtualId || null;
         const pags =
@@ -671,6 +736,12 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               ncm: item.ncm,
               origem: item.origem,
               idUnidadeMedida: item.idUnidadeMedida,
+              atributosItem: Object.entries(item.atributosItem ?? {})
+                .map(([nomeAtributo, valorAtributo]) => ({
+                  nomeAtributo,
+                  valorAtributo: String(valorAtributo ?? '').trim(),
+                }))
+                .filter((a) => a.nomeAtributo && a.valorAtributo),
             })),
             pagamentos: pags,
             idPessoaCliente: cliente?.id ?? null,
@@ -688,8 +759,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             dataValidade: destinoEscolhido === 'orcamento' ? dataValidade : undefined,
             atributosProposta:
               destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosProposta : [],
-            atributosItemProposta:
-              destinoEscolhido === 'orcamento' || destinoEscolhido === 'pedido' ? atributosItemProposta : [],
             localRetiradaDifEnderecoRemetente: localRetiradaDif,
             idEnderecoLocalRetirada: localRetiradaDif ? idEnderecoRetirada || null : null,
             localEntregaDifEnderecoDestinatario: localEntregaDif,
@@ -1346,6 +1415,13 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                       <div className="truncate text-slate-800" title={rotuloItemCarrinho(item)}>
                         {rotuloItemCarrinho(item)}
                       </div>
+                      {item.atributosItem && Object.keys(item.atributosItem).length ? (
+                        <div className="truncate text-[11px] text-slate-500">
+                          {Object.entries(item.atributosItem)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(' · ')}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-slate-500">{brl(liquido(item))}</div>
                     </button>
                     <div className="flex items-center gap-1">
@@ -1584,36 +1660,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                   )}
                 </label>
               ))}
-              {atributosItem.length > 0 ? (
-                <div className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 p-3">
-                  <div className="text-xs font-semibold text-slate-700">Atributos dos itens</div>
-                  <p className="text-[11px] text-slate-500">
-                    Aplicado a todos os produtos desta proposta.
-                  </p>
-                  {atributosItem.map((atr) => (
-                    <label key={atr.nome} className="block text-xs text-slate-600">
-                      {atr.nome}{atr.obrigatorio ? ' *' : ''}
-                      {atr.formato === 'lista' ? (
-                        <select
-                          value={atributosValores[atr.nome] ?? ''}
-                          onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
-                          className={`${campoClaro} mt-1 w-full bg-white`}
-                        >
-                          <option value="">Selecione…</option>
-                          {atr.opcoes.map((op) => <option key={op} value={op}>{op}</option>)}
-                        </select>
-                      ) : (
-                        <input
-                          type={atr.formato === 'data' ? 'date' : 'text'}
-                          value={atributosValores[atr.nome] ?? ''}
-                          onChange={(e) => setAtributosValores((a) => ({ ...a, [atr.nome]: e.target.value }))}
-                          className={`${campoClaro} mt-1 w-full bg-white`}
-                        />
-                      )}
-                    </label>
-                  ))}
-                </div>
-              ) : null}
               {atributoOutrasInfo ? (
                 <label className="block text-xs text-slate-600">
                   Outras informações ({atributoOutrasInfo.nome})
@@ -1711,6 +1757,65 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       </div>
 
       )}
+
+      {modalAtributosItem && rascunho ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setModalAtributosItem(false)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-800">Atributos do item</h2>
+              <p className="mt-1 truncate text-xs text-slate-500">
+                {rascunho.codigo} — {rascunho.descricao}
+              </p>
+            </div>
+            <div className="space-y-3 p-5">
+              {atributosItem.map((atr) => (
+                <label key={atr.nome} className="block text-xs text-slate-600">
+                  {atr.nome}{atr.obrigatorio ? ' *' : ''}
+                  {atr.formato === 'lista' ? (
+                    <select
+                      value={atributosItemDraft[atr.nome] ?? ''}
+                      onChange={(e) => setAtributosItemDraft((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                      className={`${campoClaro} mt-1 w-full`}
+                      autoFocus={atr.obrigatorio}
+                    >
+                      <option value="">Selecione…</option>
+                      {atr.opcoes.map((op) => (
+                        <option key={op} value={op}>{op}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={atr.formato === 'data' ? 'date' : 'text'}
+                      value={atributosItemDraft[atr.nome] ?? ''}
+                      onChange={(e) => setAtributosItemDraft((a) => ({ ...a, [atr.nome]: e.target.value }))}
+                      className={`${campoClaro} mt-1 w-full`}
+                      autoFocus={atr.obrigatorio}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <button type="button" className={botaoContorno} onClick={() => setModalAtributosItem(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-[#3d4654] px-4 py-2 text-sm font-semibold text-white"
+                onClick={() => confirmarAdicionarProduto(atributosItemDraft)}
+              >
+                Adicionar ao carrinho
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {painelOperacoes ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4" onClick={() => { setPainelOperacoes(false); setOperacaoForm(null); }}>

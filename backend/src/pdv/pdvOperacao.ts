@@ -120,6 +120,7 @@ type ItemEntrada = {
   origem: string;
   idUnidadeMedida: number | null;
   aliquotaIpi?: number;
+  atributosItem?: Array<{ nomeAtributo: string; valorAtributo: string }>;
 };
 
 type PagamentoEntrada = { idFormaPagamento: number; valor: number };
@@ -303,13 +304,26 @@ export async function confirmarVenda(input: {
     localEntregaDifEnderecoDestinatario: Boolean(input.localEntregaDifEnderecoDestinatario),
     idEnderecoLocalEntrega: input.idEnderecoLocalEntrega,
   };
-  const itensNomus = venda.itens.map((item) => ({
-    idProduto: item.idProduto,
-    quantidade: item.quantidade,
-    valorUnitario: item.valorUnitario,
-    descontoPercentual: item.descontoPercentual,
-    idUnidadeMedida: item.idUnidadeMedida,
-  }));
+  const itensNomus = venda.itens.map((item, idx) => {
+    const entrada = input.itens[idx];
+    const attrsItem =
+      Array.isArray(entrada?.atributosItem) && entrada.atributosItem.length
+        ? entrada.atributosItem
+            .map((a) => ({
+              nomeAtributo: String(a?.nomeAtributo ?? '').trim(),
+              valorAtributo: String(a?.valorAtributo ?? '').trim(),
+            }))
+            .filter((a) => a.nomeAtributo && a.valorAtributo)
+        : input.atributosItemProposta;
+    return {
+      idProduto: item.idProduto,
+      quantidade: item.quantidade,
+      valorUnitario: item.valorUnitario,
+      descontoPercentual: item.descontoPercentual,
+      idUnidadeMedida: item.idUnidadeMedida,
+      atributosItem: attrsItem,
+    };
+  });
 
   if (destino === 'orcamento') {
     let idProposta: number | null = null;
