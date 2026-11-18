@@ -1757,6 +1757,8 @@ export type DoubleCheckInComparativoLinha = {
   /** Unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
+  /** Unitário da NF estava em R$/t e foi dividido por 1000 para comparar com o PC em R$/kg. */
+  unitarioNfConvertidoTonParaKg?: boolean;
   /** Quantidade em massa: unitário exato, card com 4 casas e popup com o valor completo. */
   entradaPorPeso?: boolean;
   valorIpiNF: number;

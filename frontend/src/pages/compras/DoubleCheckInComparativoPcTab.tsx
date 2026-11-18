@@ -219,12 +219,18 @@ function valoresExibicao(
           linha.qtdePC,
           nfBrl4
         );
+        const convertidaTon = Boolean(linha.unitarioNfConvertidoTonParaKg);
+        const nfDetalhe = [nf.detalhe, convertidaTon ? 'convertido de tonelada' : null]
+          .filter(Boolean)
+          .join(' · ');
         return {
           nf: nf.principal,
           pc: pc.principal,
-          nfDetalhe: nf.detalhe,
+          nfDetalhe: nfDetalhe || null,
           pcDetalhe: pc.detalhe,
-          nfTitle: textoReaisCasasUtilizadas(linha.valorUnitarioNF),
+          nfTitle: convertidaTon
+            ? `${textoReaisCasasUtilizadas(linha.valorUnitarioNF)} · NF original em R$/tonelada`
+            : textoReaisCasasUtilizadas(linha.valorUnitarioNF),
           pcTitle: textoReaisCasasUtilizadas(linha.valorUnitarioPC),
         };
       }

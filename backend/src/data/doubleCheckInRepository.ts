@@ -6,7 +6,13 @@ import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nom
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { aliquotasIpiIguais, conferenciaIpiPorDataEntrada, type ConferenciaIpi } from './doubleCheckInIpi.js';
 import { aplicarSomaQtdeMesmoItem, type ParteQtdePedido } from './doubleCheckInQtdeSoma.js';
-import { entradaPorPeso, normalizarUnitarioExato, unitariosExatosIguais } from './doubleCheckInPeso.js';
+import {
+  converterUnitarioTonParaKg,
+  entradaPorPeso,
+  normalizarUnitarioExato,
+  precisaConverterUnitarioTonParaKg,
+  unitariosExatosIguais,
+} from './doubleCheckInPeso.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
 /** Tipos de movimentação do SQL de negócio (entradas a conferir). */
@@ -696,6 +702,8 @@ export type DoubleCheckInComparativoLinha = {
   /** Valor unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
+  /** Unitário da NF estava em R$/t e foi dividido por 1000 para comparar com o PC em R$/kg. */
+  unitarioNfConvertidoTonParaKg?: boolean;
   /** Quantidade em massa: o unitário é comparado sem tolerância de centavos. */
   entradaPorPeso: boolean;
   valorIpiNF: number;
@@ -1054,7 +1062,7 @@ function montarLinhaComparativo(
 ): DoubleCheckInComparativoLinha {
   const qtdeNF = toNum(r.qtdeNF);
   const qtdePC = toNum(r.qtdePC);
-  const valorUnitarioBrutoNF = toNum(r.valorUnitarioBrutoNF);
+  let valorUnitarioBrutoNF = toNum(r.valorUnitarioBrutoNF);
   const valorUnitarioBrutoPC = toNum(r.valorUnitarioBrutoPC);
   const descontoNF = toNum(r.descontoNF);
   const descontoPC = toNum(r.descontoPC);
@@ -1066,7 +1074,7 @@ function montarLinhaComparativo(
     r.valorTotalComDescontoPC != null
       ? toNum(r.valorTotalComDescontoPC)
       : valorUnitarioBrutoPC * qtdePC - descontoPC;
-  const valorUnitarioNF = unitarioLiquidoComDesconto({
+  let valorUnitarioNF = unitarioLiquidoComDesconto({
     unitarioBruto: valorUnitarioBrutoNF,
     qtde: qtdeNF,
     desconto: descontoNF,
@@ -1078,6 +1086,19 @@ function montarLinhaComparativo(
     desconto: descontoPC,
     totalComDesconto: totalDescPC,
   });
+  const umNF = strOrNull(r.umNF);
+  const umPC = strOrNull(r.umPC);
+  // Qtde já vem em kg; unitário pode permanecer em R$/t — alinha para R$/kg.
+  const unitarioNfConvertidoTonParaKg = precisaConverterUnitarioTonParaKg({
+    unitarioNF: valorUnitarioNF,
+    unitarioPC: valorUnitarioPC,
+    umNF,
+    umPC,
+  });
+  if (unitarioNfConvertidoTonParaKg) {
+    valorUnitarioNF = converterUnitarioTonParaKg(valorUnitarioNF);
+    valorUnitarioBrutoNF = converterUnitarioTonParaKg(valorUnitarioBrutoNF);
+  }
   const valorIpiNF = toNum(r.valorIpiNF);
   const valorIpiPC = toNum(r.valorIpiPC);
   const aliquotaIpiNF = toNum(r.aliquotaIpiNF);
@@ -1105,7 +1126,7 @@ function montarLinhaComparativo(
   const prazosDiasPC = parcelasPC.map((p) => p.dias).filter((d): d is number => d != null);
   const prazosLabelNF = labelPrazosDias(prazosDiasNF);
   const prazosLabelPC = labelPrazosDias(prazosDiasPC);
-  const porPeso = entradaPorPeso(strOrNull(r.umNF), strOrNull(r.umPC));
+  const porPeso = entradaPorPeso(umNF, umPC);
   const divergValorUnitario = porPeso
     ? !unitariosExatosIguais(valorUnitarioNF, valorUnitarioPC)
     : !valoresIguaisComparativo(valorUnitarioNF, valorUnitarioPC, 2);
@@ -1139,9 +1160,9 @@ function montarLinhaComparativo(
     codigoProduto: strOrNull(r.codigoProduto),
     descricaoProduto: strOrNull(r.descricaoProduto),
     qtdeNF: arredondarComparativo(qtdeNF, 4),
-    umNF: strOrNull(r.umNF),
+    umNF,
     qtdePC: arredondarComparativo(qtdePC, 4),
-    umPC: strOrNull(r.umPC),
+    umPC,
     valorUnitarioBrutoNF: arredondarComparativo(valorUnitarioBrutoNF, 2),
     valorUnitarioBrutoPC: arredondarComparativo(valorUnitarioBrutoPC, 2),
     descontoNF: arredondarComparativo(descontoNF, 2),
@@ -1152,6 +1173,7 @@ function montarLinhaComparativo(
     valorUnitarioPC: porPeso
       ? normalizarUnitarioExato(valorUnitarioPC)
       : arredondarComparativo(valorUnitarioPC, 2),
+    unitarioNfConvertidoTonParaKg,
     entradaPorPeso: porPeso,
     valorIpiNF: arredondarComparativo(valorIpiNF, 2),
     valorIpiPC: arredondarComparativo(valorIpiPC, 2),

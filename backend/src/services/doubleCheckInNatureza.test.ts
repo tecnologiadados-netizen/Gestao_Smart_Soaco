@@ -5,19 +5,37 @@ import {
 } from './doubleCheckInNatureza.js';
 
 describe('classificarNaturezaDivergencia', () => {
-  it('no peso, trata diferença além dos centavos como real quando a nota é maior', () => {
+  it('no peso, unitário maior na NF é benigno até 5% e real acima disso', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, valorUnitarioNF: 7.1089585, valorUnitarioPC: 7.1015 },
+        campo: 'valor_unitario',
+      })
+    ).toBe('benigna');
     expect(
       classificarNaturezaDivergencia({
         linha: { entradaPorPeso: true, valorUnitarioNF: 8.904, valorUnitarioPC: 8.901 },
         campo: 'valor_unitario',
       })
-    ).toBe('real');
+    ).toBe('benigna');
     expect(
       classificarNaturezaDivergencia({
         linha: { entradaPorPeso: true, valorUnitarioNF: 8.901, valorUnitarioPC: 8.904 },
         campo: 'valor_unitario',
       })
     ).toBe('benigna');
+    expect(
+      classificarNaturezaDivergencia({
+        linha: { entradaPorPeso: true, valorUnitarioNF: 7.5, valorUnitarioPC: 7.0 },
+        campo: 'valor_unitario',
+      })
+    ).toBe('real');
+    expect(
+      observacaoNaturezaDivergencia({
+        linha: { entradaPorPeso: true, valorUnitarioNF: 7.1089585, valorUnitarioPC: 7.1015 },
+        campo: 'valor_unitario',
+      })
+    ).toMatch(/dentro do limiar de 5%/i);
   });
 
   it('considera preço menor na NF como benigno e preço maior como real', () => {

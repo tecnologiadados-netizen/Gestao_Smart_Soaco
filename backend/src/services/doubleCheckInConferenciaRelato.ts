@@ -207,14 +207,20 @@ function montarCampo(
           ? { texto: `+${textoReaisCasasUtilizadas(delta)}`, sinal: 'pos' as const }
           : { texto: `−${textoReaisCasasUtilizadas(Math.abs(delta))}`, sinal: 'neg' as const };
     const extra = detalhePreco(linha);
+    const convertidaTonParaKg = Boolean(linha.unitarioNfConvertidoTonParaKg);
     const completo = `Valor usado na comparação: NF ${textoReaisCasasUtilizadas(linha.valorUnitarioNF)} · PC ${textoReaisCasasUtilizadas(linha.valorUnitarioPC)}.`;
+    const partesDetalhe = [
+      convertidaTonParaKg ? 'Convertido de tonelada (NF, R$/kg).' : null,
+      extra.detalhe,
+      completo,
+    ].filter(Boolean);
     return {
       ...base,
       nf: fmtBrl4(linha.valorUnitarioNF),
       pc: fmtBrl4(linha.valorUnitarioPC),
       diferenca: dif.texto,
       sinal: dif.sinal,
-      detalhe: extra.detalhe ? `${extra.detalhe} ${completo}` : completo,
+      detalhe: partesDetalhe.length > 0 ? partesDetalhe.join(' ') : null,
       descontoWhatsApp: extra.descontoWhatsApp,
     };
   }

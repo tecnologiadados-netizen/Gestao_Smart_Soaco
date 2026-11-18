@@ -40,6 +40,9 @@ export const OBS_PAGAMENTO_AJUSTE_DIA_UTIL =
 /** Acima deste percentual, a quantidade por peso exige o número da solicitação no Otimiza. */
 export const LIMIAR_QTDE_PESO_PCT = 10;
 
+/** Acima deste percentual, o unitário por peso (NF > PC) vira divergência real. */
+export const LIMIAR_UNITARIO_PESO_PCT = 5;
+
 const JUSTIFICATIVAS_BENIGNAS = new Set([
   'arredondamento',
   'frete_lancado_na_entrada',
@@ -187,6 +190,20 @@ export function qtdePesoUltrapassaLimiar(linha: LinhaClassificavel): boolean {
   return variacaoQtdePesoPct(linha) > LIMIAR_QTDE_PESO_PCT;
 }
 
+/** Variação absoluta do unitário da NF em relação ao pedido, em %. */
+export function variacaoUnitarioPesoPct(linha: LinhaClassificavel): number {
+  const nf = numero(linha.valorUnitarioNF);
+  const pc = numero(linha.valorUnitarioPC);
+  const base = Math.abs(pc);
+  if (!(base > 0)) return nf === 0 ? 0 : Number.POSITIVE_INFINITY;
+  return (Math.abs(nf - pc) / base) * 100;
+}
+
+/** True quando a diferença de unitário por peso passa de 5%. */
+export function unitarioPesoUltrapassaLimiar(linha: LinhaClassificavel): boolean {
+  return variacaoUnitarioPesoPct(linha) > LIMIAR_UNITARIO_PESO_PCT;
+}
+
 export function observacaoNaturezaDivergencia(params: {
   linha: LinhaClassificavel;
   campo: DoubleCheckInCampoComparativo;
@@ -198,6 +215,18 @@ export function observacaoNaturezaDivergencia(params: {
       maximumFractionDigits: 1,
     });
     return `Diferença de ${texto}% do peso do pedido, dentro do limiar de 10%. O número da solicitação no Otimiza é opcional.`;
+  }
+  if (
+    params.campo === 'valor_unitario' &&
+    params.linha.entradaPorPeso &&
+    !unitarioPesoUltrapassaLimiar(params.linha)
+  ) {
+    const pct = variacaoUnitarioPesoPct(params.linha);
+    const texto = pct.toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+    return `Diferença de ${texto}% do preço unitário do pedido, dentro do limiar de 5%. O número da solicitação no Otimiza é opcional.`;
   }
   if (params.campo !== 'condicao_pagamento') return null;
   return ehAjusteDiaUtilPagamento(params.linha) ? OBS_PAGAMENTO_AJUSTE_DIA_UTIL : null;
@@ -217,7 +246,9 @@ export function classificarNaturezaDivergencia(params: {
   const { linha, campo } = params;
   if (campo === 'valor_unitario') {
     if (linha.entradaPorPeso) {
-      return unitarioExatoNfMaior(linha.valorUnitarioNF, linha.valorUnitarioPC) ? 'real' : 'benigna';
+      // NF ≤ PC: benigna. NF > PC: benigna até 5%; acima disso, real.
+      if (!unitarioExatoNfMaior(linha.valorUnitarioNF, linha.valorUnitarioPC)) return 'benigna';
+      return unitarioPesoUltrapassaLimiar(linha) ? 'real' : 'benigna';
     }
     return centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC) ? 'benigna' : 'real';
   }

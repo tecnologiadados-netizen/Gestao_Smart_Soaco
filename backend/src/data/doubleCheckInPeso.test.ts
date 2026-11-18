@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  converterUnitarioTonParaKg,
   entradaPorPeso,
   nfToneladaExibidaEmKg,
+  precisaConverterUnitarioTonParaKg,
   textoContemUnidadePeso,
   textoReaisCasasUtilizadas,
   unidadeEhPeso,
@@ -36,6 +38,34 @@ describe('unidade de peso', () => {
     expect(nfToneladaExibidaEmKg('TONELADA', 'QUILOGRAMA')).toBe(true);
     expect(nfToneladaExibidaEmKg('QUILOGRAMA', 'QUILOGRAMA')).toBe(false);
     expect(nfToneladaExibidaEmKg('TONELADA', 'TONELADA')).toBe(false);
+  });
+
+  it('converte unitário R$/t → R$/kg quando a NF ainda está na escala de tonelada', () => {
+    expect(
+      precisaConverterUnitarioTonParaKg({
+        unitarioNF: 7108.9585,
+        unitarioPC: 7.1015,
+        umNF: 'TONELADA',
+        umPC: 'QUILOGRAMA',
+      })
+    ).toBe(true);
+    expect(converterUnitarioTonParaKg(7108.9585)).toBeCloseTo(7.1089585, 10);
+    expect(
+      precisaConverterUnitarioTonParaKg({
+        unitarioNF: 7.1089585,
+        unitarioPC: 7.1015,
+        umNF: 'TONELADA',
+        umPC: 'QUILOGRAMA',
+      })
+    ).toBe(false);
+    expect(
+      precisaConverterUnitarioTonParaKg({
+        unitarioNF: 7108.9585,
+        unitarioPC: 7.1015,
+        umNF: 'QUILOGRAMA',
+        umPC: 'QUILOGRAMA',
+      })
+    ).toBe(false);
   });
 });
 

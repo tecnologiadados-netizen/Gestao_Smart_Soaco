@@ -81,6 +81,34 @@ export function nfToneladaExibidaEmKg(umNF: string | null | undefined, umPC: str
   return unidadeEhTonelada(umNF) && unidadeEhQuilograma(umPC);
 }
 
+/** 1 tonelada = 1000 kg. */
+export const FATOR_KG_POR_TONELADA = 1000;
+
+/**
+ * Nomus costuma converter a quantidade TN→kg e manter o unitário em R$/t.
+ * Se o unitário da NF ainda está ~1000× o do PC, dividimos por 1000 para comparar em R$/kg.
+ * Ratio próximo de 1 = Nomus já alinhou o preço; não converte de novo.
+ */
+export function precisaConverterUnitarioTonParaKg(params: {
+  unitarioNF: number;
+  unitarioPC: number;
+  umNF: string | null | undefined;
+  umPC: string | null | undefined;
+}): boolean {
+  if (!nfToneladaExibidaEmKg(params.umNF, params.umPC)) return false;
+  const nf = Number(params.unitarioNF);
+  const pc = Number(params.unitarioPC);
+  if (!Number.isFinite(nf) || !(nf > 0)) return false;
+  if (!Number.isFinite(pc) || !(pc > 0)) return true;
+  return nf / pc >= 100;
+}
+
+export function converterUnitarioTonParaKg(unitario: number): number {
+  const v = Number(unitario);
+  if (!Number.isFinite(v)) return 0;
+  return v / FATOR_KG_POR_TONELADA;
+}
+
 export function entradaPorPeso(umNF: string | null | undefined, umPC: string | null | undefined): boolean {
   return unidadeEhPeso(umNF) || unidadeEhPeso(umPC);
 }
