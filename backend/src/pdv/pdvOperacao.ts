@@ -304,11 +304,11 @@ export async function confirmarVenda(input: {
     localEntregaDifEnderecoDestinatario: Boolean(input.localEntregaDifEnderecoDestinatario),
     idEnderecoLocalEntrega: input.idEnderecoLocalEntrega,
   };
-  const itensNomus = venda.itens.map((item, idx) => {
-    const entrada = input.itens[idx];
+  // Usa itensOk (mesma ordem/atributos do request), não venda.itens do Prisma.
+  const itensNomus = itensOk.map((item) => {
     const attrsItem =
-      Array.isArray(entrada?.atributosItem) && entrada.atributosItem.length
-        ? entrada.atributosItem
+      Array.isArray(item.atributosItem) && item.atributosItem.length
+        ? item.atributosItem
             .map((a) => ({
               nomeAtributo: String(a?.nomeAtributo ?? '').trim(),
               valorAtributo: String(a?.valorAtributo ?? '').trim(),

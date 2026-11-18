@@ -466,13 +466,23 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       ),
     [atributosOpcoes],
   );
-  const atributosItem = useMemo(
-    () =>
-      atributosOpcoes.filter(
-        (a) => a.escopo === 'item' || a.nome === 'Produto Montado ?',
-      ),
-    [atributosOpcoes],
-  );
+  const atributosItem = useMemo(() => {
+    const fromApi = atributosOpcoes.filter(
+      (a) => a.escopo === 'item' || a.nome === 'Produto Montado ?',
+    );
+    // Fallback fixo: Nomus exige este LIPROP; se a API não listar, o modal ainda abre.
+    const fixos: AtributoOpcao[] = [
+      {
+        nome: 'Produto Montado ?',
+        obrigatorio: true,
+        formato: 'lista',
+        opcoes: ['Sim', 'Não'],
+        escopo: 'item',
+      },
+    ];
+    const nomes = new Set(fromApi.map((a) => a.nome));
+    return [...fromApi, ...fixos.filter((a) => !nomes.has(a.nome))];
+  }, [atributosOpcoes]);
   const atributoOutrasInfo = useMemo(
     () => atributosOpcoes.find((a) => a.nome === 'FRETE' && (a.escopo ?? 'cabecalho') === 'cabecalho') ?? null,
     [atributosOpcoes],

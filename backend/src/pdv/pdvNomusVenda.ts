@@ -147,6 +147,42 @@ function montarAtributos(attrs: AtributoPropostaValor[] | undefined): AtributoPr
     .filter((a) => a.nomeAtributo && a.valorAtributo);
 }
 
+/** Resolve idAtributo/idListaOpcao no Nomus — atributo de lista de item grava por idListaOpcao. */
+async function montarAtributosItemNomus(
+  attrs: AtributoPropostaValor[] | undefined,
+): Promise<Array<Record<string, unknown>>> {
+  const base = montarAtributos(attrs);
+  if (!base.length) return [];
+  const nomes = [...new Set(base.map((a) => a.nomeAtributo))];
+  const [rows] = await queryNomus<
+    Array<{ idAtributo: number; nome: string; idListaOpcao: number | null; opcao: string | null }>
+  >(
+    `SELECT a.id AS idAtributo, a.nome, alo.id AS idListaOpcao, alo.opcao
+     FROM atributo a
+     LEFT JOIN atributolistaopcao alo ON alo.idAtributo = a.id
+     WHERE a.ativo = 1
+       AND a.discriminador IN ('LIPROP', 'IIPROP')
+       AND a.nome IN (${nomes.map(() => '?').join(',')})`,
+    nomes,
+  );
+  const lista = Array.isArray(rows) ? rows : [];
+  return base.map((a) => {
+    const strip = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const opcaoNorm = strip(a.valorAtributo);
+    const match =
+      lista.find((r) => String(r.nome) === a.nomeAtributo && strip(String(r.opcao ?? '')) === opcaoNorm) ||
+      lista.find((r) => String(r.nome) === a.nomeAtributo && String(r.opcao ?? '').trim() === a.valorAtributo);
+    const out: Record<string, unknown> = {
+      nomeAtributo: a.nomeAtributo,
+      valorAtributo: a.valorAtributo,
+      valor: a.valorAtributo,
+    };
+    if (match?.idAtributo) out.idAtributo = Number(match.idAtributo);
+    if (match?.idListaOpcao) out.idListaOpcao = Number(match.idListaOpcao);
+    return out;
+  });
+}
+
 export async function criarPropostaNomus(input: {
   config: ConfigNomusPdv;
   idCliente: number;
@@ -170,7 +206,43 @@ export async function criarPropostaNomus(input: {
   const dataValidade = normalizarDataBr(proposta?.dataValidade, maisDiasBr(30));
   const observacao = String(proposta?.observacao ?? input.observacao ?? '').trim();
   const atributos = montarAtributos(proposta?.atributos);
-  const atributosItem = montarAtributos(proposta?.atributosItem);
+  const atributosItemPadrao = montarAtributos(proposta?.atributosItem);
+
+  const itensProposta = [];
+  for (let idx = 0; idx < input.itens.length; idx++) {
+    const item = input.itens[idx];
+    const attrsFonte = item.atributosItem?.length ? item.atributosItem : atributosItemPadrao;
+    const attrsDoItem = await montarAtributosItemNomus(attrsFonte);
+    if (!attrsDoItem.length) {
+      throw new PdvErro(
+        `Item ${itemLabel(idx)}: preencha o atributo obrigatório "Produto Montado ?" antes de gravar a proposta.`,
+        400,
+      );
+    }
+    const temMontado = attrsDoItem.some(
+      (a) => String(a.nomeAtributo) === 'Produto Montado ?' && String(a.valorAtributo || a.valor || '').trim(),
+    );
+    if (!temMontado) {
+      throw new PdvErro(
+        `Item ${itemLabel(idx)}: o atributo "Produto Montado ?" é obrigatório (Sim/Não).`,
+        400,
+      );
+    }
+    itensProposta.push({
+      item: itemLabel(idx),
+      idProduto: item.idProduto,
+      qtde: String(item.quantidade),
+      precoUnitario: String(item.valorUnitario),
+      valorUnitario: String(item.valorUnitario),
+      percentualDesconto: String(item.descontoPercentual || 0),
+      prazoEntregaDias: '1',
+      prazoEntrega: '1',
+      idUnidadeMedida: item.idUnidadeMedida,
+      idTabelaPreco: config.idTabelaPreco,
+      idTipoMovimentacao: idTipoMov,
+      atributosItemProposta: attrsDoItem,
+    });
+  }
 
   const body: Record<string, unknown> = {
     idEmpresa: config.idEmpresa,
@@ -185,30 +257,7 @@ export async function criarPropostaNomus(input: {
     dataEmissao: data,
     dataValidade,
     observacao,
-    itensProposta: input.itens.map((item, idx) => {
-      const attrsDoItem = montarAtributos(item.atributosItem?.length ? item.atributosItem : atributosItem);
-      const linha: Record<string, unknown> = {
-        item: itemLabel(idx),
-        idProduto: item.idProduto,
-        qtde: String(item.quantidade),
-        precoUnitario: String(item.valorUnitario),
-        valorUnitario: String(item.valorUnitario),
-        percentualDesconto: String(item.descontoPercentual || 0),
-        prazoEntregaDias: '1',
-        prazoEntrega: '1',
-        idUnidadeMedida: item.idUnidadeMedida,
-        idTabelaPreco: config.idTabelaPreco,
-        idTipoMovimentacao: idTipoMov,
-      };
-      if (attrsDoItem.length) {
-        linha.atributosItemProposta = attrsDoItem.map((a) => ({
-          nomeAtributo: a.nomeAtributo,
-          valorAtributo: a.valorAtributo,
-          valor: a.valorAtributo,
-        }));
-      }
-      return linha;
-    }),
+    itensProposta,
   };
 
   if (atributos.length) body.atributosProposta = atributos;
