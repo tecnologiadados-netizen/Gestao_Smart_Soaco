@@ -1168,7 +1168,7 @@ export default function DoubleCheckInComparativoPcTab({
                     salvandoNumero ||
                     !aceiteLiberado ||
                     !opcaoId ||
-                    (draft.decisao === 'aceita' && !obs.trim())
+                    (observacaoObrigatoria && !obs.trim())
                   }
                   onClick={() => void salvarJustificativa()}
                 >
