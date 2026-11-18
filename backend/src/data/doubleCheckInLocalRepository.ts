@@ -591,6 +591,8 @@ export async function upsertDecisaoComparativo(params: {
   usuarioLogin: string;
   /** Divergência benigna: o usuário optou por aceitar sem número no Otimiza. */
   dispensarSolicitacaoOtimiza?: boolean;
+  /** Divergência benigna: observação opcional no aceite (exceto justificativa "Outros"). */
+  observacaoOpcionalNoAceite?: boolean;
 }): Promise<DoubleCheckInComparativoDecisaoRow> {
   if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
     throw new Error(`Campo inválido: ${params.campo}`);
@@ -607,10 +609,11 @@ export async function upsertDecisaoComparativo(params: {
   if (!camposDaOpcao(opcao.codigo, opcao.campos).includes(params.campo)) {
     throw new Error('Essa justificativa não se aplica a este campo da divergência.');
   }
-  if (params.decisao === 'aceita' && !String(params.observacao ?? '').trim()) {
+  const obsVazia = !String(params.observacao ?? '').trim();
+  if (params.decisao === 'aceita' && obsVazia && !params.observacaoOpcionalNoAceite) {
     throw new Error('Informe a observação para aceitar a divergência.');
   }
-  if (opcao.codigo === 'outros' && !String(params.observacao ?? '').trim()) {
+  if (opcao.codigo === 'outros' && obsVazia) {
     throw new Error('Informe a observação quando a justificativa for "Outros".');
   }
 

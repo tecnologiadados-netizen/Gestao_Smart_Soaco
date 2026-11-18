@@ -488,6 +488,10 @@ export default function DoubleCheckInComparativoPcTab({
     draft?.decisao !== 'aceita' ||
     dispensouOtimiza ||
     (numeroConfereComGravado && solicitacaoConcluida);
+  const justificativaOutros =
+    justificativas.find((j) => j.id === opcaoId)?.codigo === 'outros';
+  const observacaoObrigatoria =
+    (draft?.decisao === 'aceita' && !divergenciaBenigna) || justificativaOutros;
 
   const outrasDivergenciasAbertas = useMemo(() => {
     if (!draft || draft.decisao !== 'aceita') return 0;
@@ -576,7 +580,7 @@ export default function DoubleCheckInComparativoPcTab({
       setJustErro('Selecione a justificativa.');
       return;
     }
-    if (draft.decisao === 'aceita' && !obs.trim()) {
+    if (draft.decisao === 'aceita' && !divergenciaBenigna && !obs.trim()) {
       setJustErro('Informe a observação para aceitar a divergência.');
       return;
     }
@@ -1037,7 +1041,7 @@ export default function DoubleCheckInComparativoPcTab({
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500">
                       {querInserirOtimiza === false
-                        ? 'O aceite segue sem o número. Informe a justificativa e a observação para finalizar.'
+                        ? 'O aceite segue sem o número. Informe a justificativa para finalizar. A observação é opcional.'
                         : querInserirOtimiza === true
                           ? 'Informe o número e grave. A solicitação precisa estar concluída no Otimiza.'
                           : 'Divergência benigna: o número é opcional. Escolha Sim ou Não para continuar.'}
@@ -1126,16 +1130,20 @@ export default function DoubleCheckInComparativoPcTab({
                 <div>
                   <label className={labelClass}>
                     Observações
-                    {draft.decisao === 'aceita' ? ' *' : ''}
+                    {observacaoObrigatoria ? ' *' : ''}
                   </label>
                   <textarea
                     className={`${inputClass} min-h-[5rem]`}
                     value={obs}
                     onChange={(e) => setObs(e.target.value)}
                     placeholder={
-                      draft.decisao === 'aceita'
-                        ? 'Obrigatório para aceitar a divergência'
-                        : 'Obrigatório se a justificativa for Outros'
+                      observacaoObrigatoria
+                        ? draft.decisao === 'aceita' && !divergenciaBenigna
+                          ? 'Obrigatório para aceitar a divergência'
+                          : 'Obrigatório se a justificativa for Outros'
+                        : divergenciaBenigna
+                          ? 'Opcional na divergência benigna'
+                          : 'Opcional'
                     }
                   />
                 </div>

@@ -657,9 +657,15 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
     };
 
     let dispensarSolicitacaoOtimiza = false;
+    let observacaoOpcionalNoAceite = false;
     if (decisaoRaw === 'aceita') {
-      if (dispensarOtimiza) {
-        const { linhas, erro: erroLinhas } = await queryDoubleCheckInComparativoPc({ idDocumento });
+      const precisaNatureza =
+        dispensarOtimiza || !String(observacao ?? '').trim();
+      let natureza: 'benigna' | 'real' = 'real';
+      if (precisaNatureza) {
+        const { linhas, erro: erroLinhas } = await queryDoubleCheckInComparativoPc({
+          idDocumento,
+        });
         if (erroLinhas) {
           res.status(503).json({ error: erroLinhas });
           return;
@@ -669,9 +675,9 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
             item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
             item.idItemPedidoCompra === idItemPedidoCompra
         );
-        const natureza = linha
-          ? classificarNaturezaDivergencia({ linha, campo })
-          : 'real';
+        natureza = linha ? classificarNaturezaDivergencia({ linha, campo }) : 'real';
+      }
+      if (dispensarOtimiza) {
         if (natureza !== 'benigna') {
           res.status(400).json({
             error:
@@ -690,6 +696,10 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
         );
         if (sol) await exigirSolicitacaoOtimizaConcluida(sol.numero);
       }
+      // Benigna: observação opcional no aceite (Outros continua exigindo no repositório).
+      if (precisaNatureza) {
+        observacaoOpcionalNoAceite = natureza === 'benigna';
+      }
     }
 
     let decisao = await upsertDecisaoComparativo({
@@ -697,6 +707,7 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
       idItemDocumentoEstoque,
       idItemPedidoCompra,
       dispensarSolicitacaoOtimiza,
+      observacaoOpcionalNoAceite,
     });
 
     // Cond. pagamento é do documento×PC: replica a decisão em todos os vínculos do mesmo PC.
@@ -742,14 +753,14 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
               usuarioLogin: usuario.login,
             });
           }
-          const dispensarIrmao =
-            dispensarSolicitacaoOtimiza &&
-            classificarNaturezaDivergencia({ linha: irmao, campo }) === 'benigna';
+          const naturezaIrmao = classificarNaturezaDivergencia({ linha: irmao, campo });
+          const dispensarIrmao = dispensarSolicitacaoOtimiza && naturezaIrmao === 'benigna';
           const d = await upsertDecisaoComparativo({
             ...baseParams,
             idItemDocumentoEstoque: irmao.idItemDocumentoEstoque,
             idItemPedidoCompra: irmao.idItemPedidoCompra,
             dispensarSolicitacaoOtimiza: dispensarIrmao,
+            observacaoOpcionalNoAceite: naturezaIrmao === 'benigna',
           });
           decisoesReplicadas.push(d);
         }
