@@ -1754,6 +1754,13 @@ export type DoubleCheckInComparativoLinha = {
   valorUnitarioBrutoPC: number;
   descontoNF: number;
   descontoPC: number;
+  valorTotalComDescontoNF?: number;
+  valorTotalComDescontoPC?: number;
+  descontoDocumentoNF?: number;
+  totalVinculosNF?: number;
+  totalVinculosPC?: number;
+  descontoVinculosNF?: number;
+  descontoVinculosPC?: number;
   /** Unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;

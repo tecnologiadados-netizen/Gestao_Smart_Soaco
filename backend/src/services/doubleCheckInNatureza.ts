@@ -1,6 +1,7 @@
 import type { ConferenciaIpi } from '../data/doubleCheckInIpi.js';
 import { aliquotaIpiNfMaior } from '../data/doubleCheckInIpi.js';
 import { unitarioExatoNfMaior } from '../data/doubleCheckInPeso.js';
+import { totaisVinculosIguais } from '../data/doubleCheckInTotaisVinculos.js';
 import type { DoubleCheckInCampoComparativo } from '../data/doubleCheckInLocalRepository.js';
 import { isFeriadoNacional } from '../data/crmFinanceiro/feriadosNacionais.js';
 import { parseLocalDate } from '../data/crmFinanceiro/datasLocais.js';
@@ -21,6 +22,11 @@ export type LinhaClassificavel = {
   qtdePC?: number;
   /** Soma das linhas do pedido quando a NF está ligada a mais de um item. */
   qtdePcSoma?: number | null;
+  /** Totais líquidos agregados dos vínculos do documento (NF × PC). */
+  totalVinculosNF?: number | null;
+  totalVinculosPC?: number | null;
+  descontoVinculosNF?: number | null;
+  descontoVinculosPC?: number | null;
   valorIpiNF?: number;
   valorIpiPC?: number;
   aliquotaIpiNF?: number;
@@ -228,6 +234,27 @@ export function observacaoNaturezaDivergencia(params: {
     });
     return `Diferença de ${texto}% do preço unitário do pedido, dentro do limiar de 5%. O número da solicitação no Otimiza é opcional.`;
   }
+  if (
+    params.campo === 'valor_unitario' &&
+    !params.linha.entradaPorPeso &&
+    centavos(params.linha.valorUnitarioNF) > centavos(params.linha.valorUnitarioPC) &&
+    totaisVinculosIguais(params.linha)
+  ) {
+    const total = centavos(params.linha.totalVinculosNF) / 100;
+    const totalTxt = total.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    const descNf = numero(params.linha.descontoVinculosNF).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    const descPc = numero(params.linha.descontoVinculosPC).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    return `Totais líquidos dos vínculos iguais (${totalTxt}). Desconto NF ${descNf} · PC ${descPc}. A diferença de unitário vem da forma de aplicar o desconto.`;
+  }
   if (params.campo !== 'condicao_pagamento') return null;
   return ehAjusteDiaUtilPagamento(params.linha) ? OBS_PAGAMENTO_AJUSTE_DIA_UTIL : null;
 }
@@ -250,7 +277,10 @@ export function classificarNaturezaDivergencia(params: {
       if (!unitarioExatoNfMaior(linha.valorUnitarioNF, linha.valorUnitarioPC)) return 'benigna';
       return unitarioPesoUltrapassaLimiar(linha) ? 'real' : 'benigna';
     }
-    return centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC) ? 'benigna' : 'real';
+    // NF ≤ PC: benigna. NF > PC: benigna só se os totais líquidos dos vínculos fecharem
+    // (desconto % no PC vs valor cheio na NF, por exemplo).
+    if (centavos(linha.valorUnitarioNF) <= centavos(linha.valorUnitarioPC)) return 'benigna';
+    return totaisVinculosIguais(linha) ? 'benigna' : 'real';
   }
 
   // Unidade, peça e demais medidas: qualquer diferença é real.

@@ -53,6 +53,51 @@ describe('classificarNaturezaDivergencia', () => {
     ).toBe('real');
   });
 
+  it('com unitário maior na NF, totais dos vínculos iguais tornam benigna', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          valorUnitarioNF: 6.5,
+          valorUnitarioPC: 5.77,
+          totalVinculosNF: 2200,
+          totalVinculosPC: 2200,
+          descontoVinculosNF: 300,
+          descontoVinculosPC: 279.5,
+        },
+        campo: 'valor_unitario',
+      })
+    ).toBe('benigna');
+    expect(
+      observacaoNaturezaDivergencia({
+        linha: {
+          valorUnitarioNF: 6.5,
+          valorUnitarioPC: 5.77,
+          totalVinculosNF: 2200,
+          totalVinculosPC: 2200,
+          descontoVinculosNF: 300,
+          descontoVinculosPC: 279.5,
+        },
+        campo: 'valor_unitario',
+      })
+    ).toMatch(/totais líquidos dos vínculos iguais/i);
+  });
+
+  it('com unitário maior na NF, totais dos vínculos diferentes permanecem real', () => {
+    expect(
+      classificarNaturezaDivergencia({
+        linha: {
+          valorUnitarioNF: 6.5,
+          valorUnitarioPC: 5.77,
+          totalVinculosNF: 2479.5,
+          totalVinculosPC: 2200,
+          descontoVinculosNF: 0,
+          descontoVinculosPC: 279.5,
+        },
+        campo: 'valor_unitario',
+      })
+    ).toBe('real');
+  });
+
   it('mantém qualquer diferença de quantidade como real quando não é peso', () => {
     expect(
       classificarNaturezaDivergencia({

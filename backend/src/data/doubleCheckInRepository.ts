@@ -6,6 +6,7 @@ import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nom
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { aliquotasIpiIguais, conferenciaIpiPorDataEntrada, type ConferenciaIpi } from './doubleCheckInIpi.js';
 import { aplicarSomaQtdeMesmoItem, type ParteQtdePedido } from './doubleCheckInQtdeSoma.js';
+import { aplicarTotaisVinculosDocumento } from './doubleCheckInTotaisVinculos.js';
 import {
   converterUnitarioTonParaKg,
   entradaPorPeso,
@@ -699,6 +700,18 @@ export type DoubleCheckInComparativoLinha = {
   valorUnitarioBrutoPC: number;
   descontoNF: number;
   descontoPC: number;
+  /** Total líquido da linha NF (após desconto do item). */
+  valorTotalComDescontoNF: number;
+  /** Total líquido da linha PC (após desconto do item). */
+  valorTotalComDescontoPC: number;
+  /** Desconto de cabeçalho/NFe (vDesc ou documentoestoque.valorDesconto). */
+  descontoDocumentoNF: number;
+  /** Soma dos totais líquidos dos vínculos NF do documento (com desconto de cabeçalho). */
+  totalVinculosNF?: number;
+  /** Soma dos totais líquidos dos vínculos PC do documento. */
+  totalVinculosPC?: number;
+  descontoVinculosNF?: number;
+  descontoVinculosPC?: number;
   /** Valor unitário líquido (após desconto) — base da comparação. */
   valorUnitarioNF: number;
   valorUnitarioPC: number;
@@ -951,6 +964,8 @@ SELECT
   IFNULL(ipc.valorDesconto, 0) AS descontoPC,
   ide.valorTotalComDesconto AS valorTotalComDescontoNF,
   ipc.valorTotalComDesconto AS valorTotalComDescontoPC,
+  IFNULL(tt.vDesc, 0) AS descontoNfeNF,
+  IFNULL(de.valorDesconto, 0) AS descontoCabecalhoNF,
   IFNULL(tde.valorIPI, 0) AS valorIpiNF,
   IFNULL(tpc.valorIPI, 0) AS valorIpiPC,
   IFNULL(tde.aliquotaIPI, 0) AS aliquotaIpiNF,
@@ -966,6 +981,7 @@ SELECT
 FROM itemdocumentoestoque_itempedidocompra ideipc
 LEFT JOIN itemdocumentoestoque ide ON ide.id = ideipc.idItemDocumentoEstoque
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN totaltributacao tt ON tt.id = de.idTotalTributacao
 LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
 LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
@@ -1066,6 +1082,7 @@ function montarLinhaComparativo(
   const valorUnitarioBrutoPC = toNum(r.valorUnitarioBrutoPC);
   const descontoNF = toNum(r.descontoNF);
   const descontoPC = toNum(r.descontoPC);
+  const descontoDocumentoNF = Math.max(toNum(r.descontoNfeNF), toNum(r.descontoCabecalhoNF));
   const totalDescNF =
     r.valorTotalComDescontoNF != null
       ? toNum(r.valorTotalComDescontoNF)
@@ -1167,6 +1184,9 @@ function montarLinhaComparativo(
     valorUnitarioBrutoPC: arredondarComparativo(valorUnitarioBrutoPC, 2),
     descontoNF: arredondarComparativo(descontoNF, 2),
     descontoPC: arredondarComparativo(descontoPC, 2),
+    valorTotalComDescontoNF: arredondarComparativo(totalDescNF, 2),
+    valorTotalComDescontoPC: arredondarComparativo(totalDescPC, 2),
+    descontoDocumentoNF: arredondarComparativo(descontoDocumentoNF, 2),
     valorUnitarioNF: porPeso
       ? normalizarUnitarioExato(valorUnitarioNF)
       : arredondarComparativo(valorUnitarioNF, 2),
@@ -1267,7 +1287,10 @@ async function carregarLinhasComparativoPorDocumentos(
       }
     }
     for (const [idDoc, linhas] of linhasPorDocumento) {
-      linhasPorDocumento.set(idDoc, aplicarSomaQtdeMesmoItem(linhas));
+      linhasPorDocumento.set(
+        idDoc,
+        aplicarTotaisVinculosDocumento(aplicarSomaQtdeMesmoItem(linhas))
+      );
     }
     return { linhasPorDocumento };
   } catch (err) {
