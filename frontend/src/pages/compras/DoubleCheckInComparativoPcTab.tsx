@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, MessageSquarePlus, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, MessageSquarePlus, X, XCircle } from 'lucide-react';
 import {
   addDoubleCheckInComparativoObservacao,
   saveDoubleCheckInComparativoDecisao,
@@ -392,6 +392,20 @@ export default function DoubleCheckInComparativoPcTab({
   const [salvandoObs, setSalvandoObs] = useState(false);
   const [obsErro, setObsErro] = useState<string | null>(null);
   const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
+  const [ajudaTotaisAberta, setAjudaTotaisAberta] = useState(false);
+
+  const totaisVinculos = useMemo(() => {
+    const base = linhas[0];
+    if (!base) return null;
+    if (base.totalVinculosNF == null || base.totalVinculosPC == null) return null;
+    const totalNF = Number(base.totalVinculosNF);
+    const totalPC = Number(base.totalVinculosPC);
+    const descontoNF = Number(base.descontoVinculosNF ?? 0);
+    const descontoPC = Number(base.descontoVinculosPC ?? 0);
+    if (![totalNF, totalPC, descontoNF, descontoPC].every((n) => Number.isFinite(n))) return null;
+    const totaisIguais = Math.round(totalNF * 100) === Math.round(totalPC * 100);
+    return { totalNF, totalPC, descontoNF, descontoPC, totaisIguais };
+  }, [linhas]);
 
   const solicitacaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInSolicitacaoOtimiza>();
@@ -730,6 +744,91 @@ export default function DoubleCheckInComparativoPcTab({
           </span>
         ))}
       </div>
+
+      {totaisVinculos && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-800/60">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Desconto NF
+                </p>
+                <p className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                  {nfBrl.format(totaisVinculos.descontoNF)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Desconto PC
+                </p>
+                <p className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                  {nfBrl.format(totaisVinculos.descontoPC)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Total NF
+                </p>
+                <p
+                  className={`text-sm font-semibold tabular-nums ${
+                    totaisVinculos.totaisIguais
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : 'text-slate-800 dark:text-slate-100'
+                  }`}
+                >
+                  {nfBrl.format(totaisVinculos.totalNF)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Total PC
+                </p>
+                <p
+                  className={`text-sm font-semibold tabular-nums ${
+                    totaisVinculos.totaisIguais
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : 'text-slate-800 dark:text-slate-100'
+                  }`}
+                >
+                  {nfBrl.format(totaisVinculos.totalPC)}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAjudaTotaisAberta((v) => !v)}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/80 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+              title="Como os totais entram na natureza do unitário"
+              aria-label="Como os totais entram na natureza do unitário"
+              aria-expanded={ajudaTotaisAberta}
+            >
+              <CircleHelp className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+          {ajudaTotaisAberta && (
+            <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              <p>
+                Soma dos itens vinculados desta NF × pedido: desconto e total líquido de cada lado. Se a
+                nota tiver desconto em valor cheio no cabeçalho ainda não rateado nas linhas, ele entra no
+                desconto e no total da NF.
+              </p>
+              <p className="mt-1.5">
+                No <strong className="font-semibold text-slate-700 dark:text-slate-200">valor unitário</strong>,
+                preço menor ou igual ao pedido é benigno. Se o unitário da NF for maior, mas os{' '}
+                <strong className="font-semibold text-slate-700 dark:text-slate-200">totais fecharem</strong>,
+                a divergência também é benigna (só muda a forma do desconto). Totais diferentes com unitário
+                maior na NF continuam reais.
+              </p>
+              <p className="mt-1.5 text-slate-500 dark:text-slate-400">
+                Neste documento:{' '}
+                {totaisVinculos.totaisIguais
+                  ? 'totais iguais — unitário maior na NF pode ser benigno.'
+                  : 'totais diferentes — unitário maior na NF permanece real.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3">
         {linhas.map((linha) => (
