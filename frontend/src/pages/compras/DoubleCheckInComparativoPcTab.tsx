@@ -407,6 +407,17 @@ export default function DoubleCheckInComparativoPcTab({
     return { totalNF, totalPC, descontoNF, descontoPC, totaisIguais };
   }, [linhas]);
 
+  /** Só quando o unitário da NF é maior: aí os totais decidem benigna vs real. */
+  const mostraAjudaUnitarioTotais = useMemo(
+    () =>
+      linhas.some(
+        (l) =>
+          l.divergValorUnitario &&
+          Math.round(Number(l.valorUnitarioNF) * 100) > Math.round(Number(l.valorUnitarioPC) * 100)
+      ),
+    [linhas]
+  );
+
   const solicitacaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInSolicitacaoOtimiza>();
     for (const s of solicitacoesOtimiza) {
@@ -794,37 +805,42 @@ export default function DoubleCheckInComparativoPcTab({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setAjudaTotaisAberta((v) => !v)}
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/80 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
-              title="Como os totais entram na natureza do unitário"
-              aria-label="Como os totais entram na natureza do unitário"
-              aria-expanded={ajudaTotaisAberta}
-            >
-              <CircleHelp className="h-4 w-4" aria-hidden />
-            </button>
+            {mostraAjudaUnitarioTotais && (
+              <button
+                type="button"
+                onClick={() => setAjudaTotaisAberta((v) => !v)}
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/80 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                title="Por que o unitário diverge, mas pode ser benigno?"
+                aria-label="Por que o unitário diverge, mas pode ser benigno?"
+                aria-expanded={ajudaTotaisAberta}
+              >
+                <CircleHelp className="h-4 w-4" aria-hidden />
+              </button>
+            )}
           </div>
-          {ajudaTotaisAberta && (
+          {mostraAjudaUnitarioTotais && ajudaTotaisAberta && (
             <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
-              <p>
-                Soma dos itens vinculados desta NF × pedido: desconto e total líquido de cada lado. Se a
-                nota tiver desconto em valor cheio no cabeçalho ainda não rateado nas linhas, ele entra no
-                desconto e no total da NF.
+              <p className="font-semibold text-slate-700 dark:text-slate-200">
+                Por que o unitário diverge, mas pode ser benigno?
               </p>
               <p className="mt-1.5">
-                No <strong className="font-semibold text-slate-700 dark:text-slate-200">valor unitário</strong>,
-                preço menor ou igual ao pedido é benigno. Se o unitário da NF for maior, mas os{' '}
-                <strong className="font-semibold text-slate-700 dark:text-slate-200">totais fecharem</strong>,
-                a divergência também é benigna (só muda a forma do desconto). Totais diferentes com unitário
-                maior na NF continuam reais.
+                Neste documento comparamos o{' '}
+                <strong className="font-semibold text-slate-700 dark:text-slate-200">total líquido</strong> da
+                NF com o do pedido (e o desconto de cada lado).
               </p>
-              <p className="mt-1.5 text-slate-500 dark:text-slate-400">
-                Neste documento:{' '}
-                {totaisVinculos.totaisIguais
-                  ? 'totais iguais — unitário maior na NF pode ser benigno.'
-                  : 'totais diferentes — unitário maior na NF permanece real.'}
-              </p>
+              <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                <li>
+                  Se o <strong className="font-semibold text-slate-700 dark:text-slate-200">preço unitário da NF for maior</strong>,
+                  mas o <strong className="font-semibold text-slate-700 dark:text-slate-200">total da NF e do pedido forem iguais</strong>,
+                  a diferença é só a <strong className="font-semibold text-slate-700 dark:text-slate-200">forma do desconto</strong>{' '}
+                  (ex.: % no pedido e valor cheio na nota) → <strong className="font-semibold text-emerald-700 dark:text-emerald-300">benigna</strong>.
+                </li>
+                <li>
+                  Se o unitário da NF for maior e os{' '}
+                  <strong className="font-semibold text-slate-700 dark:text-slate-200">totais não fecharem</strong> →{' '}
+                  <strong className="font-semibold text-rose-700 dark:text-rose-300">real</strong>.
+                </li>
+              </ul>
             </div>
           )}
         </div>
