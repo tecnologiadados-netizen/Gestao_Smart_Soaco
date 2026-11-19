@@ -41,15 +41,21 @@ export const JUSTIFICATIVA_SEED: readonly JustificativaSeed[] = [
     campos: ['valor_unitario'],
   },
   {
+    codigo: 'diferenca_descontos_aplicados',
+    label: 'Diferença de descontos aplicados',
+    sortOrder: 15,
+    campos: ['valor_unitario'],
+  },
+  {
     codigo: 'divergencia_por_ipi',
     label: 'Diferença causada pelo IPI',
-    sortOrder: 15,
+    sortOrder: 16,
     campos: ['valor_unitario', 'ipi'],
   },
   {
     codigo: 'erro_cadastro_um',
     label: 'Erro de cadastro / conversão de UM',
-    sortOrder: 16,
+    sortOrder: 17,
     campos: ['valor_unitario', 'qtde'],
   },
   {

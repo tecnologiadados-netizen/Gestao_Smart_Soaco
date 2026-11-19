@@ -27,4 +27,14 @@ describe('justificativas do Double Check', () => {
     expect(justificativaAplicavelAoCampo('ipi_reflexo', 'ipi')).toBe(true);
     expect(justificativaAplicavelAoCampo('ipi_reflexo', 'valor_unitario')).toBe(false);
   });
+
+  it('oferece diferença de descontos só no valor unitário', () => {
+    expect(justificativaAplicavelAoCampo('diferenca_descontos_aplicados', 'valor_unitario')).toBe(true);
+    expect(justificativaAplicavelAoCampo('diferenca_descontos_aplicados', 'qtde')).toBe(false);
+    expect(
+      JUSTIFICATIVA_SEED.some(
+        (s) => s.codigo === 'diferenca_descontos_aplicados' && s.label === 'Diferença de descontos aplicados'
+      )
+    ).toBe(true);
+  });
 });
