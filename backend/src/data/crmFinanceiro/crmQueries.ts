@@ -63,7 +63,19 @@ export const LF_VALOR_RECEBIDO_PAGO =
 export const VALOR_BAIXADO_AGENDAMENTO =
   `IF(af.discriminador IN ${RECEBER_DISCRIMINADORES}, af.valorBaixado, -(af.valorBaixado))`;
 
+/**
+ * Data do movimento informada no retorno de desconto de duplicatas (Nomus).
+ * Gravada em movimentoretornodescontoduplicata.dataCriacao quando há arquivo/retorno.
+ */
+export const DATA_RETORNO_DESCONTO_DUPLICATA = `(
+  SELECT MAX(mrd.dataCriacao)
+  FROM movimentoretornodescontoduplicata mrd
+  WHERE mrd.idAgendamentoRecebimento = af.id
+    AND mrd.idArquivoRetornoDescontoDuplicata IS NOT NULL
+)`;
+
 export const LF_DATA_REFERENCIA_RECEBIMENTO = `COALESCE(
+  ${DATA_RETORNO_DESCONTO_DUPLICATA},
   lfRec.dataRecebimento,
   lfPag.dataRecebimento,
   af.dataBaixa
@@ -163,6 +175,7 @@ export const VALOR_RECEBIDO_PAGO = `IFNULL(
 )`;
 
 export const DATA_REFERENCIA_RECEBIMENTO = `COALESCE(
+  ${DATA_RETORNO_DESCONTO_DUPLICATA},
   (SELECT MAX(lf.dataLancamento) FROM lancamentofinanceiro lf WHERE lf.idAgendamentoRecebimento = af.id),
   (SELECT MAX(lf.dataLancamento) FROM lancamentofinanceiro lf WHERE lf.idAgendamentoPagamento = af.id),
   af.dataBaixa
@@ -838,7 +851,11 @@ export function buildBaixadosSaudeEmpresaQuery(
   empresaId?: number | null,
 ): { sql: string; params: QueryParams } {
   const empresaFilter = buildEmpresaFilter(empresaId);
-  const dataRecebimento = `COALESCE(MAX(lfRec.dataLancamento), af.dataBaixa)`;
+  const dataRecebimento = `COALESCE(
+    ${DATA_RETORNO_DESCONTO_DUPLICATA},
+    MAX(lfRec.dataLancamento),
+    af.dataBaixa
+  )`;
   const valorRecebido = `COALESCE(SUM(lfRec.valor), af.valorBaixado)`;
 
   const sql = `
@@ -878,7 +895,11 @@ export function buildResumoBaixadosSaudeEmpresaQuery(
   empresaId?: number | null,
 ): { sql: string; params: QueryParams } {
   const empresaFilter = buildEmpresaFilter(empresaId);
-  const dataRecebimento = `COALESCE(MAX(lfRec.dataLancamento), af.dataBaixa)`;
+  const dataRecebimento = `COALESCE(
+    ${DATA_RETORNO_DESCONTO_DUPLICATA},
+    MAX(lfRec.dataLancamento),
+    af.dataBaixa
+  )`;
   const valorRecebido = `COALESCE(SUM(lfRec.valor), af.valorBaixado)`;
 
   const sql = `
