@@ -541,7 +541,7 @@ export default function DoubleCheckInComparativoPcTab({
       lista.push(linha);
       porPc.set(key, lista);
     }
-    return [...porPc.entries()].map(([key, candidatas]) => {
+    const grupos = [...porPc.entries()].map(([key, candidatas]) => {
       const comDecisao = candidatas.find((linha) =>
         decisoes.some(
           (d) =>
@@ -557,7 +557,12 @@ export default function DoubleCheckInComparativoPcTab({
         candidatas[0];
       return { key, linha, nome: nomePedidoLinha(linha) };
     });
-  }, [linhas, decisoes]);
+    // Link de evidência: só o que realmente diverge (benigna ou real).
+    if (evidencia) {
+      return grupos.filter((grupo) => Boolean(grupo.linha.divergCondicaoPagamento));
+    }
+    return grupos;
+  }, [linhas, decisoes, evidencia]);
 
   const frasesDivergencia = useMemo(() => {
     const frases: string[] = [];
@@ -1286,6 +1291,13 @@ export default function DoubleCheckInComparativoPcTab({
         {linhas.map((linha) => {
           const divergenciaDoItem =
             linha.divergValorUnitario || linha.divergQtde || linha.divergIpi;
+          // Link de evidência: esconde itens e campos iguais (sem divergência).
+          if (evidencia && !divergenciaDoItem) return null;
+          const camposItem = CAMPOS_ITEM.filter(
+            (c) =>
+              campoVisivel(c.id) && (!evidencia || Boolean(linha[c.divergKey]))
+          );
+          if (evidencia && camposItem.length === 0) return null;
           return (
           <div
             key={`${linha.idItemDocumentoEstoque}-${linha.idItemPedidoCompra}`}
@@ -1313,7 +1325,7 @@ export default function DoubleCheckInComparativoPcTab({
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {CAMPOS_ITEM.filter((c) => campoVisivel(c.id)).map((c) => renderCampoCard(linha, c))}
+              {camposItem.map((c) => renderCampoCard(linha, c))}
             </div>
           </div>
           );
