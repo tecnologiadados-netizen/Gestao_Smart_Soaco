@@ -31,7 +31,12 @@ import {
   retomarEspera,
   transformarOrcamento,
 } from './pdvOperacao.js';
-import { montarHtmlPropostaPdv, type PdfClienteProposta, type PdfPropostaExtra } from './pdvPropostaPdf.js';
+import {
+  montarHtmlPropostaPdv,
+  type PdfCabecalhoEmpresa,
+  type PdfClienteProposta,
+  type PdfPropostaExtra,
+} from './pdvPropostaPdf.js';
 import { normalizarModoOperacao, obterPropostaNomus } from './pdvNomusVenda.js';
 import { queryNomus } from '../config/nomusDb.js';
 import { nomusRest } from './nomusRest.js';
@@ -68,6 +73,75 @@ async function carregarClientePropostaPdf(idCliente: number, nomeContato: string
       municipio: String(c.municipio ?? '').trim(),
       uf: String(c.uf ?? '').trim(),
       cep: String(c.cep ?? '').trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatarIeBr(ie: string): string {
+  const dig = ie.replace(/\D/g, '');
+  if (dig.length === 9) return `${dig.slice(0, 2)}.${dig.slice(2, 5)}.${dig.slice(5, 8)}-${dig.slice(8)}`;
+  return ie.trim();
+}
+
+async function carregarCabecalhoEmpresaPdf(idEmpresa: number): Promise<PdfCabecalhoEmpresa | null> {
+  if (!idEmpresa) return null;
+  try {
+    const [rows] = await queryNomus<
+      Array<{
+        nome: string | null;
+        nomeRazaoSocial: string | null;
+        endereco: string | null;
+        numero: string | null;
+        complemento: string | null;
+        bairro: string | null;
+        cep: string | null;
+        municipio: string | null;
+        uf: string | null;
+        cnpj: string | null;
+        inscricaoEstadual: string | null;
+        telefone: string | null;
+        site: string | null;
+      }>
+    >(
+      `SELECT nome, nomeRazaoSocial, endereco, numero, complemento, bairro, cep, municipio, uf,
+              cnpj, inscricaoEstadual, telefone, site
+       FROM empresa
+       WHERE id = ?
+       LIMIT 1`,
+      [idEmpresa],
+    );
+    const e = Array.isArray(rows) ? rows[0] : null;
+    if (!e) return null;
+    const razao = String(e.nomeRazaoSocial || e.nome || '')
+      .trim()
+      .toUpperCase();
+    const endParts = [
+      String(e.endereco ?? '').trim(),
+      String(e.numero ?? '').trim() && String(e.numero).trim() !== '0' ? String(e.numero).trim() : '',
+      String(e.complemento ?? '').trim(),
+      String(e.bairro ?? '').trim(),
+    ].filter(Boolean);
+    const enderecoLinha = endParts.join(' - ');
+    const cep = String(e.cep ?? '').trim();
+    const mun = String(e.municipio ?? '').trim();
+    const uf = String(e.uf ?? '').trim();
+    const cidadeLinha = [cep && `CEP - ${cep}`, mun, uf].filter(Boolean).join(' - ');
+    const fone = String(e.telefone ?? '').trim();
+    const telefoneLinha = fone ? `TELE-VENDAS - ${fone}` : '';
+    const cnpj = String(e.cnpj ?? '').trim();
+    const ie = formatarIeBr(String(e.inscricaoEstadual ?? ''));
+    const documentoLinha = [cnpj && `CNPJ – ${cnpj}`, ie && `INSC. EST. ${ie}`].filter(Boolean).join(' - ');
+    let site = String(e.site ?? '').trim();
+    if (site && !/^https?:\/\//i.test(site) && !site.startsWith('www.')) site = `www.${site}`;
+    return {
+      razaoSocial: razao,
+      enderecoLinha,
+      cidadeLinha,
+      telefoneLinha,
+      documentoLinha,
+      siteLinha: site,
     };
   } catch {
     return null;
@@ -488,14 +562,16 @@ export async function getPropostaPdf(req: Request, res: Response): Promise<void>
       proposta = null;
     }
     const idCliente = Number(proposta?.idCliente || venda.idPessoaCliente) || 0;
-    const [cliente, extra] = await Promise.all([
+    const idEmpresaCab = Number(proposta?.idEmpresa || idEmpresa) || idEmpresa;
+    const [cliente, extra, cabecalho] = await Promise.all([
       carregarClientePropostaPdf(idCliente, String(proposta?.nomeContato ?? '')),
       carregarExtraPropostaPdf(venda.idPropostaNomus),
+      carregarCabecalhoEmpresaPdf(idEmpresaCab),
     ]);
     const html = montarHtmlPropostaPdv({
       venda: {
         id: venda.id,
-        empresa: config?.nomeEmpresa ?? '',
+        empresa: cabecalho?.razaoSocial || config?.nomeEmpresa || '',
         clienteNome: venda.clienteNome,
         observacao: venda.observacao,
         total: venda.total,
@@ -511,6 +587,7 @@ export async function getPropostaPdf(req: Request, res: Response): Promise<void>
       proposta,
       cliente,
       extra,
+      cabecalho,
     });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);

@@ -55,8 +55,12 @@ function parseNum(v: unknown): number {
     .replace(/\s+por\s+.*/i, '')
     .trim();
   if (!s) return 0;
+  // 1.234.567,89
   if (s.includes(',') && s.includes('.')) return Number(s.replace(/\./g, '').replace(',', '.')) || 0;
+  // 1234,89
   if (s.includes(',')) return Number(s.replace(',', '.')) || 0;
+  // 1.234.567 (milhar BR sem decimal)
+  if (/^\d{1,3}(\.\d{3})+$/.test(s)) return Number(s.replace(/\./g, '')) || 0;
   return Number(s) || 0;
 }
 
@@ -111,15 +115,27 @@ export type PdfPropostaExtra = {
   observacao?: string;
 };
 
+/** Cabeçalho da proposta a partir do cadastro de empresa (Nomus). */
+export type PdfCabecalhoEmpresa = {
+  razaoSocial: string;
+  enderecoLinha: string;
+  cidadeLinha: string;
+  telefoneLinha: string;
+  documentoLinha: string;
+  siteLinha: string;
+};
+
 export function montarHtmlPropostaPdv(input: {
   venda: PdfVendaLocal;
   proposta: Record<string, unknown> | null;
   cliente?: PdfClienteProposta | null;
   extra?: PdfPropostaExtra | null;
+  cabecalho?: PdfCabecalhoEmpresa | null;
 }): string {
   const prop = input.proposta ?? {};
   const cli = input.cliente;
   const extra = input.extra ?? {};
+  const cab = input.cabecalho;
 
   const codigo = String(prop.proposta ?? `PDV-${input.venda.id}`);
   const clienteNome = String(cli?.nome || prop.nomeCliente || input.venda.clienteNome || 'Consumidor');
@@ -175,10 +191,18 @@ export function montarHtmlPropostaPdv(input: {
 
   const vTotal = itens.reduce((s, i) => s + i.qtde * i.unit, 0);
   const vDesc = itens.reduce((s, i) => s + i.descR, 0);
-  const vLiq =
-    parseNum(prop.valorTotal) ||
-    input.venda.total ||
-    itens.reduce((s, i) => s + i.total, 0);
+  const somaItens = itens.reduce((s, i) => s + i.total, 0);
+  // Prefere soma das linhas / total da venda local — valorTotal da REST às vezes vem como "3.437" (milhar BR).
+  const vLiq = somaItens || input.venda.total || parseNum(prop.valorTotal);
+
+  const razao =
+    cab?.razaoSocial ||
+    String(prop.nomeEmpresa || input.venda.empresa || 'Empresa').trim().toUpperCase();
+  const linhaEndereco = cab?.enderecoLinha || '';
+  const linhaCidade = cab?.cidadeLinha || '';
+  const linhaTelefone = cab?.telefoneLinha || '';
+  const linhaDoc = cab?.documentoLinha || '';
+  const linhaSite = cab?.siteLinha || '';
 
   const linhas = itens
     .map(
@@ -363,14 +387,14 @@ export function montarHtmlPropostaPdv(input: {
     </div>
 
     <div class="top">
-      ${logoDataUri() ? `<img class="logo" src="${logoDataUri()}" alt="Só Móveis" />` : '<div class="logo"></div>'}
+      ${logoDataUri() ? `<img class="logo" src="${logoDataUri()}" alt="Logo" />` : '<div class="logo"></div>'}
       <div class="empresa">
-        <p class="razao">SÓ AÇO INDUSTRIAL LTDA.</p>
-        <p class="linha">AV. COLETORA SECUNDÁRIA III, 9519 - PEDRA MIUDA - QUADRAC/E LOTE 000001</p>
-        <p class="linha">CEP - 64038-000 - TERESINA - PI</p>
-        <p class="linha">TELE-VENDAS - (86) 3219-1200/1300/1454/3227-2868</p>
-        <p class="linha">CNPJ – 04.041.754/0001-40 - INSC. EST. 19.446.658-2</p>
-        <p class="linha">www.soacoindustrial.com.br</p>
+        <p class="razao">${esc(razao)}</p>
+        ${linhaEndereco ? `<p class="linha">${esc(linhaEndereco)}</p>` : ''}
+        ${linhaCidade ? `<p class="linha">${esc(linhaCidade)}</p>` : ''}
+        ${linhaTelefone ? `<p class="linha">${esc(linhaTelefone)}</p>` : ''}
+        ${linhaDoc ? `<p class="linha">${esc(linhaDoc)}</p>` : ''}
+        ${linhaSite ? `<p class="linha">${esc(linhaSite)}</p>` : ''}
       </div>
       <div class="form-meta">
         <div><strong>FOR-SA-0144</strong></div>
