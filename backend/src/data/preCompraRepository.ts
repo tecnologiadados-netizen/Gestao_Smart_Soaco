@@ -124,6 +124,18 @@ SELECT
         FROM tributacao t
         WHERE t.idItemColetaPrecosCotacao = icpc.id
     ) AS valor_ipi,
+    (
+        SELECT MAX(t.aliquotaIPI)
+        FROM tributacao t
+        WHERE t.idItemColetaPrecosCotacao = icpc.id
+          AND t.aliquotaIPI IS NOT NULL
+    ) AS aliquota_ipi,
+    (
+        SELECT MAX(t.vBCIPI)
+        FROM tributacao t
+        WHERE t.idItemColetaPrecosCotacao = icpc.id
+          AND t.vBCIPI IS NOT NULL
+    ) AS base_ipi,
     COALESCE(icpc.valorFrete, 0) AS valor_frete,
     COALESCE(cc.valorTotalFrete, 0) AS valor_frete_geral,
     sc.id AS solicitacao_id,
@@ -268,6 +280,10 @@ export interface PreCompraCotacaoRow {
   valor_total: number | null;
   /** IPI do item na coleta (`tributacao.valorIPI`). O preço unitário do Nomus não inclui esse valor. */
   valor_ipi?: number | null;
+  /** Alíquota de IPI (%) gravada em `tributacao`. O PDF recalcula o imposto só sobre a mercadoria. */
+  aliquota_ipi?: number | null;
+  /** Base de IPI do Nomus. Pode incluir frete; o PDF não usa essa base. */
+  base_ipi?: number | null;
   valor_frete?: number | null;
   valor_frete_geral?: number | null;
   solicitacao_id: number | string | null;
@@ -347,6 +363,8 @@ const CAMPOS_NUMERICOS = new Set([
   'preco_unitario',
   'valor_total',
   'valor_ipi',
+  'aliquota_ipi',
+  'base_ipi',
   'valor_frete',
   'valor_frete_geral',
 ]);
@@ -624,22 +642,56 @@ function alinharTotalComQuantidade(raw: PreCompraCotacaoRow): PreCompraCotacaoRo
   return { ...raw, valor_total: pelaQtde };
 }
 
+function aliquotaIpiInformada(value: unknown): number {
+  if (value == null || value === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n;
+}
+
 /**
- * A coluna "V. UNIT. C/IPI" e o total "C/DESCONTO + IPI" do anexo precisam do IPI
- * gravado em `tributacao`. O Nomus guarda `precoUnitario` e `valorTotalComDesconto` sem ele.
+ * IPI da linha do PDF. Com alíquota, incide só sobre a mercadoria (com desconto).
+ * O frete continua no total do documento, fora dessa base.
+ * Sem alíquota, usa o valor do Nomus e retira a parte do frete quando a base gravada o inclui.
  * Se a quantidade da cotação reescalou o total, o IPI acompanha na mesma proporção.
+ */
+function ipiSobreMercadoria(raw: PreCompraCotacaoRow, totalMercadoria: number): number {
+  const aliquota = aliquotaIpiInformada(raw.aliquota_ipi);
+  if (aliquota > 0) {
+    return Math.round(totalMercadoria * (aliquota / 100) * 100) / 100;
+  }
+
+  const ipiInformado = toNumero2Casas(raw.valor_ipi) ?? 0;
+  if (ipiInformado <= 0) return 0;
+
+  const frete = toNumero2Casas(raw.valor_frete) ?? 0;
+  const base = toNumero2Casas(raw.base_ipi);
+  let ipiBase = ipiInformado;
+  if (frete > 0 && base != null && base > 0) {
+    const mercadoriaNaBase = Math.round((base - frete) * 100) / 100;
+    if (mercadoriaNaBase > 0 && base - mercadoriaNaBase >= 0.02) {
+      ipiBase = Math.round(ipiInformado * (mercadoriaNaBase / base) * 100) / 100;
+    }
+  }
+
+  const totalOriginal = toNumero2Casas(raw.valor_total);
+  if (totalOriginal != null && totalOriginal > 0 && Math.abs(totalMercadoria - totalOriginal) >= 0.02) {
+    return Math.round(ipiBase * (totalMercadoria / totalOriginal) * 100) / 100;
+  }
+  return ipiBase;
+}
+
+/**
+ * A coluna "V. UNIT. C/IPI" e o total da linha levam o IPI da mercadoria.
+ * O Nomus guarda `precoUnitario` e `valorTotalComDesconto` sem IPI, e às vezes
+ * grava `valorIPI` sobre mercadoria + frete. O frete não entra nessa conta.
  */
 export function aplicarIpiNoItemPdf(raw: PreCompraCotacaoRow): PreCompraCotacaoRow {
   const alinhado = alinharTotalComQuantidade(raw);
   const total = toNumero2Casas(alinhado.valor_total);
-  const ipiInformado = toNumero2Casas(raw.valor_ipi) ?? 0;
-  if (ipiInformado <= 0 || total == null) return alinhado;
+  if (total == null) return alinhado;
 
-  const totalOriginal = toNumero2Casas(raw.valor_total);
-  const ipi =
-    totalOriginal != null && totalOriginal > 0 && Math.abs(total - totalOriginal) >= 0.02
-      ? Math.round(ipiInformado * (total / totalOriginal) * 100) / 100
-      : ipiInformado;
+  const ipi = ipiSobreMercadoria(raw, total);
   if (ipi <= 0) return alinhado;
 
   const totalComIpi = Math.round((total + ipi) * 100) / 100;
