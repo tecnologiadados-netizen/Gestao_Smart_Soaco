@@ -147,6 +147,13 @@ export function useGradeColunasExcel(
     window.addEventListener('mouseup', onUp);
   };
 
+  const definirLarguras = (parcial: Record<string, number>) => {
+    setPreferencias((atual) => ({
+      ...atual,
+      larguras: { ...atual.larguras, ...parcial },
+    }));
+  };
+
   const restaurar = () => setPreferencias({ ordem: [], ocultas: [], larguras: {} });
   const larguraTotal = colunasVisiveis.reduce((total, coluna) => total + largura(coluna.id), 0);
 
@@ -160,6 +167,7 @@ export function useGradeColunasExcel(
     definirVisibilidade,
     propsArrastar,
     iniciarRedimensionamento,
+    definirLarguras,
     restaurar,
   };
 }

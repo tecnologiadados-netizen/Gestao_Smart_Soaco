@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
@@ -7,8 +7,11 @@ import { AlertTriangle, CalendarRange, ChevronDown, ClipboardCheck, Eye, History
 import DoubleCheckInHistoricoModal from './DoubleCheckInHistoricoModal';
 import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
-import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
+import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
+import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
+import { useGradeColunasExcel, type GradeColunaConfiguravel } from '../../components/grade/GradeColunasExcel';
 import { useAuth } from '../../contexts/AuthContext';
+import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import {
   conferirDoubleCheckIn,
   criarLinkEvidenciaDoubleCheck,
@@ -98,6 +101,98 @@ function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
   if (dataEntrada < '2026-09-19') return 'nao_aplicada';
   if (dataEntrada < '2026-09-21') return 'simples';
   return 'completa';
+}
+
+const LARGURA_ACOES = 104;
+const COLUNAS_FLEXIVEIS = ['parceiro', 'criador'] as const;
+
+function ajustarLargurasGrade(preferidas: Record<string, number>, disponivel: number): Record<string, number> {
+  if (disponivel <= 0) return preferidas;
+  const minimo = (id: string) => COLUNAS_GRADE.find((coluna) => coluna.id === id)?.larguraMinima ?? 64;
+  const fixas = COLUNAS_GRADE.filter((coluna) => !COLUNAS_FLEXIVEIS.includes(coluna.id as (typeof COLUNAS_FLEXIVEIS)[number]));
+  const somaFixas = fixas.reduce((soma, coluna) => soma + preferidas[coluna.id], 0) + LARGURA_ACOES;
+  const somaFlex = COLUNAS_FLEXIVEIS.reduce((soma, id) => soma + preferidas[id], 0);
+  const resto = disponivel - somaFixas;
+  const resultado = { ...preferidas };
+  const distribuir = (valores: number[]) => {
+    let usado = 0;
+    COLUNAS_FLEXIVEIS.forEach((id, indice) => {
+      if (indice === COLUNAS_FLEXIVEIS.length - 1) {
+        resultado[id] = resto - usado;
+        return;
+      }
+      resultado[id] = valores[indice] ?? minimo(id);
+      usado += resultado[id];
+    });
+  };
+  if (resto >= somaFlex) {
+    const extra = resto - somaFlex;
+    const parte = Math.round(extra / COLUNAS_FLEXIVEIS.length);
+    distribuir(COLUNAS_FLEXIVEIS.map((id, indice) => preferidas[id] + (indice === COLUNAS_FLEXIVEIS.length - 1 ? 0 : parte)));
+    return resultado;
+  }
+  const somaMin = COLUNAS_FLEXIVEIS.reduce((soma, id) => soma + minimo(id), 0);
+  if (resto <= somaMin) {
+    for (const id of COLUNAS_FLEXIVEIS) resultado[id] = minimo(id);
+    return resultado;
+  }
+  const folga = somaFlex - somaMin;
+  const fator = (resto - somaMin) / folga;
+  distribuir(
+    COLUNAS_FLEXIVEIS.map((id) => Math.max(minimo(id), Math.round(minimo(id) + (preferidas[id] - minimo(id)) * fator)))
+  );
+  return resultado;
+}
+
+const COLUNAS_GRADE: GradeColunaConfiguravel[] = [
+  { id: 'documento', label: 'Documento', largura: 148, larguraMinima: 112 },
+  { id: 'datas', label: 'Datas', largura: 132, larguraMinima: 112 },
+  { id: 'parceiro', label: 'Parceiro', largura: 280, larguraMinima: 140 },
+  { id: 'criador', label: 'Criador', largura: 300, larguraMinima: 140 },
+  { id: 'conferencia', label: 'Conferência', largura: 214, larguraMinima: 150 },
+  { id: 'itens', label: 'Itens', align: 'right', largura: 108, larguraMinima: 96 },
+];
+
+const IDS_COLUNAS_GRADE = COLUNAS_GRADE.map((coluna) => coluna.id);
+
+function labelConferenciaNota(nota: DoubleCheckInNota): string {
+  if (regimeDaNota(nota) === 'nao_aplicada') return 'Não aplicada';
+  if (nota.conferido && nota.conferidoComDivergencia) return 'Conferido c/ divergência';
+  if (nota.conferido) return 'Conferido';
+  return 'Pendente';
+}
+
+function textoCelulaGrade(nota: DoubleCheckInNota, coluna: string): string {
+  if (coluna === 'documento') return (nota.numeroDocumentoFiscal ?? '').trim() || (nota.numeroNfe ?? '').trim() || '—';
+  if (coluna === 'datas') return fmtDataBr(nota.dataEntrada);
+  if (coluna === 'parceiro') return nota.nomeParceiro?.trim() || '—';
+  if (coluna === 'criador') return nota.nomeCriador?.trim() || '—';
+  if (coluna === 'conferencia') return labelConferenciaNota(nota);
+  if (coluna === 'itens') return String(nota.qtdeItens ?? 0);
+  return '';
+}
+
+function valoresFiltroGrade(nota: DoubleCheckInNota, coluna: string): string[] | null {
+  if (coluna === 'documento') {
+    const valores = [nota.numeroDocumentoFiscal, nota.numeroNfe]
+      .map((valor) => valor?.trim() ?? '')
+      .filter(Boolean);
+    return valores.length > 0 ? [...new Set(valores)] : ['—'];
+  }
+  if (coluna === 'datas') {
+    const valores = [`entrada ${fmtDataBr(nota.dataEntrada)}`];
+    const emissao = fmtDataBr(nota.dataEmissao);
+    if (emissao !== '—') valores.push(`emissão ${emissao}`);
+    return valores;
+  }
+  return null;
+}
+
+function valorOrdenacaoGrade(nota: DoubleCheckInNota, coluna: string): string | number {
+  if (coluna === 'datas') return String(nota.dataEntrada ?? '').slice(0, 10);
+  if (coluna === 'itens') return Number(nota.qtdeItens ?? 0);
+  if (coluna === 'documento') return (nota.numeroDocumentoFiscal ?? nota.numeroNfe ?? '').trim();
+  return textoCelulaGrade(nota, coluna);
 }
 
 function resumoFiltroNotas(lista: DoubleCheckInNota[]) {
@@ -430,18 +525,122 @@ export default function DoubleCheckInPage() {
     });
   })();
 
-  const resumoFiltro = resumoFiltroNotas(notasFiltradas);
+  const colunasUi = useGradeColunasExcel('compras.double-checkin.colunas.v2', COLUNAS_GRADE);
+  const [larguraDisponivel, setLarguraDisponivel] = useState(0);
+  const redimensionandoRef = useRef(false);
+  const grade = useGradeFiltrosExcel<DoubleCheckInNota>({
+    rows: notasFiltradas,
+    columnIds: IDS_COLUNAS_GRADE,
+    getCellText: textoCelulaGrade,
+    getCellFilterValues: valoresFiltroGrade,
+    valueForSort: valorOrdenacaoGrade,
+  });
+  useEffect(() => {
+    const el = grade.tableScrollRef.current;
+    if (!el) return;
+    const medir = () => {
+      if (redimensionandoRef.current) return;
+      setLarguraDisponivel(el.clientWidth);
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [grade.tableScrollRef]);
+  const largurasPreferidas = COLUNAS_GRADE.map((coluna) => colunasUi.largura(coluna.id)).join(',');
+  const largurasExibidas = useMemo(() => {
+    const preferidas = Object.fromEntries(
+      COLUNAS_GRADE.map((coluna) => [coluna.id, colunasUi.largura(coluna.id)])
+    );
+    return ajustarLargurasGrade(preferidas, larguraDisponivel);
+  }, [colunasUi, largurasPreferidas, larguraDisponivel]);
+  const larguraTabela = COLUNAS_GRADE.reduce((soma, coluna) => soma + largurasExibidas[coluna.id], 0) + LARGURA_ACOES;
+  const estiloColuna = (id: string) => {
+    const px = largurasExibidas[id];
+    return { width: px, minWidth: px, maxWidth: px };
+  };
+  const iniciarAjusteColuna = (id: string, evento: ReactMouseEvent) => {
+    evento.preventDefault();
+    evento.stopPropagation();
+    const tabela = grade.tableScrollRef.current?.querySelector('table');
+    if (!tabela) return;
+    redimensionandoRef.current = true;
+    const inicioX = evento.clientX;
+    const base = { ...largurasExibidas };
+    let ultimas = base;
+    let quadro = 0;
+    const minimo = (colunaId: string) =>
+      COLUNAS_GRADE.find((coluna) => coluna.id === colunaId)?.larguraMinima ?? 64;
+    const doadores = id === 'parceiro' ? ['criador'] : id === 'criador' ? ['parceiro'] : ['parceiro', 'criador'];
+    const pintar = (widths: Record<string, number>) => {
+      let total = LARGURA_ACOES;
+      for (const coluna of COLUNAS_GRADE) {
+        const px = widths[coluna.id];
+        total += px;
+        const pxTexto = `${px}px`;
+        tabela.querySelectorAll<HTMLElement>(`[data-col="${coluna.id}"]`).forEach((el) => {
+          el.style.width = pxTexto;
+          el.style.minWidth = pxTexto;
+          el.style.maxWidth = pxTexto;
+        });
+      }
+      const disponivel = grade.tableScrollRef.current?.clientWidth ?? total;
+      tabela.style.width = total > disponivel ? `${total}px` : '100%';
+    };
+    const onMove = (move: MouseEvent) => {
+      const delta = Math.round(move.clientX - inicioX);
+      const next = { ...base };
+      const alvo = Math.max(minimo(id), base[id] + delta);
+      let restante = alvo - base[id];
+      next[id] = alvo;
+      for (const doador of doadores) {
+        if (restante === 0) break;
+        if (restante > 0) {
+          const cede = Math.min(next[doador] - minimo(doador), restante);
+          next[doador] -= cede;
+          restante -= cede;
+        } else {
+          next[doador] -= restante;
+          restante = 0;
+        }
+      }
+      ultimas = next;
+      if (quadro) return;
+      quadro = window.requestAnimationFrame(() => {
+        quadro = 0;
+        pintar(ultimas);
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (quadro) window.cancelAnimationFrame(quadro);
+      pintar(ultimas);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      colunasUi.definirLarguras(ultimas);
+      redimensionandoRef.current = false;
+      const el = grade.tableScrollRef.current;
+      if (el) setLarguraDisponivel(el.clientWidth);
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  const notasGrade = grade.rowsExibidas;
+  const resumoFiltro = resumoFiltroNotas(notasGrade);
   const totalParaPaginacao = resumoFiltro.total;
   const totalPages = Math.max(1, Math.ceil(totalParaPaginacao / pageSize));
   const pageSafe = Math.min(page, totalPages);
   const notasPagina =
     totalParaPaginacao === 0
       ? []
-      : notasFiltradas.slice((pageSafe - 1) * pageSize, pageSafe * pageSize);
+      : notasGrade.slice((pageSafe - 1) * pageSize, pageSafe * pageSize);
 
   useEffect(() => {
     setPage(1);
-  }, [filtroTexto, filtroSituacao, pageSize, dataInicio, dataFim]);
+  }, [filtroTexto, filtroSituacao, pageSize, dataInicio, dataFim, grade.columnFilters]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
@@ -727,22 +926,20 @@ export default function DoubleCheckInPage() {
   );
 
   return (
-    <div className="space-y-4 relative">
+    <div className="relative min-w-0 space-y-4">
       <CarregandoInformacoesOverlay show={loading || syncing} mode="contained" />
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
         <div>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Double Check NFe</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Conferência de entradas com variação de preço (limiar ±{limiarPct}%). Atualiza a cada 2 min.
-            WhatsApp só para NFs com emissão
-            {alertaDesde ? ` a partir de ${fmtDataBr(alertaDesde)}` : ' a partir do go-live'}.
-            {ultimaSync ? ` Última sync: ${ultimaSync}` : ''}
-            {alertasEnviados != null && alertasEnviados > 0
-              ? ` · ${alertasEnviados} alerta(s) WhatsApp nesta sync`
-              : ''}
-          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Conferência de entradas · limiar ±{limiarPct}%</p>
         </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Atualiza a cada 2 min
+          {ultimaSync ? ` · sync ${ultimaSync}` : ''}
+          {alertaDesde ? ` · WhatsApp desde ${fmtDataBr(alertaDesde)}` : ''}
+          {alertasEnviados != null && alertasEnviados > 0 ? ` · ${alertasEnviados} alerta(s)` : ''}
+        </p>
       </div>
 
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
@@ -922,99 +1119,145 @@ export default function DoubleCheckInPage() {
         )}
       </div>
 
-      {notas.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
-            {resumoFiltro.total.toLocaleString('pt-BR')}{' '}
-            {resumoFiltro.total === 1 ? 'linha no filtro' : 'linhas no filtro'}
-          </span>
-          <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
-            Conferido {resumoFiltro.conferido.toLocaleString('pt-BR')}
-          </span>
-          <span className="rounded-lg border border-yellow-400 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100">
-            Conferido c/ divergência {resumoFiltro.comDivergencia.toLocaleString('pt-BR')}
-          </span>
-          <span className="rounded-lg border border-amber-400 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200">
-            Pendente {resumoFiltro.pendente.toLocaleString('pt-BR')}
-          </span>
-          <span className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            Não aplicada {resumoFiltro.naoAplicada.toLocaleString('pt-BR')}
-          </span>
-        </div>
-      )}
-
-      <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs uppercase tracking-wide text-slate-500">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/40">
+        {notas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              {resumoFiltro.total.toLocaleString('pt-BR')}{' '}
+              {resumoFiltro.total === 1 ? 'documento' : 'documentos'}
+            </span>
+            <span>
+              Conferidos{' '}
+              <span className="font-medium text-emerald-700 dark:text-emerald-300">
+                {resumoFiltro.conferido.toLocaleString('pt-BR')}
+              </span>
+            </span>
+            <span>
+              Com divergência{' '}
+              <span className="font-medium text-yellow-700 dark:text-yellow-300">
+                {resumoFiltro.comDivergencia.toLocaleString('pt-BR')}
+              </span>
+            </span>
+            <span>
+              Pendentes{' '}
+              <span className="font-medium text-amber-700 dark:text-amber-300">
+                {resumoFiltro.pendente.toLocaleString('pt-BR')}
+              </span>
+            </span>
+            <span>
+              Não aplicadas{' '}
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                {resumoFiltro.naoAplicada.toLocaleString('pt-BR')}
+              </span>
+            </span>
+          </div>
+        )}
+        <div ref={grade.tableScrollRef} className="w-full min-w-0 overflow-x-auto">
+        <table
+          className="table-fixed border-separate border-spacing-0 text-sm"
+          style={{ width: larguraDisponivel > 0 && larguraTabela > larguraDisponivel ? larguraTabela : '100%' }}
+        >
+          <colgroup>
+            {colunasUi.colunasVisiveis.map((coluna) => (
+              <col key={coluna.id} data-col={coluna.id} style={estiloColuna(coluna.id)} />
+            ))}
+            <col style={{ width: LARGURA_ACOES }} />
+          </colgroup>
+          <thead className="bg-[#f3f4f6] text-left text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:bg-[#141414] dark:text-slate-400">
             <tr>
-              <th className="px-3 py-2.5 font-semibold">Nº Doc. Fiscal</th>
-              <th className="px-3 py-2.5 font-semibold">Nº NF-e</th>
-              <th className="px-3 py-2.5 font-semibold">Entrada</th>
-              <th className="px-3 py-2.5 font-semibold">Emissão</th>
-              <th className="px-3 py-2.5 font-semibold">ID Parceiro</th>
-              <th className="px-3 py-2.5 font-semibold">Parceiro</th>
-              <th className="px-3 py-2.5 font-semibold">Criador</th>
-              <th className="px-3 py-2.5 font-semibold">Conferência</th>
-              <th className="px-3 py-2.5 font-semibold text-right">Itens</th>
-              <th className="px-3 py-2.5 font-semibold text-center">Ação</th>
+              {colunasUi.colunasVisiveis.map((coluna) => {
+                const sortAtivo =
+                  grade.sortState?.key === coluna.id || grade.sortLevels.some((nivel) => nivel.id === coluna.id);
+                const direita = coluna.align === 'right';
+                return (
+                  <th
+                    key={coluna.id}
+                    data-col={coluna.id}
+                    className={`relative px-2.5 py-3 font-medium ${direita ? 'text-right' : ''}`}
+                    style={estiloColuna(coluna.id)}
+                  >
+                    <div className={`flex min-w-0 items-center gap-1.5 ${direita ? 'justify-end' : 'justify-between'}`}>
+                      <span className="min-w-0 truncate">{coluna.label}</span>
+                      <GradeFiltroCabecalhoBtn
+                        ativo={grade.colunaComFiltroAtivo(coluna.id) || sortAtivo}
+                        onClick={(e) => grade.abrirFiltroExcel(coluna.id, e)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Redimensionar coluna ${coluna.label}`}
+                      title="Arraste para ajustar a largura"
+                      onMouseDown={(evento) => iniciarAjusteColuna(coluna.id, evento)}
+                      onClick={(evento) => evento.stopPropagation()}
+                      className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none select-none hover:bg-sky-300/70"
+                    />
+                  </th>
+                );
+              })}
+              <th className="px-4 py-3 font-medium text-right" style={{ width: LARGURA_ACOES }}>
+                <span className="sr-only">Ações</span>
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody>
             {notasPagina.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
-                  Nenhuma entrada no período.
+                <td colSpan={7} className="bg-white px-4 py-10 text-center text-slate-500 dark:bg-transparent">
+                  {notasFiltradas.length === 0
+                    ? 'Nenhuma entrada no período.'
+                    : 'Nenhum documento com os filtros da grade.'}
                 </td>
               </tr>
             ) : (
-              notasPagina.map((n) => {
+              notasPagina.map((n, indice) => {
                 const regimeConferencia = regimeDaNota(n);
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
                 const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
+                const faixa =
+                  indice % 2 === 0
+                    ? 'bg-white dark:bg-black'
+                    : 'bg-[#f7f7f8] dark:bg-[#2a2a2a]';
+                const acaoClass =
+                  'rounded-md p-1.5 text-slate-400 hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-100';
                 return (
-                  <tr
-                    key={n.idDocumento}
-                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                      regimeConferencia === 'nao_aplicada'
-                        ? 'border-l-4 border-l-slate-400'
-                        : conferidoComDivergencia
-                        ? 'border-l-4 border-l-yellow-400'
-                        : conferido
-                          ? 'border-l-4 border-l-emerald-500'
-                          : 'border-l-4 border-l-amber-400'
-                    }`}
-                  >
-                    <td className="px-3 py-2 tabular-nums">
-                      <span className="inline-flex items-center gap-2">
-                        {n.numeroDocumentoFiscal ?? '—'}
+                  <tr key={n.idDocumento} className={`${faixa} hover:bg-[#ececee] dark:hover:bg-[#3a3a3a]`}>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                          {n.numeroDocumentoFiscal ?? '—'}
+                        </span>
                         {temRealAtual ? (
                           <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600 shadow-[0_0_0_3px_rgba(225,29,72,0.16)]"
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500"
                             title="Possui divergência real no estado atual do Nomus"
                             aria-label="Possui divergência real atual"
                           />
                         ) : null}
-                      </span>
+                      </div>
+                      <div className="text-xs tabular-nums text-slate-400">NF-e {n.numeroNfe ?? '—'}</div>
                     </td>
-                    <td className="px-3 py-2 tabular-nums">{n.numeroNfe ?? '—'}</td>
-                    <td className="px-3 py-2">{fmtDataBr(n.dataEntrada)}</td>
-                    <td className="px-3 py-2">{fmtDataBr(n.dataEmissao)}</td>
-                    <td className="px-3 py-2 tabular-nums">{n.idParceiro ?? '—'}</td>
-                    <td className="px-3 py-2 max-w-[18rem] truncate" title={n.nomeParceiro ?? undefined}>
-                      {n.nomeParceiro ?? '—'}
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <div className="tabular-nums text-slate-700 dark:text-slate-200">{fmtDataBr(n.dataEntrada)}</div>
+                      <div className="text-xs text-slate-400">emissão {fmtDataBr(n.dataEmissao)}</div>
                     </td>
-                    <td className="px-3 py-2 max-w-[12rem] truncate" title={n.nomeCriador ?? undefined}>
-                      {n.nomeCriador ?? '—'}
+                    <td className="overflow-hidden px-4 py-3.5">
+                      <div className="truncate text-slate-700 dark:text-slate-200" title={n.nomeParceiro ?? undefined}>
+                        {n.nomeParceiro ?? '—'}
+                      </div>
+                      <div className="text-xs tabular-nums text-slate-400">{n.idParceiro ?? '—'}</div>
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="overflow-hidden px-4 py-3.5 text-slate-600 dark:text-slate-300" title={n.nomeCriador ?? undefined}>
+                      <div className="truncate">{n.nomeCriador ?? '—'}</div>
+                    </td>
+                    <td className="px-4 py-3.5">
                       {regimeConferencia === 'nao_aplicada' ? (
                         <span className="inline-flex items-center rounded-md border-2 border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
                           Não aplicada
                         </span>
                       ) : conferidoComDivergencia ? (
                         <span
-                          className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
+                          className="inline-flex items-center gap-1.5 rounded-md border-2 border-yellow-400 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 dark:border-yellow-500 dark:bg-yellow-950/40 dark:text-yellow-100"
                           title={
                             n.conferidoPor
                               ? `NF ainda diverge do pedido. Conferido por ${n.conferidoPor}${n.conferidoEm ? ` em ${new Date(n.conferidoEm).toLocaleString('pt-BR')}` : ''}`
@@ -1042,33 +1285,25 @@ export default function DoubleCheckInPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">{n.qtdeItens}</td>
-                    <td className="px-3 py-2 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                    <td className="px-4 py-3.5 text-right tabular-nums text-slate-700 dark:text-slate-200">{n.qtdeItens}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end">
                         {isMaster && (
-                          <GradeCelulaModalBtn
-                            align="left"
-                            variant="laranja"
-                            title="Histórico do documento"
-                            onClick={() => setHistoricoNota(n)}
-                          >
+                          <button type="button" className={acaoClass} title="Histórico do documento" onClick={() => setHistoricoNota(n)}>
                             <History className="h-4 w-4" />
-                          </GradeCelulaModalBtn>
+                          </button>
                         )}
-                        <GradeCelulaModalBtn
-                          align="left"
+                        <button
+                          type="button"
+                          className={acaoClass}
                           title={linkCopiadoId === n.idDocumento ? 'Link copiado' : 'Copiar link da evidência'}
                           onClick={() => void copiarLinkEvidencia(n)}
                         >
                           <Link2 className="h-4 w-4" />
-                        </GradeCelulaModalBtn>
-                        <GradeCelulaModalBtn
-                          align="left"
-                          title="Ver itens"
-                          onClick={() => void abrirDetalhe(n)}
-                        >
+                        </button>
+                        <button type="button" className={acaoClass} title="Ver itens" onClick={() => void abrirDetalhe(n)}>
                           <Eye className="h-4 w-4" />
-                        </GradeCelulaModalBtn>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1077,6 +1312,44 @@ export default function DoubleCheckInPage() {
             )}
           </tbody>
         </table>
+        </div>
+        {grade.colunaFiltroAberta && grade.filtroAbertoRect ? (
+          <GradeFiltroExcelPortal
+            colunaAberta={grade.colunaFiltroAberta}
+            rect={grade.filtroAbertoRect}
+            dropdownRef={grade.filtroDropdownRef}
+            excelFilterDrafts={grade.excelFilterDrafts}
+            setExcelFilterDrafts={grade.setExcelFilterDrafts}
+            valoresUnicosPorColuna={grade.valoresUnicosPorColuna}
+            showNumericFilters={grade.colunaFiltroAberta === 'itens'}
+            sortAscLabel={
+              grade.colunaFiltroAberta === 'datas'
+                ? 'Mais antiga primeiro'
+                : grade.colunaFiltroAberta === 'itens'
+                  ? 'Menor para maior'
+                  : undefined
+            }
+            sortDescLabel={
+              grade.colunaFiltroAberta === 'datas'
+                ? 'Mais recente primeiro'
+                : grade.colunaFiltroAberta === 'itens'
+                  ? 'Maior para menor'
+                  : undefined
+            }
+            onSortAsc={(colId) => {
+              grade.setSortState({ key: colId, direction: 'asc' });
+              grade.setSortLevels([]);
+              grade.fecharFiltroExcel();
+            }}
+            onSortDesc={(colId) => {
+              grade.setSortState({ key: colId, direction: 'desc' });
+              grade.setSortLevels([]);
+              grade.fecharFiltroExcel();
+            }}
+            onAplicar={grade.aplicarFiltroExcel}
+            onCancelar={grade.fecharFiltroExcel}
+          />
+        ) : null}
       </div>
 
       {totalParaPaginacao > 0 && (
