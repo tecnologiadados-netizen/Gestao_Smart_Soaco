@@ -519,6 +519,11 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
     setRascunhoQtd('1');
     setRascunhoDesc('');
     setAviso('');
+    // Fecha a lista de resultados — o produto já está no formulário abaixo.
+    setBusca('');
+    setProdutos([]);
+    setPaginaProdutos(1);
+    setTemMaisProdutos(false);
   }
 
   function chaveAtributosItem(attrs?: Record<string, string>) {
