@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, CircleHelp, MessageSquarePlus, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, Copy, MessageSquarePlus, X, XCircle } from 'lucide-react';
 import {
   addDoubleCheckInComparativoObservacao,
   saveDoubleCheckInComparativoDecisao,
@@ -315,6 +315,45 @@ function valoresExibicao(
   }
 }
 
+function nomeItemLinha(linha: DoubleCheckInComparativoLinha): string {
+  const codigo = (linha.codigoProduto ?? '').trim();
+  if (codigo) return codigo;
+  if (linha.idProduto != null) return `produto ${linha.idProduto}`;
+  return 'item';
+}
+
+function pedidoDaAcao(natureza: 'real' | 'benigna' | undefined, ajuste: string): string {
+  if (natureza === 'benigna') return `Conferir ${ajuste}.`;
+  return `Ajustar ${ajuste}.`;
+}
+
+/** Frase curta de uma divergência, para o card e para o texto consolidado. */
+function fraseDivergencia(
+  linha: DoubleCheckInComparativoLinha,
+  campo: DoubleCheckInCampoComparativo
+): string | null {
+  const cfg = CAMPOS.find((c) => c.id === campo);
+  if (!cfg || !linha[cfg.divergKey]) return null;
+  const vals = valoresExibicao(linha, cfg);
+  const natureza = linha.naturezaDivergencias?.[campo];
+  const item = nomeItemLinha(linha);
+  if (campo === 'ipi') {
+    return `IPI do item ${item}: ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'o IPI do item do pedido')}`;
+  }
+  if (campo === 'qtde') {
+    return `Quantidade do item ${item}: ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'a quantidade do item do pedido')}`;
+  }
+  if (campo === 'valor_unitario') {
+    return `Valor unitário do item ${item}: ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'o valor unitário do item do pedido')}`;
+  }
+  return `Condição de pagamento (${nomePedidoLinha(linha)}): ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'a condição de pagamento do pedido')}`;
+}
+
+function textoConsolidadoDivergencias(frases: string[]): string {
+  if (frases.length === 0) return '';
+  return `Setor de compras, neste documento:\n${frases.map((frase) => `• ${frase}`).join('\n')}`;
+}
+
 function historicoDaDecisao(dec: DoubleCheckInComparativoDecisao | undefined): DoubleCheckInComparativoObsHist[] {
   if (!dec) return [];
   if (Array.isArray(dec.historicoObservacoes) && dec.historicoObservacoes.length > 0) {
@@ -402,6 +441,7 @@ export default function DoubleCheckInComparativoPcTab({
 }: Props) {
   const campoVisivel = (campo: DoubleCheckInCampoComparativo) =>
     criterios?.[campo] !== false || camposLancados.includes(campo);
+  const [textoCopiado, setTextoCopiado] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftJustif | null>(null);
   const [opcaoId, setOpcaoId] = useState<number | ''>('');
   const [obs, setObs] = useState('');
@@ -498,6 +538,37 @@ export default function DoubleCheckInComparativoPcTab({
       return { key, linha, nome: nomePedidoLinha(linha) };
     });
   }, [linhas, decisoes]);
+
+  const frasesDivergencia = useMemo(() => {
+    const frases: string[] = [];
+    const pagamentoVisto = new Set<string>();
+    for (const linha of linhas) {
+      for (const campo of CAMPOS_ITEM) {
+        if (!campoVisivel(campo.id)) continue;
+        const frase = fraseDivergencia(linha, campo.id);
+        if (frase) frases.push(frase);
+      }
+      if (!campoVisivel('condicao_pagamento') || !linha.divergCondicaoPagamento) continue;
+      if (linha.comparaCondicaoPagamento === false) continue;
+      const chavePc = String(linha.idPedidoCompra ?? 'sem-pc');
+      if (pagamentoVisto.has(chavePc)) continue;
+      pagamentoVisto.add(chavePc);
+      const frase = fraseDivergencia(linha, 'condicao_pagamento');
+      if (frase) frases.push(frase);
+    }
+    return frases;
+  }, [linhas, criterios, camposLancados]);
+  const textoConsolidado = textoConsolidadoDivergencias(frasesDivergencia);
+
+  const copiarTexto = async (chave: string, texto: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setTextoCopiado(chave);
+      window.setTimeout(() => setTextoCopiado((atual) => (atual === chave ? null : atual)), 2000);
+    } catch {
+      setTextoCopiado(null);
+    }
+  };
 
   const opcoesDoCampo = useMemo(() => {
     if (!draft) return [];
@@ -746,6 +817,8 @@ export default function DoubleCheckInComparativoPcTab({
 
   const renderCampoCard = (linha: DoubleCheckInComparativoLinha, c: CampoCfg) => {
     const diverg = Boolean(linha[c.divergKey]);
+    const frase = diverg ? fraseDivergencia(linha, c.id) : null;
+    const chaveFrase = `${linha.idItemDocumentoEstoque}:${linha.idItemPedidoCompra}:${c.id}`;
     const vals = valoresExibicao(linha, c);
     const dec = decisaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
@@ -880,6 +953,21 @@ export default function DoubleCheckInComparativoPcTab({
           <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
             {linha.observacaoNaturezaDivergencias[c.id]}
           </p>
+        ) : null}
+        {frase ? (
+          <div className="mt-1.5 flex items-start gap-1">
+            <p className="min-w-0 flex-1 text-[10px] leading-snug text-slate-600 dark:text-slate-300">
+              {frase}
+            </p>
+            <button
+              type="button"
+              className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+              title={textoCopiado === chaveFrase ? 'Copiado' : 'Copiar este texto'}
+              onClick={() => void copiarTexto(chaveFrase, frase)}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
         ) : null}
         {diverg && (
           <div className="mt-2 space-y-1.5">
@@ -1025,6 +1113,27 @@ export default function DoubleCheckInComparativoPcTab({
           </span>
         ))}
       </div>
+
+      {textoConsolidado ? (
+        <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 dark:border-sky-800 dark:bg-sky-950/40">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
+              Texto para o Otimiza
+            </h4>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:text-sky-100 dark:hover:bg-sky-900/50"
+              onClick={() => void copiarTexto('consolidado', textoConsolidado)}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {textoCopiado === 'consolidado' ? 'Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+            {textoConsolidado}
+          </p>
+        </section>
+      ) : null}
 
       {totaisVinculos && (
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-800/60">
