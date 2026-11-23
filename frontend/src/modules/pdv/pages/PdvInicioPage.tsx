@@ -1096,11 +1096,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           <button type="button" onClick={alternarTema} className={botaoContorno}>
             {claro ? 'Modo escuro' : 'Modo claro'}
           </button>
-          {exigeCaixa ? (
-            <button type="button" onClick={() => abrirOperacoes()} className={botaoContorno}>
-              Caixa
-            </button>
-          ) : null}
           <button type="button" onClick={() => void abrirEsperas()} className={botaoContorno}>
             Em espera
           </button>
