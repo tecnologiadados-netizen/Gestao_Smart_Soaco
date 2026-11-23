@@ -24,6 +24,7 @@ import Sidebar from './layout/Sidebar';
 import BuscaRapidaTelas from './layout/BuscaRapidaTelas';
 import AssistenteFlutuante from './assistente/AssistenteFlutuante';
 import { ModalStackProvider } from '../contexts/ModalStackContext';
+import EspelhoDivergenciaPublicaPage from '../pages/compras/EspelhoDivergenciaPublicaPage';
 
 function SunIcon() {
   return (
@@ -201,6 +202,11 @@ function LayoutInner() {
       setSavingSenha(false);
     }
   };
+
+  // Rede de segurança: se o splat do router engolir `/e/:token`, não deixar o shell vazio.
+  if (location.pathname.startsWith('/e/')) {
+    return <EspelhoDivergenciaPublicaPage />;
+  }
 
   const isSgqFileViewer = location.pathname.startsWith(
     '/qualidade/documentos/visualizar'

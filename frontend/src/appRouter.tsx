@@ -14,6 +14,14 @@ const future = { v7_startTransition: true, v7_relativeSplatPath: true } as const
 
 export const router = createBrowserRouter(
   [
+    /**
+     * Link público da evidência do Double Check — fora do RootEntry/Layout.
+     * Se ficar como filha do splat `*`, usuário logado cai no shell vazio (tela preta).
+     */
+    {
+      path: '/e/:token',
+      element: <EspelhoDivergenciaPublicaPage />,
+    },
     {
       path: '/entrar',
       element: <Navigate to="/" replace />,
@@ -41,10 +49,6 @@ export const router = createBrowserRouter(
         {
           path: 'pdv',
           element: <PdvEntry />,
-        },
-        {
-          path: 'e/:token',
-          element: <EspelhoDivergenciaPublicaPage />,
         },
         {
           path: '*',

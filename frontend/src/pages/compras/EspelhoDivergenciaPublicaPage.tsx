@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import DoubleCheckInComparativoPcTab from './DoubleCheckInComparativoPcTab';
 import { getApiBase } from '../../api/client';
 import {
@@ -22,8 +22,18 @@ function fmtDataBr(ymd: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+/** Aceita param da rota `/e/:token` ou, se o splat engolir o path, lê do pathname. */
+function tokenDaUrl(param: string | undefined, pathname: string): string {
+  const doParam = (param ?? '').trim();
+  if (doParam) return doParam;
+  const m = pathname.match(/^\/e\/([^/]+)\/?$/);
+  return m?.[1]?.trim() ?? '';
+}
+
 export default function EspelhoDivergenciaPublicaPage() {
-  const { token } = useParams();
+  const { token: tokenParam } = useParams();
+  const { pathname } = useLocation();
+  const token = tokenDaUrl(tokenParam, pathname);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [cabecalho, setCabecalho] = useState<Cabecalho | null>(null);
@@ -31,11 +41,16 @@ export default function EspelhoDivergenciaPublicaPage() {
   const [semVinculo, setSemVinculo] = useState(false);
 
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      setErro('Link não encontrado.');
+      return;
+    }
     const ctrl = new AbortController();
     setLoading(true);
     setErro(null);
     const base = getApiBase();
-    fetch(`${base}/api/public/double-checkin/espelho/${encodeURIComponent(token ?? '')}`, {
+    fetch(`${base}/api/public/double-checkin/espelho/${encodeURIComponent(token)}`, {
       signal: ctrl.signal,
       headers: { Accept: 'application/json' },
     })

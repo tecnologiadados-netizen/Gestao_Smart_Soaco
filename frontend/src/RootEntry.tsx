@@ -55,6 +55,12 @@ export default function RootEntry() {
     if (ctxLogin && getStoredToken()) setAuth(true);
   }, [ctxLogin]);
 
+  const rotaPublica =
+    location.pathname === '/pdv' || location.pathname.startsWith('/e/');
+
+  // Links públicos não esperam /api/me — evita “Carregando…” infinito se a API falhar.
+  if (auth === null && rotaPublica) return <Outlet />;
+
   if (auth === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900">
@@ -63,7 +69,7 @@ export default function RootEntry() {
     );
   }
   if (!auth) {
-    if (location.pathname === '/pdv' || location.pathname.startsWith('/e/')) return <Outlet />;
+    if (rotaPublica) return <Outlet />;
     if (location.pathname !== '/') {
       salvarRotaRetornoAposLogin(location.pathname, location.search);
       return <Navigate to="/" replace />;
