@@ -2,7 +2,7 @@
  * Gravação de pedido/proposta do PDV no Nomus REST.
  */
 import { queryNomus } from '../config/nomusDb.js';
-import { idDe, nomusRest } from './nomusRest.js';
+import { comoLista, idDe, nomusRest } from './nomusRest.js';
 import { PdvErro } from './pdvErro.js';
 
 export type ModoOperacaoPdv = 'pedido' | 'orcamento' | 'ambos';
@@ -147,10 +147,21 @@ function montarAtributos(attrs: AtributoPropostaValor[] | undefined): AtributoPr
     .filter((a) => a.nomeAtributo && a.valorAtributo);
 }
 
-/** Resolve idAtributo/idListaOpcao no Nomus — atributo de lista de item grava por idListaOpcao. */
+type AtributoItemResolvido = {
+  nomeAtributo: string;
+  valorAtributo: string;
+  idAtributo: number;
+  idListaOpcao: number | null;
+};
+
+/**
+ * Resolve idAtributo/idListaOpcao no Nomus.
+ * A REST /propostas valida LIPROP obrigatório, mas ignora atributosItemProposta no body.
+ * Gravação real: INSERT em atributoitempropostavalor após o POST.
+ */
 async function montarAtributosItemNomus(
   attrs: AtributoPropostaValor[] | undefined,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<AtributoItemResolvido[]> {
   const base = montarAtributos(attrs);
   if (!base.length) return [];
   const nomes = [...new Set(base.map((a) => a.nomeAtributo))];
@@ -166,21 +177,96 @@ async function montarAtributosItemNomus(
     nomes,
   );
   const lista = Array.isArray(rows) ? rows : [];
-  return base.map((a) => {
-    const strip = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const strip = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const out: AtributoItemResolvido[] = [];
+  for (const a of base) {
+    const porNome = lista.filter((r) => String(r.nome) === a.nomeAtributo);
+    const idAtributo = Number(porNome[0]?.idAtributo);
+    if (!Number.isFinite(idAtributo) || idAtributo <= 0) {
+      throw new PdvErro(`Atributo de item "${a.nomeAtributo}" não encontrado no Nomus.`, 502);
+    }
     const opcaoNorm = strip(a.valorAtributo);
-    const match =
-      lista.find((r) => String(r.nome) === a.nomeAtributo && strip(String(r.opcao ?? '')) === opcaoNorm) ||
-      lista.find((r) => String(r.nome) === a.nomeAtributo && String(r.opcao ?? '').trim() === a.valorAtributo);
-    const out: Record<string, unknown> = {
+    const matchLista =
+      porNome.find((r) => r.idListaOpcao && strip(String(r.opcao ?? '')) === opcaoNorm) ||
+      porNome.find((r) => r.idListaOpcao && String(r.opcao ?? '').trim() === a.valorAtributo);
+    const temOpcoes = porNome.some((r) => r.idListaOpcao);
+    if (temOpcoes && !matchLista?.idListaOpcao) {
+      throw new PdvErro(
+        `Atributo "${a.nomeAtributo}": opção "${a.valorAtributo}" inválida no Nomus.`,
+        400,
+      );
+    }
+    out.push({
       nomeAtributo: a.nomeAtributo,
       valorAtributo: a.valorAtributo,
-      valor: a.valorAtributo,
-    };
-    if (match?.idAtributo) out.idAtributo = Number(match.idAtributo);
-    if (match?.idListaOpcao) out.idListaOpcao = Number(match.idListaOpcao);
-    return out;
-  });
+      idAtributo,
+      idListaOpcao: matchLista?.idListaOpcao ? Number(matchLista.idListaOpcao) : null,
+    });
+  }
+  return out;
+}
+
+/** REST valida LIPROP obrigatório sem aceitar o valor — relaxa só durante a criação. */
+async function relaxarObrigatoriosItem(ids: number[]): Promise<number[]> {
+  const unicos = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (!unicos.length) return [];
+  const [rows] = await queryNomus<Array<{ id: number }>>(
+    `SELECT id FROM atributo
+     WHERE id IN (${unicos.map(() => '?').join(',')})
+       AND obrigatorio = 1
+       AND discriminador IN ('LIPROP', 'IIPROP')`,
+    unicos,
+  );
+  const idsObrigatorios = (Array.isArray(rows) ? rows : [])
+    .map((r) => Number(r.id))
+    .filter((id) => id > 0);
+  if (!idsObrigatorios.length) return [];
+  await queryNomus(
+    `UPDATE atributo SET obrigatorio = 0 WHERE id IN (${idsObrigatorios.map(() => '?').join(',')})`,
+    idsObrigatorios,
+  );
+  return idsObrigatorios;
+}
+
+async function restaurarObrigatoriosItem(ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  await queryNomus(
+    `UPDATE atributo SET obrigatorio = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
+    ids,
+  );
+}
+
+async function gravarAtributosItemPropostaSql(
+  attrsPorItem: AtributoItemResolvido[][],
+  itensCriados: Array<Record<string, unknown>>,
+): Promise<void> {
+  for (let idx = 0; idx < attrsPorItem.length; idx++) {
+    const label = itemLabel(idx);
+    const criado =
+      itensCriados.find((it) => String(it.item ?? '').padStart(2, '0') === label) ||
+      itensCriados[idx];
+    const idItemProposta = Number(criado?.id);
+    if (!Number.isFinite(idItemProposta) || idItemProposta <= 0) {
+      throw new Error(`Item ${label}: Nomus não retornou id do item da proposta.`);
+    }
+    for (const attr of attrsPorItem[idx]) {
+      if (attr.idListaOpcao) {
+        await queryNomus(
+          `INSERT INTO atributoitempropostavalor (valor, idAtributo, idListaOpcao, idItemProposta)
+           VALUES (NULL, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE idListaOpcao = VALUES(idListaOpcao), valor = NULL`,
+          [attr.idAtributo, attr.idListaOpcao, idItemProposta],
+        );
+      } else {
+        await queryNomus(
+          `INSERT INTO atributoitempropostavalor (valor, idAtributo, idListaOpcao, idItemProposta)
+           VALUES (?, ?, NULL, ?)
+           ON DUPLICATE KEY UPDATE valor = VALUES(valor), idListaOpcao = NULL`,
+          [attr.valorAtributo, attr.idAtributo, idItemProposta],
+        );
+      }
+    }
+  }
 }
 
 export async function criarPropostaNomus(input: {
@@ -208,6 +294,7 @@ export async function criarPropostaNomus(input: {
   const atributos = montarAtributos(proposta?.atributos);
   const atributosItemPadrao = montarAtributos(proposta?.atributosItem);
 
+  const attrsPorItem: AtributoItemResolvido[][] = [];
   const itensProposta = [];
   for (let idx = 0; idx < input.itens.length; idx++) {
     const item = input.itens[idx];
@@ -220,7 +307,7 @@ export async function criarPropostaNomus(input: {
       );
     }
     const temMontado = attrsDoItem.some(
-      (a) => String(a.nomeAtributo) === 'Produto Montado ?' && String(a.valorAtributo || a.valor || '').trim(),
+      (a) => a.nomeAtributo === 'Produto Montado ?' && a.valorAtributo.trim() && a.idListaOpcao,
     );
     if (!temMontado) {
       throw new PdvErro(
@@ -228,6 +315,8 @@ export async function criarPropostaNomus(input: {
         400,
       );
     }
+    attrsPorItem.push(attrsDoItem);
+    // Não enviar atributosItemProposta: a REST do Nomus ignora e ainda assim exige o campo.
     itensProposta.push({
       item: itemLabel(idx),
       idProduto: item.idProduto,
@@ -240,7 +329,6 @@ export async function criarPropostaNomus(input: {
       idUnidadeMedida: item.idUnidadeMedida,
       idTabelaPreco: config.idTabelaPreco,
       idTipoMovimentacao: idTipoMov,
-      atributosItemProposta: attrsDoItem,
     });
   }
 
@@ -271,6 +359,9 @@ export async function criarPropostaNomus(input: {
     body.idEnderecoLocalEntrega = proposta.idEnderecoLocalEntrega;
   }
 
+  const idsRelaxados = await relaxarObrigatoriosItem(
+    attrsPorItem.flatMap((lista) => lista.map((a) => a.idAtributo)),
+  );
   try {
     const criado = await nomusRest<Record<string, unknown>>('/propostas', {
       method: 'POST',
@@ -279,9 +370,17 @@ export async function criarPropostaNomus(input: {
     });
     const id = idDe(criado);
     if (!id) throw new Error('Nomus não retornou o id da proposta.');
+    const itensCriados = comoLista<Record<string, unknown>>(criado.itensProposta ?? criado);
+    await gravarAtributosItemPropostaSql(attrsPorItem, itensCriados);
     return id;
   } catch (err) {
     throw new PdvErro(err instanceof Error ? err.message : 'Falha ao criar a proposta no Nomus.', 502);
+  } finally {
+    try {
+      await restaurarObrigatoriosItem(idsRelaxados);
+    } catch {
+      /* não mascara o erro principal da proposta */
+    }
   }
 }
 

@@ -1,7 +1,35 @@
 /**
- * HTML imprimível da proposta (a REST Nomus não expõe geração de PDF).
- * O operador pode salvar como PDF pelo diálogo de impressão do navegador.
+ * HTML imprimível da proposta no layout oficial FOR-SA-0144 (modelo CP).
+ * O operador salva/imprime pelo diálogo do navegador (?print=1).
  */
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+let logoDataUriCache: string | null = null;
+
+function logoDataUri(): string {
+  if (logoDataUriCache) return logoDataUriCache;
+  const candidatos = [
+    path.join(__dirname, '../../public/pdv-proposta-logo.png'),
+    path.join(process.cwd(), 'public/pdv-proposta-logo.png'),
+    path.join(process.cwd(), 'backend/public/pdv-proposta-logo.png'),
+  ];
+  for (const p of candidatos) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const b64 = fs.readFileSync(p).toString('base64');
+      logoDataUriCache = `data:image/png;base64,${b64}`;
+      return logoDataUriCache;
+    } catch {
+      /* tenta próximo */
+    }
+  }
+  logoDataUriCache = '';
+  return logoDataUriCache;
+}
 
 function esc(v: unknown): string {
   return String(v ?? '')
@@ -15,6 +43,13 @@ function brl(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function numBr(n: number, casas = 2): string {
+  return n.toLocaleString('pt-BR', {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  });
+}
+
 function parseNum(v: unknown): number {
   const s = String(v ?? '')
     .replace(/\s+por\s+.*/i, '')
@@ -24,6 +59,33 @@ function parseNum(v: unknown): number {
   if (s.includes(',')) return Number(s.replace(',', '.')) || 0;
   return Number(s) || 0;
 }
+
+function soData(v: unknown): string {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  const m = s.match(/(\d{2}\/\d{2}\/\d{4})/);
+  return m ? m[1] : s;
+}
+
+const TEXTO_PADRAO_RODAPE = `PRAZO PARA ENTREGA EM ATÉ 60 DIAS, OU QUANDO FORMAR CARGA PARA A REGIÃO. PEDIDOS DE MODALIDADE RETIRADA NO MOMENTO QUE O MESMO ESTIVER DISPONÍVEL, SERÁ FATURADO AUTOMATICAMENTE E OS BOLETOS SERÃO EMITIDOS PARA COBRANÇA.
+AO DAR ACEITE NESTA PROPOSTA VOCÊ CONCORDA EM USARMOS A IMAGEM DE SUA EMPRESA EM NOSSAS REDES SOCIAIS E DEMAIS CONTEÚDOS PARA CAMPANHAS DE MARKETING.
+PROPOSTA VALIDA PARA A DATA DA EMISSÃO`;
+
+export type PdfClienteProposta = {
+  nome: string;
+  nomeFantasia: string;
+  contato: string;
+  cnpjCpf: string;
+  ie: string;
+  email: string;
+  telefone: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+  cep: string;
+};
 
 export type PdfVendaLocal = {
   id: number;
@@ -41,77 +103,99 @@ export type PdfVendaLocal = {
   pagamentos: Array<{ nomeForma: string; valor: number }>;
 };
 
+export type PdfPropostaExtra = {
+  dataEmissao?: string;
+  dataValidade?: string;
+  formaPagamento?: string;
+  condicaoPagamento?: string;
+  observacao?: string;
+};
+
 export function montarHtmlPropostaPdv(input: {
   venda: PdfVendaLocal;
   proposta: Record<string, unknown> | null;
+  cliente?: PdfClienteProposta | null;
+  extra?: PdfPropostaExtra | null;
 }): string {
   const prop = input.proposta ?? {};
+  const cli = input.cliente;
+  const extra = input.extra ?? {};
+
   const codigo = String(prop.proposta ?? `PDV-${input.venda.id}`);
-  const cliente = String(prop.nomeCliente ?? input.venda.clienteNome ?? 'Consumidor');
-  const contato = String(prop.nomeContato ?? '');
-  const empresa = String(prop.nomeEmpresa ?? input.venda.empresa ?? '');
-  const tipoMov = String(prop.nomeTipoMovimentacao ?? '');
+  const clienteNome = String(cli?.nome || prop.nomeCliente || input.venda.clienteNome || 'Consumidor');
+  const nomeFantasia = String(cli?.nomeFantasia || clienteNome);
+  const contato = String(cli?.contato || prop.nomeContato || '');
   const vendedor = String(prop.nomeVendedor ?? '');
-  const abertura = String(prop.dataHoraAbertura ?? '');
-  const validade = String(prop.dataValidade ?? '');
-  const observacao = String(prop.observacao ?? input.venda.observacao ?? '');
-  const attrs = Array.isArray(prop.atributosProposta)
-    ? (prop.atributosProposta as Array<Record<string, unknown>>)
-    : [];
+  const emissao = soData(extra.dataEmissao || prop.dataHoraAbertura || prop.dataEmissao);
+  const validade = soData(extra.dataValidade || prop.dataValidade);
+  const observacaoExtra = String(extra.observacao || prop.observacao || input.venda.observacao || '').trim();
+
+  const formaPagamento =
+    String(extra.formaPagamento || '').trim() ||
+    input.venda.pagamentos.map((p) => p.nomeForma).filter(Boolean).join(', ') ||
+    '';
+  const condicaoPagamento = String(extra.condicaoPagamento || '').trim();
 
   const itensNomus = Array.isArray(prop.itensProposta)
     ? (prop.itensProposta as Array<Record<string, unknown>>)
     : [];
   const itens =
     itensNomus.length > 0
-      ? itensNomus.map((row, i) => {
+      ? itensNomus.map((row) => {
           const qtde = parseNum(row.qtde ?? row.quantidade) || 1;
           const unit = parseNum(row.precoUnitario ?? row.valorUnitario);
-          const totalLinha = parseNum(row.valorTotal) || qtde * unit;
+          const pct = parseNum(row.percentualDesconto ?? row.descontoPercentual);
+          const bruto = qtde * unit;
+          const descR = parseNum(row.valorDesconto) || (bruto * pct) / 100;
+          const totalLinha = parseNum(row.valorTotalComDesconto ?? row.valorTotal) || bruto - descR;
           return {
-            item: String(row.item ?? String(i + 1).padStart(2, '0')),
             codigo: String(row.codigoProduto ?? ''),
             descricao: String(row.descricaoProduto ?? row.nomeProduto ?? ''),
             qtde,
             unit,
+            pct,
+            descR,
             total: totalLinha,
           };
         })
-      : input.venda.itens.map((row, i) => {
-          const totalLinha = row.quantidade * row.valorUnitario * (1 - (row.descontoPercentual || 0) / 100);
+      : input.venda.itens.map((row) => {
+          const bruto = row.quantidade * row.valorUnitario;
+          const pct = row.descontoPercentual || 0;
+          const descR = (bruto * pct) / 100;
           return {
-            item: String(i + 1).padStart(2, '0'),
             codigo: row.codigo,
             descricao: row.descricao,
             qtde: row.quantidade,
             unit: row.valorUnitario,
-            total: totalLinha,
+            pct,
+            descR,
+            total: bruto - descR,
           };
         });
 
-  const total = parseNum(prop.valorTotal) || input.venda.total || itens.reduce((s, i) => s + i.total, 0);
-
-  const attrsHtml = attrs.length
-    ? `<section><h2>Atributos</h2><dl>${attrs
-        .map(
-          (a) =>
-            `<div><dt>${esc(a.nomeAtributo)}</dt><dd>${esc(a.valorAtributo)}</dd></div>`,
-        )
-        .join('')}</dl></section>`
-    : '';
+  const vTotal = itens.reduce((s, i) => s + i.qtde * i.unit, 0);
+  const vDesc = itens.reduce((s, i) => s + i.descR, 0);
+  const vLiq =
+    parseNum(prop.valorTotal) ||
+    input.venda.total ||
+    itens.reduce((s, i) => s + i.total, 0);
 
   const linhas = itens
     .map(
       (i) => `<tr>
-      <td>${esc(i.item)}</td>
-      <td>${esc(i.codigo)}</td>
-      <td>${esc(i.descricao)}</td>
-      <td class="num">${esc(i.qtde)}</td>
+      <td class="cod">${esc(i.codigo)}</td>
+      <td class="desc">${esc(i.descricao)}</td>
+      <td class="num">${esc(numBr(i.qtde, i.qtde % 1 ? 3 : 0))}</td>
       <td class="num">${esc(brl(i.unit))}</td>
+      <td class="num">${esc(numBr(i.pct))}</td>
+      <td class="num">${esc(brl(i.descR))}</td>
       <td class="num">${esc(brl(i.total))}</td>
     </tr>`,
     )
     .join('');
+
+  const cel = (label: string, value: string) =>
+    `<td class="lbl">${esc(label)}</td><td class="val">${esc(value)}</td>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -119,62 +203,301 @@ export function montarHtmlPropostaPdv(input: {
   <meta charset="utf-8" />
   <title>Proposta ${esc(codigo)}</title>
   <style>
-    :root { color-scheme: light; }
-    body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 24px; font-size: 13px; }
-    h1 { margin: 0 0 4px; font-size: 22px; }
-    h2 { margin: 18px 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #333; }
-    .muted { color: #555; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-top: 12px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border-bottom: 1px solid #ddd; padding: 8px 6px; text-align: left; vertical-align: top; }
-    th { font-size: 11px; text-transform: uppercase; color: #444; }
-    td.num, th.num { text-align: right; white-space: nowrap; }
-    dl { display: grid; grid-template-columns: 220px 1fr; gap: 6px 12px; margin: 0; }
-    dt { color: #555; } dd { margin: 0; font-weight: 600; }
-    .total { margin-top: 16px; font-size: 18px; font-weight: 700; text-align: right; }
-    .obs { white-space: pre-wrap; border: 1px solid #e5e5e5; padding: 10px; border-radius: 8px; }
-    .actions { margin: 16px 0; }
-    @media print { .actions { display: none; } body { margin: 12mm; } }
+    @page { size: A4; margin: 8mm 8mm 10mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
+      margin: 0;
+      font-size: 10.5px;
+      line-height: 1.25;
+    }
+    .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
+    .actions { margin: 8px 0 12px; }
+    .actions button {
+      background: #1a2b4c; color: #fff; border: 0; padding: 8px 14px;
+      border-radius: 4px; cursor: pointer; font-size: 13px;
+    }
+    .top {
+      display: grid;
+      grid-template-columns: 150px 1fr 110px;
+      gap: 8px;
+      align-items: start;
+      border-bottom: 1.5px solid #1a2b4c;
+      padding-bottom: 6px;
+      margin-bottom: 6px;
+    }
+    .logo { width: 150px; height: auto; display: block; }
+    .empresa { text-align: center; padding-top: 2px; }
+    .empresa .razao {
+      font-size: 15px; font-weight: 700; color: #1a2b4c; letter-spacing: .02em;
+      margin: 0 0 3px;
+    }
+    .empresa .linha { margin: 0; font-size: 9.5px; color: #222; }
+    .form-meta {
+      text-align: right; font-size: 9px; color: #333; line-height: 1.35;
+      border: 1px solid #bbb; padding: 4px 6px; border-radius: 2px;
+    }
+    table.box {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      table-layout: fixed;
+    }
+    table.box td {
+      border: 1px solid #9aa3ad;
+      padding: 3px 5px;
+      vertical-align: top;
+      word-wrap: break-word;
+    }
+    table.box .lbl {
+      width: 78px;
+      background: #f3f5f8;
+      color: #333;
+      font-weight: 700;
+      font-size: 9.5px;
+      white-space: nowrap;
+    }
+    table.box .val { font-size: 10.5px; }
+    .sec-title {
+      margin: 8px 0 2px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a2b4c;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    table.itens { width: 100%; border-collapse: collapse; margin-top: 2px; }
+    table.itens th, table.itens td {
+      border: 1px solid #9aa3ad;
+      padding: 4px 5px;
+      vertical-align: top;
+    }
+    table.itens th {
+      background: #1a2b4c;
+      color: #fff;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-align: left;
+    }
+    table.itens th.num, table.itens td.num { text-align: right; white-space: nowrap; }
+    table.itens td.cod { width: 72px; white-space: nowrap; }
+    table.itens td.desc { width: auto; }
+    .totais {
+      margin-top: 4px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .totais table { border-collapse: collapse; min-width: 280px; }
+    .totais td {
+      border: 1px solid #9aa3ad;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    .totais td.k { background: #f3f5f8; font-weight: 700; }
+    .totais td.v { text-align: right; font-weight: 700; white-space: nowrap; }
+    .totais tr.destaque td { background: #e8eef8; font-size: 12px; }
+    .pagto {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .pagto .campo {
+      border: 1px solid #9aa3ad;
+      min-height: 34px;
+      padding: 4px 6px;
+    }
+    .pagto .campo .t { font-size: 9.5px; font-weight: 700; color: #333; }
+    .obs-box {
+      border: 1px solid #9aa3ad;
+      min-height: 48px;
+      padding: 5px 6px;
+      margin-top: 6px;
+      white-space: pre-wrap;
+    }
+    .obs-box .t { font-size: 9.5px; font-weight: 700; color: #333; margin-bottom: 2px; }
+    .rodape-legal {
+      margin-top: 8px;
+      font-size: 9px;
+      text-transform: uppercase;
+      white-space: pre-wrap;
+      color: #222;
+      border-top: 1px solid #ccc;
+      padding-top: 6px;
+    }
+    .assinaturas {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 18px;
+      margin-top: 18px;
+    }
+    .ass {
+      border: 1px solid #9aa3ad;
+      min-height: 58px;
+      padding: 5px 6px;
+      position: relative;
+    }
+    .ass .t { font-size: 9.5px; font-weight: 700; color: #333; }
+    .ass .nome {
+      margin-top: 18px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .ass .linha {
+      margin-top: 28px;
+      border-top: 1px solid #444;
+      height: 0;
+    }
+    @media print {
+      .actions { display: none !important; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
-  <div class="actions">
-    <button onclick="window.print()">Imprimir / salvar PDF</button>
-  </div>
-  <header>
-    <h1>Proposta comercial ${esc(codigo)}</h1>
-    <div class="muted">${esc(empresa)} · PDV #${esc(input.venda.id)}</div>
-  </header>
-  <div class="grid">
-    <div><strong>Cliente</strong><br>${esc(cliente)}${contato ? `<br><span class="muted">Contato: ${esc(contato)}</span>` : ''}</div>
-    <div>
-      ${abertura ? `<div><strong>Abertura</strong><br>${esc(abertura)}</div>` : ''}
-      ${validade ? `<div style="margin-top:6px"><strong>Validade</strong><br>${esc(validade)}</div>` : ''}
-      ${tipoMov ? `<div style="margin-top:6px"><strong>Tipo de movimentação</strong><br>${esc(tipoMov)}</div>` : ''}
-      ${vendedor ? `<div style="margin-top:6px"><strong>Vendedor</strong><br>${esc(vendedor)}</div>` : ''}
+  <div class="sheet">
+    <div class="actions">
+      <button type="button" onclick="window.print()">Imprimir / salvar PDF</button>
     </div>
-  </div>
-  ${attrsHtml}
-  <section>
-    <h2>Itens</h2>
-    <table>
+
+    <div class="top">
+      ${logoDataUri() ? `<img class="logo" src="${logoDataUri()}" alt="Só Móveis" />` : '<div class="logo"></div>'}
+      <div class="empresa">
+        <p class="razao">SÓ AÇO INDUSTRIAL LTDA.</p>
+        <p class="linha">AV. COLETORA SECUNDÁRIA III, 9519 - PEDRA MIUDA - QUADRAC/E LOTE 000001</p>
+        <p class="linha">CEP - 64038-000 - TERESINA - PI</p>
+        <p class="linha">TELE-VENDAS - (86) 3219-1200/1300/1454/3227-2868</p>
+        <p class="linha">CNPJ – 04.041.754/0001-40 - INSC. EST. 19.446.658-2</p>
+        <p class="linha">www.soacoindustrial.com.br</p>
+      </div>
+      <div class="form-meta">
+        <div><strong>FOR-SA-0144</strong></div>
+        <div>Rev.02</div>
+        <div>Data da rev.</div>
+        <div>23/07/2021</div>
+      </div>
+    </div>
+
+    <table class="box">
+      <colgroup>
+        <col style="width:78px" /><col style="width:22%" />
+        <col style="width:78px" /><col style="width:18%" />
+        <col style="width:90px" /><col />
+      </colgroup>
+      <tr>
+        ${cel('Cliente :', clienteNome)}
+        ${cel('Nº da Proposta :', codigo)}
+        ${cel('Data de emissão:', emissao)}
+      </tr>
+      <tr>
+        ${cel('Nome fantasia:', nomeFantasia)}
+        ${cel('Contato:', contato)}
+        ${cel('Data de validade:', validade)}
+      </tr>
+      <tr>
+        ${cel('Endereço:', cli?.endereco || '')}
+        ${cel('Nº', cli?.numero || '')}
+        ${cel('Bairro:', cli?.bairro || '')}
+      </tr>
+      <tr>
+        ${cel('CNPJ/CPF:', cli?.cnpjCpf || '')}
+        ${cel('Munícipio:', cli?.municipio || '')}
+        ${cel('Estado:', cli?.uf || '')}
+      </tr>
+      <tr>
+        ${cel('E-mail:', cli?.email || '')}
+        ${cel('Telefone:', cli?.telefone || '')}
+        ${cel('Cep:', cli?.cep || '')}
+      </tr>
+      <tr>
+        ${cel('Insc. estadual', cli?.ie || '')}
+        <td class="lbl" colspan="2"></td>
+        <td class="val" colspan="2"></td>
+      </tr>
+    </table>
+
+    <div class="sec-title">Dados de entrega</div>
+    <table class="box">
+      <colgroup>
+        <col style="width:78px" /><col style="width:34%" />
+        <col style="width:48px" /><col style="width:12%" />
+        <col style="width:48px" /><col />
+      </colgroup>
+      <tr>
+        ${cel('Endereço:', cli?.endereco || '')}
+        ${cel('Nº', cli?.numero || '')}
+        ${cel('Cep:', cli?.cep || '')}
+      </tr>
+      <tr>
+        ${cel('Bairro:', cli?.bairro || '')}
+        ${cel('Munícipio:', cli?.municipio || '')}
+        ${cel('Estado:', cli?.uf || '')}
+      </tr>
+    </table>
+
+    <table class="itens">
       <thead>
         <tr>
-          <th>Item</th><th>Código</th><th>Descrição</th>
-          <th class="num">Qtde</th><th class="num">Unitário</th><th class="num">Total</th>
+          <th>Código</th>
+          <th>Descrição do produto</th>
+          <th class="num">Qtde</th>
+          <th class="num">V. Un.</th>
+          <th class="num">% Desc.</th>
+          <th class="num">Desc. R$</th>
+          <th class="num">Total c/ desc</th>
         </tr>
       </thead>
-      <tbody>${linhas}</tbody>
+      <tbody>${linhas || `<tr><td colspan="7" style="text-align:center;color:#666">Sem itens</td></tr>`}</tbody>
     </table>
-    <div class="total">Total ${esc(brl(total))}</div>
-  </section>
-  ${
-    observacao
-      ? `<section><h2>Observação</h2><div class="obs">${esc(observacao)}</div></section>`
-      : ''
-  }
-  <p class="muted" style="margin-top:24px">Documento gerado no PDV Só Aço. Layout oficial Jasper do Nomus pode ser adotado quando a API disponibilizar o PDF.</p>
-  <script>window.addEventListener('load',()=>{ if(new URLSearchParams(location.search).get('print')==='1'){ setTimeout(()=>window.print(),250);} });</script>
+
+    <div class="totais">
+      <table>
+        <tr><td class="k">V. Total Desc.:</td><td class="v">${esc(brl(vDesc))}</td></tr>
+        <tr><td class="k">V. Total.:</td><td class="v">${esc(brl(vTotal))}</td></tr>
+        <tr class="destaque"><td class="k">V. Total C/ DESC.:</td><td class="v">${esc(brl(vLiq))}</td></tr>
+      </table>
+    </div>
+
+    <div class="pagto">
+      <div class="campo"><div class="t">Forma de pagamento:</div>${esc(formaPagamento)}</div>
+      <div class="campo"><div class="t">Condições de Pagamento:</div>${esc(condicaoPagamento)}</div>
+    </div>
+
+    <div class="obs-box">
+      <div class="t">Observações :</div>
+      ${esc(observacaoExtra)}
+    </div>
+
+    <div class="rodape-legal">${esc(TEXTO_PADRAO_RODAPE)}</div>
+
+    <div class="assinaturas">
+      <div class="ass">
+        <div class="t">Vendedor/Representante</div>
+        <div class="nome">${esc(vendedor)}</div>
+      </div>
+      <div class="ass">
+        <div class="t">Assinatura do cliente</div>
+        <div class="linha"></div>
+      </div>
+      <div class="ass">
+        <div class="t">Data de autorização</div>
+        <div class="linha"></div>
+      </div>
+      <div class="ass">
+        <div class="t">Autorização</div>
+        <div class="linha"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('load', () => {
+      if (new URLSearchParams(location.search).get('print') === '1') {
+        setTimeout(() => window.print(), 280);
+      }
+    });
+  </script>
 </body>
 </html>`;
 }

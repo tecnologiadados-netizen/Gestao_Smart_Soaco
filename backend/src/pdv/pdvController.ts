@@ -31,9 +31,96 @@ import {
   retomarEspera,
   transformarOrcamento,
 } from './pdvOperacao.js';
-import { montarHtmlPropostaPdv } from './pdvPropostaPdf.js';
+import { montarHtmlPropostaPdv, type PdfClienteProposta, type PdfPropostaExtra } from './pdvPropostaPdf.js';
 import { normalizarModoOperacao, obterPropostaNomus } from './pdvNomusVenda.js';
+import { queryNomus } from '../config/nomusDb.js';
+import { nomusRest } from './nomusRest.js';
 import { cifrar } from './secrets.js';
+
+function dataBrDeMysql(v: unknown): string {
+  if (!v) return '';
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(v.getUTCDate())}/${p(v.getUTCMonth() + 1)}/${v.getUTCFullYear()}`;
+  }
+  const s = String(v);
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const br = s.match(/(\d{2}\/\d{2}\/\d{4})/);
+  return br ? br[1] : '';
+}
+
+async function carregarClientePropostaPdf(idCliente: number, nomeContato: string): Promise<PdfClienteProposta | null> {
+  if (!idCliente) return null;
+  try {
+    const c = await nomusRest<Record<string, unknown>>(`/clientes/${idCliente}`, { cacheMs: 30_000 });
+    return {
+      nome: String(c.nome ?? c.razaoSocial ?? '').trim(),
+      nomeFantasia: String(c.nomeFantasia ?? c.nome ?? c.razaoSocial ?? '').trim(),
+      contato: nomeContato,
+      cnpjCpf: String(c.cnpj ?? c.cpf ?? '').trim(),
+      ie: String(c.inscricaoEstadual ?? '').trim(),
+      email: String(c.email ?? '').trim(),
+      telefone: String(c.telefone ?? '').trim(),
+      endereco: String(c.endereco ?? '').trim(),
+      numero: String(c.numero ?? '').trim(),
+      bairro: String(c.bairro ?? '').trim(),
+      municipio: String(c.municipio ?? '').trim(),
+      uf: String(c.uf ?? '').trim(),
+      cep: String(c.cep ?? '').trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function carregarExtraPropostaPdf(idProposta: number): Promise<PdfPropostaExtra> {
+  try {
+    const [rows] = await queryNomus<
+      Array<{
+        dataAbertura: unknown;
+        dataValidade: unknown;
+        observacao: string | null;
+        idFormaPagamento: number | null;
+        idCondicaoPagamento: number | null;
+        condicaoPagamento: string | null;
+      }>
+    >(
+      `SELECT dataAbertura, dataValidade, observacao, idFormaPagamento, idCondicaoPagamento, condicaoPagamento
+       FROM proposta WHERE id = ? LIMIT 1`,
+      [idProposta],
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return {};
+    let formaPagamento = '';
+    let condicaoPagamento = '';
+    const idForma = Number(row.idFormaPagamento) || 0;
+    const idCond = Number(row.idCondicaoPagamento) || Number(row.condicaoPagamento) || 0;
+    if (idForma) {
+      const [f] = await queryNomus<Array<{ nome: string }>>(
+        `SELECT nome FROM formapagamento WHERE id = ? LIMIT 1`,
+        [idForma],
+      );
+      formaPagamento = String(f?.[0]?.nome ?? '').trim();
+    }
+    if (idCond) {
+      const [c] = await queryNomus<Array<{ nome: string }>>(
+        `SELECT nome FROM condicaopagamento WHERE id = ? LIMIT 1`,
+        [idCond],
+      );
+      condicaoPagamento = String(c?.[0]?.nome ?? '').trim();
+    }
+    return {
+      dataEmissao: dataBrDeMysql(row.dataAbertura),
+      dataValidade: dataBrDeMysql(row.dataValidade),
+      observacao: String(row.observacao ?? '').trim(),
+      formaPagamento,
+      condicaoPagamento,
+    };
+  } catch {
+    return {};
+  }
+}
 
 export const uploadPfx = multer({
   storage: multer.memoryStorage(),
@@ -400,6 +487,11 @@ export async function getPropostaPdf(req: Request, res: Response): Promise<void>
     } catch {
       proposta = null;
     }
+    const idCliente = Number(proposta?.idCliente || venda.idPessoaCliente) || 0;
+    const [cliente, extra] = await Promise.all([
+      carregarClientePropostaPdf(idCliente, String(proposta?.nomeContato ?? '')),
+      carregarExtraPropostaPdf(venda.idPropostaNomus),
+    ]);
     const html = montarHtmlPropostaPdv({
       venda: {
         id: venda.id,
@@ -417,6 +509,8 @@ export async function getPropostaPdf(req: Request, res: Response): Promise<void>
         pagamentos: venda.pagamentos.map((p) => ({ nomeForma: p.nomeForma, valor: p.valor })),
       },
       proposta,
+      cliente,
+      extra,
     });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
