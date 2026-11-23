@@ -105,6 +105,9 @@ export function montarResumoFiltrosCarteiraPdf(filtros: FiltrosCarteiraState): s
   const uf = fmtListaCsv(filtros.ufCsv);
   if (uf) partes.push(`UF: ${uf}`);
 
+  const pedido = (filtros.pedido ?? '').trim();
+  if (pedido) partes.push(`Pedido: ${pedido}`);
+
   const cliente = fmtListaCsv(filtros.clienteCsv);
   if (cliente) partes.push(`Cliente: ${cliente}`);
 

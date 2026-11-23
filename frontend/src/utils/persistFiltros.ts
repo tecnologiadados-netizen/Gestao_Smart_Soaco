@@ -157,6 +157,8 @@ export type FiltrosCarteiraState = {
   data_previsao_fim: string;
   empresaCsv: string;
   ufCsv: string;
+  /** Número/PD do pedido (texto livre). */
+  pedido: string;
   clienteCsv: string;
   condicaoCsv: string;
   carradaCsv: string;

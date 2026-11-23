@@ -25,6 +25,7 @@ function parseFiltros(req: Request): CarteiraFinanceiraFiltros {
     dataFim: String(q.dataFim ?? '').trim() || undefined,
     dataPrevisaoIni: String(q.dataPrevisaoIni ?? '').trim() || undefined,
     dataPrevisaoFim: String(q.dataPrevisaoFim ?? '').trim() || undefined,
+    pedido: String(q.pedido ?? '').trim() || undefined,
     uf: parseListParam(q.uf),
     cliente: parseListParam(q.cliente),
     empresa: parseListParam(q.empresa),

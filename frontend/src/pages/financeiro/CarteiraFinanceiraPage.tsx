@@ -34,6 +34,7 @@ import {
   saveFiltrosCarteira,
   type FiltrosCarteiraState,
 } from '../../utils/persistFiltros';
+import { PLACEHOLDER_BUSCA_TEXTO_LIVRE } from '../../utils/textoLivreBusca';
 
 const DIM_TITULO: Record<CarteiraDimensao, string> = {
   uf: 'Por UF',
@@ -132,6 +133,7 @@ function filtrosCarteiraDefaults(): FiltrosCarteiraState {
     ...datasCarteiraIniciais(),
     empresaCsv: '',
     ufCsv: '',
+    pedido: '',
     clienteCsv: '',
     condicaoCsv: '',
     carradaCsv: '',
@@ -143,6 +145,7 @@ function snapshotFiltros(
   datas: DatasCarteira,
   empresaCsv: string,
   ufCsv: string,
+  pedido: string,
   clienteCsv: string,
   condicaoCsv: string,
   carradaCsv: string,
@@ -152,6 +155,7 @@ function snapshotFiltros(
     ...datas,
     empresaCsv,
     ufCsv,
+    pedido,
     clienteCsv,
     condicaoCsv,
     carradaCsv,
@@ -174,6 +178,7 @@ export default function CarteiraFinanceiraPage() {
   });
   const [empresaCsv, setEmpresaCsv] = useState(inicial.empresaCsv);
   const [ufCsv, setUfCsv] = useState(inicial.ufCsv);
+  const [pedido, setPedido] = useState(inicial.pedido ?? '');
   const [clienteCsv, setClienteCsv] = useState(inicial.clienteCsv);
   const [condicaoCsv, setCondicaoCsv] = useState(inicial.condicaoCsv);
   const [carradaCsv, setCarradaCsv] = useState(inicial.carradaCsv);
@@ -193,6 +198,7 @@ export default function CarteiraFinanceiraPage() {
       nextDatas: DatasCarteira,
       nextEmpresa: string,
       nextUf: string,
+      nextPedido: string,
       nextCliente: string,
       nextCondicao: string,
       nextCarrada: string,
@@ -203,6 +209,7 @@ export default function CarteiraFinanceiraPage() {
           nextDatas,
           nextEmpresa,
           nextUf,
+          nextPedido,
           nextCliente,
           nextCondicao,
           nextCarrada,
@@ -218,6 +225,7 @@ export default function CarteiraFinanceiraPage() {
       datas: DatasCarteira;
       empresaCsv: string;
       ufCsv: string;
+      pedido: string;
       clienteCsv: string;
       condicaoCsv: string;
       carradaCsv: string;
@@ -229,6 +237,7 @@ export default function CarteiraFinanceiraPage() {
         datas: d,
         empresaCsv: emp,
         ufCsv: uf,
+        pedido: ped,
         clienteCsv: cli,
         condicaoCsv: cond,
         carradaCsv: carr,
@@ -236,7 +245,7 @@ export default function CarteiraFinanceiraPage() {
         resetOpcoes,
       } = args;
 
-      persistir(d, emp, uf, cli, cond, carr, st);
+      persistir(d, emp, uf, ped, cli, cond, carr, st);
       setLoading(true);
       setErro(null);
       try {
@@ -245,6 +254,7 @@ export default function CarteiraFinanceiraPage() {
           dataFim: d.data_emissao_fim || undefined,
           dataPrevisaoIni: d.data_previsao_ini || undefined,
           dataPrevisaoFim: d.data_previsao_fim || undefined,
+          pedido: ped.trim() || undefined,
           empresa: csvToList(emp),
           uf: csvToList(uf),
           cliente: csvToList(cli),
@@ -282,6 +292,7 @@ export default function CarteiraFinanceiraPage() {
       datas,
       empresaCsv,
       ufCsv,
+      pedido,
       clienteCsv,
       condicaoCsv,
       carradaCsv,
@@ -292,6 +303,7 @@ export default function CarteiraFinanceiraPage() {
     datas,
     empresaCsv,
     ufCsv,
+    pedido,
     clienteCsv,
     condicaoCsv,
     carradaCsv,
@@ -312,6 +324,7 @@ export default function CarteiraFinanceiraPage() {
       },
       empresaCsv: inicial.empresaCsv,
       ufCsv: inicial.ufCsv,
+      pedido: inicial.pedido ?? '',
       clienteCsv: inicial.clienteCsv,
       condicaoCsv: inicial.condicaoCsv,
       carradaCsv: inicial.carradaCsv,
@@ -324,11 +337,12 @@ export default function CarteiraFinanceiraPage() {
 
   // Persiste enquanto o usuário edita (F5 mantém mesmo antes de Aplicar)
   useEffect(() => {
-    persistir(datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido);
+    persistir(datas, empresaCsv, ufCsv, pedido, clienteCsv, condicaoCsv, carradaCsv, statusPedido);
   }, [
     datas,
     empresaCsv,
     ufCsv,
+    pedido,
     clienteCsv,
     condicaoCsv,
     carradaCsv,
@@ -342,6 +356,7 @@ export default function CarteiraFinanceiraPage() {
     setDatas(nextDatas);
     setEmpresaCsv('');
     setUfCsv('');
+    setPedido('');
     setClienteCsv('');
     setCondicaoCsv('');
     setCarradaCsv('');
@@ -352,6 +367,7 @@ export default function CarteiraFinanceiraPage() {
       datas: nextDatas,
       empresaCsv: '',
       ufCsv: '',
+      pedido: '',
       clienteCsv: '',
       condicaoCsv: '',
       carradaCsv: '',
@@ -405,7 +421,7 @@ export default function CarteiraFinanceiraPage() {
       await exportCarteiraFinanceiraPdf(
         el,
         linhas,
-        snapshotFiltros(datas, empresaCsv, ufCsv, clienteCsv, condicaoCsv, carradaCsv, statusPedido)
+        snapshotFiltros(datas, empresaCsv, ufCsv, pedido, clienteCsv, condicaoCsv, carradaCsv, statusPedido)
       );
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
@@ -459,7 +475,7 @@ export default function CarteiraFinanceiraPage() {
         </div>
 
         <div className="px-4 pb-4 space-y-3 border-t border-slate-200 dark:border-slate-700">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 pt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 pt-3">
             <MultiSelectWithSearch
               label="Empresa"
               placeholder="Todas"
@@ -482,6 +498,38 @@ export default function CarteiraFinanceiraPage() {
               optionLabel="UFs"
               minWidth="120px"
             />
+            <div>
+              <label className={FILTRO_LABEL_CLASS}>Pedido</label>
+              <div className={`${FILTRO_INPUT_CLASS} flex items-center gap-1`}>
+                <input
+                  type="search"
+                  value={pedido}
+                  onChange={(e) => setPedido(e.target.value)}
+                  placeholder="PD ou número… (% refina)"
+                  title={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
+                  className="min-w-0 flex-1 bg-transparent py-0 outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void carregar();
+                    }
+                  }}
+                />
+                {pedido ? (
+                  <button
+                    type="button"
+                    aria-label="Limpar filtro Pedido"
+                    title="Limpar este filtro"
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-600 dark:hover:text-slate-100"
+                    onClick={() => setPedido('')}
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <MultiSelectWithSearch
               label="Cliente"
               placeholder="Todos"

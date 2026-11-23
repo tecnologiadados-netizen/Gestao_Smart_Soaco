@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getNomusPool, isNomusEnabled } from '../config/nomusDb.js';
 import { obterPrevisaoAtualizadaPorIdsPedido } from './pedidosRepository.js';
+import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +19,8 @@ export type CarteiraFinanceiraFiltros = {
   dataFim?: string;
   dataPrevisaoIni?: string;
   dataPrevisaoFim?: string;
+  /** Número/PD do pedido (texto livre com `%`). */
+  pedido?: string;
   uf?: string[];
   cliente?: string[];
   empresa?: string[];
@@ -181,6 +184,11 @@ function buildOuterFilters(
   }
   if (filtros.dataFim && /^\d{4}-\d{2}-\d{2}$/.test(filtros.dataFim)) {
     parts.push(`DATE(c.\`Emissao\`) <= ${escape(filtros.dataFim)}`);
+  }
+
+  const pedido = (filtros.pedido ?? '').trim();
+  if (pedido) {
+    parts.push(`c.\`PD\` LIKE ${escape(termoParaPadraoLikeSql(pedido))}`);
   }
 
   const uf = asList(filtros.uf);
