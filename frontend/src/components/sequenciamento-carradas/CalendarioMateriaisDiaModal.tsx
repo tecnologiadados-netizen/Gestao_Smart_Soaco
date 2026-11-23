@@ -358,8 +358,8 @@ export default function CalendarioMateriaisDiaModal({
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {setorLabel
-                ? 'Materiais em falta com consumo deste setor no dia (exclui Matéria Prima). '
-                : 'Somente consumo e falta > 0 no dia (exclui Matéria Prima). '}
+                ? 'Materiais em falta com consumo deste setor no dia. '
+                : 'Somente consumo e falta > 0 no dia. '}
               Clique em <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para
               PC / Pré Compra / Solicitação. Método de ressuprimento vem da aba Geral do componente
               no Nomus. Arraste a borda das colunas para ajustar a largura.
@@ -393,7 +393,7 @@ export default function CalendarioMateriaisDiaModal({
           {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
           {!carregando && !erro && linhas.length === 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Nenhum material com consumo e falta neste dia (almox secundário, sem Matéria Prima).
+              Nenhum material com consumo e falta neste dia (almox secundário, inclusive Matéria Prima).
             </p>
           )}
           {!carregando && !erro && linhas.length > 0 && (

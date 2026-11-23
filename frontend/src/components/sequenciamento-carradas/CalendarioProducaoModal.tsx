@@ -2435,8 +2435,9 @@ export default function CalendarioProducaoModal({
                     </>
                   ) : (dispMateriais?.qtdeMateriaisEscopo ?? 0) === 0 ? (
                     <>
-                      Nenhum componente no escopo do calendário (almox secundário, lista válida, sem
-                      Matéria Prima) na BOM dos produtos do calendário. O semáforo só cobre esses materiais.
+                      Nenhum componente no escopo do calendário (almox secundário e lista válida,
+                      inclusive Matéria Prima) na BOM dos produtos do calendário. O semáforo só cobre
+                      esses materiais.
                     </>
                   ) : (
                     <>

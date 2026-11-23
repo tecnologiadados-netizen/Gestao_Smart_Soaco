@@ -3,7 +3,7 @@
  * consumo = BOM (folha) × qtde líquida do calendário por data;
  * saldo inicial = somente almox secundário (setor 2);
  * entrada = PC pendente por dataEntrega (atrasado → hoje);
- * escopo = almox secundário ∩ ¬Matéria Prima ∩ allowlist (lista válida + vínculo setor).
+ * escopo = almox secundário ∩ allowlist (lista válida + vínculo setor), inclusive Matéria Prima.
  */
 
 import type { Pool } from 'mysql2/promise';
@@ -12,7 +12,6 @@ import { obterMetodosRessuprimentoPorIds } from './calendarioMetodoRessuprimento
 import { METODO_RESSUPRIMENTO_VAZIO } from '../utils/metodoRessuprimentoProduto.js';
 import { loadBomListaMateriaisAcabadoSql, loadComponentesEscopoCalendarioMateriaisSql } from '../data/bomListaMateriaisSql.js';
 import { calcularSaldoSc } from '../data/consultaEstoqueRepository.js';
-import { RESSUP_NAO_ALMOX_ATTR_TIPO_MATERIAL } from '../data/ressupNaoAlmoxRepository.js';
 import { STATUS_COTACAO_AGPAG_SQL } from '../data/sql/sqlComprasEstoqueFragments.js';
 import { mppDiaIsoDataPrevisao } from '../controllers/mppController.js';
 import {
@@ -26,8 +25,6 @@ import {
 } from '../utils/disponibilidadeMateriaisCalendarioDerivados.js';
 
 const SETOR_ALMOX_SECUNDARIO = 2;
-/** Valor exato do atributo Nomus 540 (tipo de material) a excluir do escopo do calendário. */
-const TIPO_MATERIAL_MATERIA_PRIMA = 'Matéria Prima';
 const MAX_DIAS = 400;
 const BOM_CHUNK = 40;
 /** Chunk para IN (?) em saldo/PC/filtros — evita pacotes grandes e ECONNRESET. */
@@ -87,7 +84,7 @@ export type BaseMateriaisCongelada = {
   /** Data de referência do "PC atrasado → hoje" e do início do eixo no momento da captura. */
   hoje: string;
   idPorCodigoPa: Record<string, number>;
-  /** BOM folha já filtrada (almox secundário, sem Matéria Prima, allowlist dwlc_componentes). */
+  /** BOM folha já filtrada (almox secundário e allowlist dwlc_componentes, inclusive Matéria Prima). */
   bom: { idPa: number; idComp: number; cod: string; desc: string; qtdePorPa: number }[];
   saldoPorIdComp: Record<string, number>;
   /** PC pendente linha a linha — alimenta a entrada diária e o modal "PC Pend". */
@@ -404,37 +401,6 @@ async function filtrarIdsComSetor2(pool: Pool, ids: number[]): Promise<Set<numbe
 }
 
 /**
- * IDs com atributo "tipo de material" = Matéria Prima (attr 540).
- * Produto sem o atributo não entra no set (permanece no escopo).
- */
-async function filtrarIdsMateriaPrima(pool: Pool, ids: number[]): Promise<Set<number>> {
-  const set = new Set<number>();
-  if (ids.length === 0) return set;
-  for (let i = 0; i < ids.length; i += IDS_CHUNK) {
-    const chunk = ids.slice(i, i + IDS_CHUNK);
-    const placeholders = chunk.map(() => '?').join(', ');
-    const sql = `
-    SELECT DISTINCT apv.idProduto AS idProduto
-    FROM atributoprodutovalor apv
-    INNER JOIN atributolistaopcao alo ON alo.id = apv.idListaOpcao
-    WHERE apv.idAtributo = ${RESSUP_NAO_ALMOX_ATTR_TIPO_MATERIAL}
-      AND alo.opcao COLLATE utf8mb4_general_ci = ?
-      AND apv.idProduto IN (${placeholders})
-  `;
-    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
-      pool,
-      sql,
-      [TIPO_MATERIAL_MATERIA_PRIMA, ...chunk]
-    );
-    for (const r of Array.isArray(rows) ? rows : []) {
-      const id = Number(r.idProduto);
-      if (Number.isFinite(id) && id > 0) set.add(id);
-    }
-  }
-  return set;
-}
-
-/**
  * Allowlist: componente de lista válida (Produção/Precificação/Parcial) com vínculo
  * ao Almoxarifado Material Secundário — mesma regra da consulta de escopo do calendário.
  */
@@ -454,21 +420,13 @@ async function filtrarIdsEscopoCalendarioMateriais(pool: Pool, ids: number[]): P
   return set;
 }
 
-/** Aplica filtros de escopo do calendário: almox secundário, sem Matéria Prima, allowlist BOM. */
+/** Aplica filtros de escopo do calendário: almox secundário e allowlist BOM, inclusive Matéria Prima. */
 async function filtrarBomEscopoCalendario(pool: Pool, bomRows: BomRow[]): Promise<BomRow[]> {
   const idsCompAll = [...new Set(bomRows.map((b) => b.idComponente))];
   const idsSetor2 = await filtrarIdsComSetor2(pool, idsCompAll);
-  const idsCandidatos = [...idsSetor2];
-  const [idsMateriaPrima, idsEscopo] = await Promise.all([
-    filtrarIdsMateriaPrima(pool, idsCandidatos),
-    filtrarIdsEscopoCalendarioMateriais(pool, idsCandidatos),
-  ]);
+  const idsEscopo = await filtrarIdsEscopoCalendarioMateriais(pool, [...idsSetor2]);
   return bomRows.filter(
-    (b) =>
-      idsSetor2.has(b.idComponente) &&
-      idsEscopo.has(b.idComponente) &&
-      !idsMateriaPrima.has(b.idComponente) &&
-      !!b.codigoComponente
+    (b) => idsSetor2.has(b.idComponente) && idsEscopo.has(b.idComponente) && !!b.codigoComponente
   );
 }
 
