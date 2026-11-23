@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, CircleHelp, Copy, MessageSquarePlus, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, Copy, Eye, MessageSquarePlus, X, XCircle } from 'lucide-react';
 import {
   addDoubleCheckInComparativoObservacao,
   saveDoubleCheckInComparativoDecisao,
@@ -442,6 +442,12 @@ export default function DoubleCheckInComparativoPcTab({
   const campoVisivel = (campo: DoubleCheckInCampoComparativo) =>
     criterios?.[campo] !== false || camposLancados.includes(campo);
   const [textoCopiado, setTextoCopiado] = useState<string | null>(null);
+  const [textoModal, setTextoModal] = useState<{
+    titulo: string;
+    texto: string;
+    chave: string;
+    contexto?: string;
+  } | null>(null);
   const [draft, setDraft] = useState<DraftJustif | null>(null);
   const [opcaoId, setOpcaoId] = useState<number | ''>('');
   const [obs, setObs] = useState('');
@@ -949,26 +955,37 @@ export default function DoubleCheckInComparativoPcTab({
             </span>
           </div>
         </div>
-        {diverg && natureza === 'benigna' && linha.observacaoNaturezaDivergencias?.[c.id] ? (
-          <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-            {linha.observacaoNaturezaDivergencias[c.id]}
-          </p>
-        ) : null}
-        {frase ? (
-          <div className="mt-1.5 flex items-start gap-1">
-            <p className="min-w-0 flex-1 text-[10px] leading-snug text-slate-600 dark:text-slate-300">
-              {frase}
-            </p>
-            <button
-              type="button"
-              className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-100"
-              title={textoCopiado === chaveFrase ? 'Copiado' : 'Copiar este texto'}
-              onClick={() => void copiarTexto(chaveFrase, frase)}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ) : null}
+        {(() => {
+          const obsBenigna =
+            diverg && natureza === 'benigna'
+              ? linha.observacaoNaturezaDivergencias?.[c.id]?.trim() || null
+              : null;
+          if (!frase && !obsBenigna) return null;
+          const textoSugestao = frase ?? obsBenigna ?? '';
+          return (
+            <div className="mt-1.5 flex justify-end">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Ver sugestão de texto"
+                aria-label="Ver sugestão de texto"
+                onClick={() =>
+                  setTextoModal({
+                    titulo: `Sugestão — ${
+                      c.id === 'ipi' && linha.conferenciaIpi === 'percentual' ? 'IPI %' : c.label
+                    }`,
+                    texto: textoSugestao,
+                    chave: chaveFrase,
+                    ...(frase && obsBenigna ? { contexto: obsBenigna } : {}),
+                  })
+                }
+              >
+                <Eye className="h-3.5 w-3.5" aria-hidden />
+                Texto
+              </button>
+            </div>
+          );
+        })()}
         {diverg && (
           <div className="mt-2 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
@@ -1115,23 +1132,28 @@ export default function DoubleCheckInComparativoPcTab({
       </div>
 
       {textoConsolidado ? (
-        <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 dark:border-sky-800 dark:bg-sky-950/40">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
+        <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-800 dark:bg-sky-950/40">
+          <div className="flex items-center justify-between gap-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
               Texto para o Otimiza
             </h4>
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:text-sky-100 dark:hover:bg-sky-900/50"
-              onClick={() => void copiarTexto('consolidado', textoConsolidado)}
+              title="Ver texto para o Otimiza"
+              aria-label="Ver texto para o Otimiza"
+              onClick={() =>
+                setTextoModal({
+                  titulo: 'Texto para o Otimiza',
+                  texto: textoConsolidado,
+                  chave: 'consolidado',
+                })
+              }
             >
-              <Copy className="h-3.5 w-3.5" />
-              {textoCopiado === 'consolidado' ? 'Copiado' : 'Copiar'}
+              <Eye className="h-3.5 w-3.5" aria-hidden />
+              Ver
             </button>
           </div>
-          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-            {textoConsolidado}
-          </p>
         </section>
       ) : null}
 
@@ -1530,6 +1552,55 @@ export default function DoubleCheckInComparativoPcTab({
                   onClick={() => void salvarNovaObservacao()}
                 >
                   {salvandoObs ? 'Salvando…' : 'Registrar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {textoModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10080] flex items-center justify-center p-4 bg-slate-900/55"
+            role="dialog"
+            aria-modal="true"
+            aria-label={textoModal.titulo}
+            onClick={() => setTextoModal(null)}
+          >
+            <div
+              className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {textoModal.titulo}
+                </h3>
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  onClick={() => setTextoModal(null)}
+                >
+                  Fechar
+                </button>
+              </div>
+              {textoModal.contexto ? (
+                <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                  {textoModal.contexto}
+                </p>
+              ) : null}
+              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                {textoModal.texto}
+              </p>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  onClick={() => void copiarTexto(textoModal.chave, textoModal.texto)}
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden />
+                  {textoCopiado === textoModal.chave ? 'Copiado' : 'Copiar'}
                 </button>
               </div>
             </div>
