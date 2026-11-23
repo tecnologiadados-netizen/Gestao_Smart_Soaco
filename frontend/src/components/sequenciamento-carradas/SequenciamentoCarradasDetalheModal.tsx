@@ -9,6 +9,8 @@ import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import ModalConsultaEstoqueEmbed from '../../components/pcp/ModalConsultaEstoqueEmbed';
 import CopiarTextoBtn, { numeroPedidoLimpo } from '../CopiarTextoBtn';
 import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from '../TogglePrevisaoConfiavel';
+import { isPedidoDisponivel } from './simulacaoCarradas';
+import { mensagemBloqueioNaoConfiavel } from '../../utils/disponivelVsConfiavel';
 import {
   agregarPedidosVenda,
   agregarProdutosVinculados,
@@ -225,12 +227,29 @@ export default function SequenciamentoCarradasDetalheModal({
   );
   const alterarConfiabilidade = useCallback((ids: string[], valor: PrevisaoConfiavelTri) => {
     if (!editavel || ids.length === 0) return;
+    if (valor === false) {
+      const pds = new Set<string>();
+      for (const id of ids) {
+        const row = linhasFiltradas.find(
+          (linha) => String(linha.id_pedido ?? linha.idChave ?? '').trim() === id
+        );
+        if (row && isPedidoDisponivel(row)) {
+          const pd = String(row.PD ?? row.pd ?? '').trim();
+          if (pd) pds.add(pd);
+        }
+      }
+      if (pds.size > 0) {
+        setErroSalvar(mensagemBloqueioNaoConfiavel([...pds]));
+        return;
+      }
+    }
+    setErroSalvar(null);
     setConfiabilidadeLocal((anterior) => {
       const proximo = { ...anterior };
       for (const id of ids) proximo[id] = valor;
       return proximo;
     });
-  }, [editavel]);
+  }, [editavel, linhasFiltradas]);
   const houveAlteracao = useMemo(
     () =>
       idsNoModal.some(

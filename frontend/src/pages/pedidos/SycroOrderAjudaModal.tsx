@@ -20,7 +20,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Marca o card como disponível para o próximo passo comercial/logístico, movendo-o para a lane “Disponível”.',
     comoLe:
-      'Independe da categoria de rota do Gerenciador. No Gerenciador, “Disponível” aparece no Status como sinal vindo desta comunicação.',
+      'Independe da categoria de rota do Gerenciador. No Gerenciador, “Disponível” aparece no Status como sinal vindo desta comunicação. Não é possível marcar Disponível enquanto a previsão do card estiver como não confiável: primeiro grave uma nova data prometida escolhendo Sim em Previsão confiável.',
   },
   {
     id: 'fila',
@@ -57,7 +57,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão confiável',
         texto:
-          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória na grade do Gerenciador. A alteração de data entra no histórico do card nos dois casos e, quando for Não, o histórico marca a previsão como provisória. Sem escolha no meio, o salvamento é bloqueado.',
+          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória na grade do Gerenciador. A alteração de data entra no histórico do card nos dois casos e, quando for Não, o histórico marca a previsão como provisória. Sem escolha no meio, o salvamento é bloqueado. Não é possível escolher Não enquanto o card estiver com a tag Disponível: desmarque Disponível e só então grave a previsão como não confiável. As duas marcas não coexistem.',
       },
       {
         titulo: 'Justificativa (PDF)',

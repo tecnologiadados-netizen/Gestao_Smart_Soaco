@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { z } from 'zod';
 import { ajustarDataProducaoLote, listarPedidos, type DataProducaoLoteItem, type Pedido } from '../api/pedidos';
@@ -21,6 +21,7 @@ import CampoAnexoAssinaturaPdf from './CampoAnexoAssinaturaPdf';
 import TogglePrevisaoConfiavel, { type PrevisaoConfiavelTri } from './TogglePrevisaoConfiavel';
 import CopiarTextoBtn, { numeroPedidoLimpo } from './CopiarTextoBtn';
 import { useModalFlutuante } from '../hooks/useModalFlutuante';
+import { mensagemBloqueioNaoConfiavel } from '../utils/disponivelVsConfiavel';
 
 const ajusteSchema = z.object({
   previsao_nova: z.string().min(1, 'Informe a data'),
@@ -191,6 +192,10 @@ export default function ModalAjustePrevisao({
   const [motivo, setMotivo] = useState('');
   const [observacao, setObservacao] = useState('');
   const [previsaoConfiavel, setPrevisaoConfiavel] = useState<PrevisaoConfiavelTri>(null);
+  const algumItemDisponivel = useMemo(() => {
+    const lista = [pedido, ...(demaisItens ?? []), ...(calendario?.demaisItensPd ?? [])];
+    return lista.some((p) => p?.Card === 'Disponível');
+  }, [pedido, demaisItens, calendario?.demaisItensPd]);
   const [anexoAssinatura, setAnexoAssinatura] = useState<AnexoAssinaturaPayload | null>(null);
   const [anexoNome, setAnexoNome] = useState('');
   const [loading, setLoading] = useState(false);
@@ -200,6 +205,14 @@ export default function ModalAjustePrevisao({
     motivo?: string;
     previsao_confiavel?: string;
   }>({});
+  const recusarNaoConfiavelSeDisponivel = (): boolean => {
+    if (!algumItemDisponivel) return false;
+    const pd = String(pedido?.PD ?? pedido?.pd ?? '').trim();
+    const msg = mensagemBloqueioNaoConfiavel(pd ? [pd] : []);
+    onError(msg);
+    setErrors((prev) => ({ ...prev, previsao_confiavel: msg }));
+    return true;
+  };
   const [sugestoes, setSugestoes] = useState<MotivoSugestao[]>([]);
   const [loadingSugestoes, setLoadingSugestoes] = useState(false);
   const [flowStep, setFlowStep] = useState<FlowStep>('form');
@@ -445,6 +458,7 @@ export default function ModalAjustePrevisao({
     observacao?: string;
     previsao_confiavel?: boolean;
   }) => {
+    if (opts.previsao_confiavel === false && recusarNaoConfiavelSeDisponivel()) return;
     if (opts.producao) onSalvarDataProducao?.(opts.producao);
     const temConfiavel = opts.previsao_confiavel === true || opts.previsao_confiavel === false;
     if (opts.previsao || temConfiavel) {
@@ -473,6 +487,7 @@ export default function ModalAjustePrevisao({
   /** Executa a gravação respeitando a decisão acumulada. */
   const runSave = async (decision: PendingDecision) => {
     if (!pedido) return;
+    if (decision.data.previsao_confiavel === false && recusarNaoConfiavelSeDisponivel()) return;
     setLoading(true);
     try {
       const replicateCarrada = decision.replicateCarrada === true;
@@ -1137,7 +1152,22 @@ export default function ModalAjustePrevisao({
             </label>
             <TogglePrevisaoConfiavel
               value={previsaoConfiavel}
-              onChange={setPrevisaoConfiavel}
+              onChange={(valor) => {
+                if (valor === false && algumItemDisponivel) {
+                  recusarNaoConfiavelSeDisponivel();
+                  setPrevisaoConfiavel(null);
+                  return;
+                }
+                setErrors((prev) => {
+                  if (!prev.previsao_confiavel?.startsWith('Não é possível gravar a previsão como não confiável')) {
+                    return prev;
+                  }
+                  const next = { ...prev };
+                  delete next.previsao_confiavel;
+                  return next;
+                });
+                setPrevisaoConfiavel(valor);
+              }}
               showHelp={false}
             />
             {errors.previsao_confiavel && (

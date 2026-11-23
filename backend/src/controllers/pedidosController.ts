@@ -54,6 +54,7 @@ import { getPermissoesUsuario } from '../middleware/requirePermission.js';
 import {
   resolverAnexoAssinaturaObrigatorio,
 } from '../services/previsaoAssinaturaService.js';
+import { mensagemSeNaoPodeGravarNaoConfiavel } from '../services/sycroOrderDisponivelConfiavel.js';
 
 function normalizeRotaName(dm: string): string {
   return String(dm ?? '')
@@ -655,6 +656,15 @@ export async function ajustarPrevisao(req: Request, res: Response): Promise<void
       }
     }
 
+    const idsNaoConfiavel = ajustes
+      .filter((a) => a.previsao_confiavel === false)
+      .map((a) => a.id_pedido);
+    const bloqueioDisponivel = await mensagemSeNaoPodeGravarNaoConfiavel(idsNaoConfiavel);
+    if (bloqueioDisponivel) {
+      res.status(400).json({ error: bloqueioDisponivel });
+      return;
+    }
+
     const resultado = await registrarAjustesPrevisaoLote(ajustes, usuario);
     if (resultado.erros.length > 0) {
       res.status(503).json({
@@ -925,6 +935,15 @@ export async function ajustarPrevisaoLote(req: Request, res: Response): Promise<
       anexoAssinatura: anexoParaLinha,
     };
   });
+  const idsNaoConfiavelLote = ajustes
+    .filter((a) => a.previsao_confiavel === false)
+    .map((a) => a.id_pedido);
+  const bloqueioDisponivelLote = await mensagemSeNaoPodeGravarNaoConfiavel(idsNaoConfiavelLote);
+  if (bloqueioDisponivelLote) {
+    res.status(400).json({ error: bloqueioDisponivelLote });
+    return;
+  }
+
   const resultados = await registrarAjustesPrevisaoLote(ajustes, usuario);
   invalidatePedidosCache();
   setLastUpload();

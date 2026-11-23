@@ -23,6 +23,7 @@ import {
 } from './simulacaoCarradas';
 import { useRegisterModalEscape } from '../../contexts/ModalStackContext';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
+import { mensagemBloqueioNaoConfiavel } from '../../utils/disponivelVsConfiavel';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import GradeFiltroCabecalhoBtn from '../grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../grade/GradeFiltroExcelPortal';
@@ -1106,6 +1107,17 @@ export default function ConfirmacaoSimulacaoModal({
 
   const selecionarConfiavel = useCallback(
     (ids: string[], confiavel: PrevisaoConfiavelTri) => {
+      if (confiavel === false) {
+        const pds = new Set<string>();
+        for (const id of ids) {
+          const linha = linhasRaw.find((l) => l.idPedido === id && l.card === 'Disponível');
+          if (linha?.pedido) pds.add(linha.pedido);
+        }
+        if (pds.size > 0) {
+          setValidacao(mensagemBloqueioNaoConfiavel([...pds]));
+          return;
+        }
+      }
       onPrevisaoConfiavelPorIdChange((prev) => {
         const next = { ...prev };
         for (const id of ids) {
@@ -1115,7 +1127,7 @@ export default function ConfirmacaoSimulacaoModal({
         return next;
       });
     },
-    [onPrevisaoConfiavelPorIdChange]
+    [linhasRaw, onPrevisaoConfiavelPorIdChange]
   );
 
   const pendentesMotivoIds = useMemo(() => {

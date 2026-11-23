@@ -25,6 +25,8 @@ export interface SycroOrderOrder {
   }>;
   /** TAG de disponibilidade (Comunicação PD) */
   tag_disponivel?: boolean;
+  /** Algum item do card está com previsão provisória (não confiável). */
+  previsao_nao_confiavel?: boolean;
   /** Data (YYYY-MM-DD) da última marcação como disponível no histórico; só quando tag_disponivel. */
   disponivel_desde?: string | null;
   /** Último comentário pede retorno de outro participante. */

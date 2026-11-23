@@ -38,6 +38,10 @@ import {
 } from '../../utils/sycroOrderComercial';
 import { LABEL_CARRADA_EM_FORMACAO, isCarradaEmFormacao } from '../../utils/rotaCarrada';
 import {
+  MSG_BLOQUEIO_MARCAR_DISPONIVEL,
+  mensagemBloqueioNaoConfiavel,
+} from '../../utils/disponivelVsConfiavel';
+import {
   canalPermitidoPedido,
   mensagemCanalDatasPedido,
   validarDatasReprogramacao,
@@ -512,6 +516,11 @@ export default function SycroOrderPage() {
 
   const acionarTagDisponivel = useCallback(
     async (order: Order, available: boolean) => {
+      if (available && order.previsao_nao_confiavel) {
+        setToast(MSG_BLOQUEIO_MARCAR_DISPONIVEL);
+        setTimeout(() => setToast(null), 8000);
+        return;
+      }
       setTagLoadingOrderId(order.id);
       try {
         await setSycroOrderTagDisponivel(order.id, available);
@@ -520,7 +529,7 @@ export default function SycroOrderPage() {
         await carregar();
       } catch (err) {
         setToast(err instanceof Error ? err.message : 'Erro ao atualizar a TAG de disponibilidade.');
-        setTimeout(() => setToast(null), 5000);
+        setTimeout(() => setToast(null), 8000);
       } finally {
         setTagLoadingOrderId(null);
       }
@@ -2226,6 +2235,13 @@ function ModalAtualizarPedido({
       return;
     }
 
+    const ficaraDisponivel =
+      tagDisponivelToSet === true || (tagDisponivelToSet == null && !!order.tag_disponivel);
+    if (dataAlterada && previsaoConfiavel === false && ficaraDisponivel) {
+      setErro(mensagemBloqueioNaoConfiavel([order.order_number]));
+      return;
+    }
+
     if (dataAlterada && exigeAnexo && !anexoAssinatura) {
       setErro('Anexe o PDF assinado da justificativa não abonada.');
       return;
@@ -2562,7 +2578,20 @@ function ModalAtualizarPedido({
                       </label>
                       <TogglePrevisaoConfiavel
                         value={previsaoConfiavel}
-                        onChange={setPrevisaoConfiavel}
+                        onChange={(valor) => {
+                          const ficaraDisponivel =
+                            tagDisponivelToSet === true ||
+                            (tagDisponivelToSet == null && !!order.tag_disponivel);
+                          if (valor === false && ficaraDisponivel) {
+                            setPrevisaoConfiavel(null);
+                            setErro(mensagemBloqueioNaoConfiavel([order.order_number]));
+                            return;
+                          }
+                          if (erro?.startsWith('Não é possível gravar a previsão como não confiável')) {
+                            setErro(null);
+                          }
+                          setPrevisaoConfiavel(valor);
+                        }}
                       />
                     </div>
                     <div>

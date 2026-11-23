@@ -64,6 +64,7 @@ import {
   idPedidoDeSimItemKey,
   linhaCodCarrada,
   linhaCarradaKey,
+  isPedidoDisponivel,
   isRomaneioComoFormacaoLinha,
   type SimEntry,
 } from '../../components/sequenciamento-carradas/simulacaoCarradas';
@@ -88,6 +89,7 @@ import { ComoLerBtn } from '../../components/AjudaTelaModal';
 import SequenciamentoCarradasAjudaModal from './SequenciamentoCarradasAjudaModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { podeCriarSequenciamentoCarradas } from '../../utils/sequenciamentoCarradasPermissoes';
+import { mensagemBloqueioNaoConfiavel } from '../../utils/disponivelVsConfiavel';
 
 const BTN_PRIMARY =
   'inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -442,10 +444,19 @@ export default function SequenciamentoCarradasPage() {
   const editarConfiabilidadeCarrada = useCallback(
     (key: string, confiavel: PrevisaoConfiavelTri) => {
       const idsPedido = new Set<string>();
+      const pdsDisponiveis = new Set<string>();
       for (const row of linhasSnapshot) {
         if (linhaCarradaKey(row) !== key) continue;
         const id = String(row.id_pedido ?? row.idChave ?? '').trim();
         if (id) idsPedido.add(id);
+        if (confiavel === false && isPedidoDisponivel(row)) {
+          const pd = String(row.PD ?? row.pd ?? '').trim();
+          if (pd) pdsDisponiveis.add(pd);
+        }
+      }
+      if (pdsDisponiveis.size > 0) {
+        setFeedbackGravacao(mensagemBloqueioNaoConfiavel([...pdsDisponiveis]));
+        return;
       }
       if (idsPedido.size === 0) return;
       setPrevisaoConfiavelPorId((prev) => {
@@ -736,6 +747,20 @@ export default function SequenciamentoCarradasPage() {
    */
   const salvarConfiabilidadeDetalhe = useCallback(
     async (alteracoes: Record<string, PrevisaoConfiavelTri>) => {
+      const pdsDisponiveis = new Set<string>();
+      for (const [id, valor] of Object.entries(alteracoes)) {
+        if (valor !== false) continue;
+        for (const row of linhasSnapshot) {
+          const rowId = String(row.id_pedido ?? row.idChave ?? '').trim();
+          if (rowId !== id || !isPedidoDisponivel(row)) continue;
+          const pd = String(row.PD ?? row.pd ?? '').trim();
+          if (pd) pdsDisponiveis.add(pd);
+        }
+      }
+      if (pdsDisponiveis.size > 0) {
+        setFeedbackGravacao(mensagemBloqueioNaoConfiavel([...pdsDisponiveis]));
+        return;
+      }
       let mapaApos: Record<string, boolean | null> = {};
       setPrevisaoConfiavelPorId((prev) => {
         const next = { ...prev };
@@ -773,7 +798,7 @@ export default function SequenciamentoCarradasPage() {
       setAutosaveStatus(r.ok ? 'saved' : 'error');
       if (!r.ok) throw new Error('Não foi possível salvar o rascunho. Tente novamente.');
     },
-    [snapshotVisualizado?.id, editavel]
+    [snapshotVisualizado?.id, editavel, linhasSnapshot]
   );
 
   const fecharVisualizacao = useCallback(async () => {
@@ -1426,6 +1451,17 @@ export default function SequenciamentoCarradasPage() {
       setSalvandoConfirmacao(true);
       setErroConfirmacao(null);
       try {
+        const pdsNaoConfiavelDisponivel = new Set<string>();
+        for (const row of linhasSnapshot) {
+          const id = String(row.id_pedido ?? row.idChave ?? '').trim();
+          if (!id || previsaoConfiavelPorId[id] !== false || !isPedidoDisponivel(row)) continue;
+          const pd = String(row.PD ?? row.pd ?? '').trim();
+          if (pd) pdsNaoConfiavelDisponivel.add(pd);
+        }
+        if (pdsNaoConfiavelDisponivel.size > 0) {
+          setErroConfirmacao(mensagemBloqueioNaoConfiavel([...pdsNaoConfiavelDisponivel]));
+          return;
+        }
         if (excessosQtdeRomaneada.length > 0) {
           const resumo = excessosQtdeRomaneada
             .slice(0, 5)

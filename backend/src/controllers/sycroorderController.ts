@@ -28,6 +28,13 @@ import {
 import { validarDatasReprogramacao } from '../utils/validarDatasReprogramacao.js';
 import { dispararWhatsAppTagDisponivel } from '../services/sycroOrderTagDisponivelWhatsApp.js';
 import {
+  MSG_BLOQUEIO_MARCAR_DISPONIVEL,
+  cardTemPrevisaoNaoConfiavel,
+  cardTemPrevisaoNaoConfiavelNasLinhas,
+  mensagemBloqueioNaoConfiavel,
+  mensagemSeNaoPodeGravarNaoConfiavel,
+} from '../services/sycroOrderDisponivelConfiavel.js';
+import {
   chavePedidoItem,
   gerenciadorRowMatchesOrderNumber,
   parseJsonArray,
@@ -655,6 +662,19 @@ export async function getOrders(req: Request, res: Response): Promise<void> {
         vendedor_name: vendedorNome,
         carradas_info: carradasInfo,
         tag_disponivel: !!o.tag_disponivel,
+        previsao_nao_confiavel: (() => {
+          const linhasConfiavel =
+            relevantRows.length > 0
+              ? relevantRows
+              : gerenciadorList && pd
+                ? resolveRelevantRowsForCard(
+                    gerenciadorList.filter((r) => gerenciadorRowMatchesOrderNumber(r, pd)),
+                    selectedItemIds,
+                    itemCodesJson
+                  )
+                : [];
+          return cardTemPrevisaoNaoConfiavelNasLinhas(linhasConfiavel, null, null);
+        })(),
         /** Data da marcação mais recente como disponível (histórico TAG_DISPONIVEL_TRUE). */
         disponivel_desde: Number(o.tag_disponivel) === 1 ? (disponivelDesdeByOrderId.get(o.id) ?? null) : null,
         aguarda_resposta_pendente: isFinished
@@ -1172,6 +1192,68 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     };
     if (tagDesejado !== undefined) updateData.tag_disponivel = tagDesejado ? 1 : 0;
 
+    const ficaraDisponivel =
+      tagDesejado === true || (tagDesejado !== false && Number(order.tag_disponivel) === 1);
+    const gravandoNaoConfiavel = dataPrometidaRealmenteAlterada && previsao_confiavel === false;
+    const gravandoConfiavelExplicito = dataPrometidaRealmenteAlterada && previsao_confiavel === true;
+    try {
+      if (tagDesejado === true && !gravandoConfiavelExplicito) {
+        const naoConfiavel = await cardTemPrevisaoNaoConfiavel({
+          order_number: String(order.order_number ?? ''),
+          item_ids_json: (order as { item_ids_json?: string | null }).item_ids_json,
+          item_codes_json: (order as { item_codes_json?: string | null }).item_codes_json,
+        });
+        if (naoConfiavel) {
+          res.status(400).json({ error: MSG_BLOQUEIO_MARCAR_DISPONIVEL });
+          return;
+        }
+      }
+      if (gravandoNaoConfiavel && ficaraDisponivel) {
+        res.status(400).json({
+          error: mensagemBloqueioNaoConfiavel([String(order.order_number ?? '').trim()]),
+        });
+        return;
+      }
+      if (gravandoNaoConfiavel) {
+        const { data: listaPedidos } = await listarPedidos({});
+        const rowsLista = (listaPedidos ?? []) as Array<Record<string, unknown>>;
+        const orderNumber = String(order.order_number ?? '').trim();
+        const rowsDoPd = rowsLista.filter((row) => gerenciadorRowMatchesOrderNumber(row, orderNumber));
+        const itemIdsJson = (order as { item_ids_json?: string | null }).item_ids_json;
+        const itemCodesJson = (order as { item_codes_json?: string | null }).item_codes_json;
+        let idsChecar: string[] = [];
+        if (replicateCarradaRequested) {
+          const cardRows = resolveRelevantRowsForCard(rowsDoPd, parseJsonArray(itemIdsJson), itemCodesJson);
+          const rotaAlvo =
+            (cardRows.length > 0 ? rotaTextFromGerenciadorRow(cardRows[0]!) : '') ||
+            String(order.delivery_method ?? '').trim();
+          idsChecar = rowsLista
+            .filter((row) => rotaTextFromGerenciadorRow(row) === rotaAlvo)
+            .map((row) => rowItemIdKey(row))
+            .filter(Boolean);
+        } else if (Array.isArray(id_pedidos) && id_pedidos.length > 0) {
+          idsChecar = id_pedidos.map((x) => String(x ?? '').trim()).filter(Boolean);
+        } else {
+          const resolved = resolveRelevantRowsForCard(rowsDoPd, parseJsonArray(itemIdsJson), itemCodesJson);
+          const base = resolved.length > 0 ? resolved : rowsDoPd;
+          idsChecar = base.map((row) => rowItemIdKey(row)).filter(Boolean);
+        }
+        const msg = await mensagemSeNaoPodeGravarNaoConfiavel(idsChecar, {
+          ignorarOrderNumber: tagDesejado === false ? String(order.order_number ?? '') : null,
+        });
+        if (msg) {
+          res.status(400).json({ error: msg });
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('sycroorder updateOrder trava disponível/confiável', err);
+      res.status(503).json({
+        error: 'Não foi possível conferir disponível e previsão confiável. Tente novamente.',
+      });
+      return;
+    }
+
     const dateChanged =
       newDateProvided &&
       (String(nextDate ?? '').trim() !== String(prevDate ?? '').trim() || dataPrometidaRealmenteAlterada);
@@ -1507,6 +1589,26 @@ export async function setOrderTagDisponivel(req: Request, res: Response): Promis
     if (Number(order.tag_disponivel) === desiredInt) {
       res.json({ success: true, tag_disponivel: available });
       return;
+    }
+
+    if (available) {
+      try {
+        const naoConfiavel = await cardTemPrevisaoNaoConfiavel({
+          order_number: String(order.order_number ?? ''),
+          item_ids_json: order.item_ids_json,
+          item_codes_json: order.item_codes_json,
+        });
+        if (naoConfiavel) {
+          res.status(400).json({ error: MSG_BLOQUEIO_MARCAR_DISPONIVEL });
+          return;
+        }
+      } catch (err) {
+        console.error('sycroorder setOrderTagDisponivel trava confiável', err);
+        res.status(503).json({
+          error: 'Não foi possível conferir a previsão do pedido. Tente novamente.',
+        });
+        return;
+      }
     }
 
     await prisma.sycroOrderOrder.update({

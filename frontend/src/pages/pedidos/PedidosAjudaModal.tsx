@@ -107,7 +107,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Sinais vindos da Comunicação Interna (Comunicação PD / Sycro), refletidos na coluna Status do Gerenciador.',
     comoLe:
-      '“Card” e “Disponível” mostram o andamento do diálogo com o cliente/comercial sobre aquele pedido — são independentes do prazo (Atrasado/No prazo) e do Faturado.',
+      '“Card” e “Disponível” mostram o andamento do diálogo com o cliente/comercial sobre aquele pedido — são independentes do prazo (Atrasado/No prazo) e do Faturado. Disponível e previsão não confiável não coexistem: para marcar Disponível a previsão precisa estar confiável; para gravar Não confiável, desmarque a tag Disponível na Comunicação PD.',
   },
   {
     id: 'ajuste',
@@ -120,7 +120,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão provisória (não confiável)',
         texto:
-          'No toggle “Previsão confiável”, escolha Sim ou Não (o controle sempre abre no meio). Não = data provisória na grade — use para datas ainda em negociação. A alteração entra no histórico do card da Comunicação Interna nos dois casos e, quando for Não, fica marcada como provisória. Sem ajuste real, a coluna Pedido fica em branco (sem selo Confiável/Não confiável). Em Mais filtros, todos os campos são de múltipla escolha: vendedor, status, método de entrega, previsão confiável, tipo de pedido, grupo/subgrupos, requisição, empresa da venda, TipoF e entrada/a vista até 10 dias.',
+          'No toggle “Previsão confiável”, escolha Sim ou Não (o controle sempre abre no meio). Não = data provisória na grade — use para datas ainda em negociação. A alteração entra no histórico do card da Comunicação Interna nos dois casos e, quando for Não, fica marcada como provisória. Se a linha estiver Disponível, o sistema recusa Não e pede para desmarcar a tag na Comunicação PD. Sem ajuste real, a coluna Pedido fica em branco (sem selo Confiável/Não confiável). Em Mais filtros, todos os campos são de múltipla escolha: vendedor, status, método de entrega, previsão confiável, tipo de pedido, grupo/subgrupos, requisição, empresa da venda, TipoF e entrada/a vista até 10 dias.',
       },
       {
         titulo: 'Justificativa (PDF)',
