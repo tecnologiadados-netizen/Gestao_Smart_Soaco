@@ -14,6 +14,7 @@ import {
   buildSqlDocPedidoItens,
   rotuloStatusNomusItemPedidoCompra,
   ordenarPedidosDataEntrega,
+  pedidoForaDaJanelaAlerta,
   montarItensPedido,
   montarItensPreEntrada,
   montarLinhasPipeline,
@@ -245,6 +246,14 @@ describe('datas de entrega a atualizar', () => {
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(SQL_IPC_ELEGIVEL_DATAS_ENTREGA);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain(`INTERVAL ${DATA_ENTREGA_DIAS_ALERTA} DAY`);
     expect(SQL_IPC_DATA_ENTREGA_A_ATUALIZAR).toContain('ipc.dataEntrega IS NULL');
+  });
+
+  it('fora da janela: sem data ou até 7 dias não contam; só prazo acima do alerta', () => {
+    expect(pedidoForaDaJanelaAlerta({ semData: 1, menorDias: null })).toBe(false);
+    expect(pedidoForaDaJanelaAlerta({ semData: 0, menorDias: 7 })).toBe(false);
+    expect(pedidoForaDaJanelaAlerta({ semData: 0, menorDias: 8 })).toBe(true);
+    expect(pedidoForaDaJanelaAlerta({ semData: 0, menorDias: 25 })).toBe(true);
+    expect(pedidoForaDaJanelaAlerta({ semData: 0, menorDias: -1 })).toBe(false);
   });
 
   it('no modal da aba, exclui itens fora dos status aceitos', () => {

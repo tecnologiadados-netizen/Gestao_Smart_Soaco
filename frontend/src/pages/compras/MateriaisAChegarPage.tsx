@@ -173,6 +173,8 @@ export default function MateriaisAChegarPage() {
   const [pedidosData, setPedidosData] = useState<PedidoDataEntregaAtualizar[]>([]);
   const [carregandoDatas, setCarregandoDatas] = useState(podeVerDatas);
   const [erroDatas, setErroDatas] = useState<string | null>(null);
+  /** Incrementa após alteração de data: limpa pins forçados na aba de datas. */
+  const [recargaDatasToken, setRecargaDatasToken] = useState(0);
   const [linhas, setLinhas] = useState<LinhaAcompanhamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -438,12 +440,14 @@ export default function MateriaisAChegarPage() {
           pedidos={pedidosData}
           carregando={carregandoDatas}
           erro={erroDatas}
-          onAbrirPedido={(p) =>
+          recargaDatasToken={recargaDatasToken}
+          onAbrirPedido={(p, forcarAtualizacao) =>
             abrirDocumento({
               tipo: 'pedido',
               id: p.idPedido,
               numero: p.pedido,
               escopo: 'datas_entrega',
+              forcarAtualizacao: forcarAtualizacao === true || p.foraDaJanela === true,
             })
           }
         />
@@ -745,7 +749,10 @@ export default function MateriaisAChegarPage() {
         onAbrirDocumento={abrirDocumento}
         onVerNaGrade={verNaGrade}
         onFiltrarGrade={filtrarGradePorDocumento}
-        onDataEntregaAlterada={() => void carregarDatas()}
+        onDataEntregaAlterada={() => {
+          setRecargaDatasToken((n) => n + 1);
+          void carregarDatas();
+        }}
         onClose={() => setPilhaDocumentos([])}
       />
     </div>

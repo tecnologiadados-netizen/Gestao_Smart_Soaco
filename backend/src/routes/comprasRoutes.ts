@@ -46,6 +46,8 @@ import {
 } from '../controllers/doubleCheckInController.js';
 import {
   getDatasEntregaAtualizar,
+  getDatasEntregaForaJanelaBusca,
+  postDatasEntregaForcar,
   getDetalheAcompanhamento,
   getDocumentoAcompanhamento,
   getPipelineAcompanhamento,
@@ -80,6 +82,16 @@ router.get(
   '/materiais-a-chegar/datas-entrega',
   requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER),
   async503(getDatasEntregaAtualizar)
+);
+router.get(
+  '/materiais-a-chegar/datas-entrega/busca-fora-janela',
+  requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER),
+  async503(getDatasEntregaForaJanelaBusca)
+);
+router.post(
+  '/materiais-a-chegar/datas-entrega/forcar',
+  requirePermission(PERMISSOES.COMPRAS_MATERIAIS_CHEGAR_DATAS_VER),
+  async503(postDatasEntregaForcar)
 );
 router.patch(
   '/materiais-a-chegar/data-entrega/item/:idItemPedidoCompra',

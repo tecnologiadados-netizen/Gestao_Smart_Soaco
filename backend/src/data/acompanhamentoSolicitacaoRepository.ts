@@ -16,6 +16,7 @@ import {
   nomusQueryWithRetry,
   resetNomusPool,
 } from '../config/nomusDb.js';
+import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 import { PCP_ID_EMPRESA_SO_ACO, STATUS_COTACAO_AGPAG_SQL } from './sql/sqlComprasEstoqueFragments.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
 
@@ -358,6 +359,108 @@ LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
 GROUP BY a.idPedido
 `.trim();
 
+/**
+ * Elegíveis (Liberado/parcial ou atendido+pré-entrada) sem filtro de janela.
+ * Usado na busca forçada: só pedidos cuja entrega está toda além do alerta.
+ */
+const SQL_DATAS_ENTREGA_FORA_JANELA_BUSCA = `
+SELECT
+  a.idPedido AS idPedido,
+  MAX(pc.nome) AS pedido,
+  MAX(forn.nome) AS fornecedor,
+  MAX(DATE_FORMAT(CAST(pc.dataEmissao AS DATE), '%d/%m/%Y')) AS dataEmissao,
+  COUNT(*) AS itens,
+  SUM(CASE WHEN a.situacao = 'liberado' THEN 1 ELSE 0 END) AS liberados,
+  SUM(CASE WHEN a.situacao = 'parcial' THEN 1 ELSE 0 END) AS parciais,
+  SUM(CASE WHEN a.situacao = 'pre_entrada' THEN 1 ELSE 0 END) AS preEntradas,
+  SUM(CASE WHEN a.dataEntrega IS NULL THEN 1 ELSE 0 END) AS semData,
+  MIN(DATEDIFF(a.dataEntrega, CURDATE())) AS menorDias,
+  DATE_FORMAT(MIN(a.dataEntrega), '%d/%m/%Y') AS menorDataEntrega
+FROM (
+  SELECT
+    ipc.id AS idItem,
+    ipc.idPedidoCompra AS idPedido,
+    CAST(ipc.dataEntrega AS DATE) AS dataEntrega,
+    CASE WHEN ipc.status = 2 THEN 'liberado' ELSE 'parcial' END AS situacao
+  FROM itempedidocompra ipc
+  INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+  LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
+  WHERE ${SQL_IPC_LIBERADO_OU_PARCIAL}
+    AND (pc.nome LIKE ? OR IFNULL(forn.nome, '') LIKE ?)
+  UNION ALL
+  SELECT DISTINCT
+    ipc.id AS idItem,
+    ipc.idPedidoCompra AS idPedido,
+    CAST(ipc.dataEntrega AS DATE) AS dataEntrega,
+    'pre_entrada' AS situacao
+  FROM documentoestoque de
+  INNER JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
+  INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+  INNER JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+  INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+  LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
+  WHERE ${SQL_DOC_PRE_ENTRADA}
+    AND ROUND(ide.qtde, 2) > 0
+    AND ${SQL_IPC_ATENDIDO}
+    AND (pc.nome LIKE ? OR IFNULL(forn.nome, '') LIKE ?)
+) a
+INNER JOIN pedidocompra pc ON pc.id = a.idPedido
+LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
+GROUP BY a.idPedido
+HAVING SUM(
+  CASE
+    WHEN a.dataEntrega IS NULL
+      OR a.dataEntrega <= DATE_ADD(CURDATE(), INTERVAL ${DATA_ENTREGA_DIAS_ALERTA} DAY)
+    THEN 1
+    ELSE 0
+  END
+) = 0
+ORDER BY menorDias ASC, pedido ASC
+LIMIT 40
+`.trim();
+
+/** Agrega elegíveis de um pedido (sem janela), para pin forçado. */
+const SQL_DATAS_ENTREGA_PEDIDO_ELEGIVEIS = `
+SELECT
+  a.idPedido AS idPedido,
+  MAX(pc.nome) AS pedido,
+  MAX(forn.nome) AS fornecedor,
+  MAX(DATE_FORMAT(CAST(pc.dataEmissao AS DATE), '%d/%m/%Y')) AS dataEmissao,
+  COUNT(*) AS itens,
+  SUM(CASE WHEN a.situacao = 'liberado' THEN 1 ELSE 0 END) AS liberados,
+  SUM(CASE WHEN a.situacao = 'parcial' THEN 1 ELSE 0 END) AS parciais,
+  SUM(CASE WHEN a.situacao = 'pre_entrada' THEN 1 ELSE 0 END) AS preEntradas,
+  SUM(CASE WHEN a.dataEntrega IS NULL THEN 1 ELSE 0 END) AS semData,
+  MIN(DATEDIFF(a.dataEntrega, CURDATE())) AS menorDias,
+  DATE_FORMAT(MIN(a.dataEntrega), '%d/%m/%Y') AS menorDataEntrega
+FROM (
+  SELECT
+    ipc.id AS idItem,
+    ipc.idPedidoCompra AS idPedido,
+    CAST(ipc.dataEntrega AS DATE) AS dataEntrega,
+    CASE WHEN ipc.status = 2 THEN 'liberado' ELSE 'parcial' END AS situacao
+  FROM itempedidocompra ipc
+  WHERE ipc.idPedidoCompra = ?
+    AND ${SQL_IPC_LIBERADO_OU_PARCIAL}
+  UNION ALL
+  SELECT DISTINCT
+    ipc.id AS idItem,
+    ipc.idPedidoCompra AS idPedido,
+    CAST(ipc.dataEntrega AS DATE) AS dataEntrega,
+    'pre_entrada' AS situacao
+  FROM documentoestoque de
+  INNER JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
+  INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+  INNER JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+  WHERE ipc.idPedidoCompra = ?
+    AND ${SQL_DOC_PRE_ENTRADA}
+    AND ROUND(ide.qtde, 2) > 0
+    AND ${SQL_IPC_ATENDIDO}
+) a
+INNER JOIN pedidocompra pc ON pc.id = a.idPedido
+LEFT JOIN pessoa forn ON forn.id = pc.idFornecedor
+GROUP BY a.idPedido
+`.trim();
 const SQL_DOC_PEDIDO_CABECALHO = `
 SELECT
   pc.id AS id,
@@ -634,6 +737,11 @@ export type PedidoDataEntregaAtualizar = {
   menorDias: number | null;
   /** Data de entrega mais antiga entre os itens com data (dd/mm/aaaa). */
   menorDataEntrega: string | null;
+  /**
+   * Pedido elegível cujo prazo está além da janela de alerta (não entra na lista normal).
+   * Só vem na busca forçada / pin pontual.
+   */
+  foraDaJanela?: boolean;
 };
 
 export type DocumentoAcompanhamento = {
@@ -1330,6 +1438,35 @@ export function ordenarPedidosDataEntrega(lista: PedidoDataEntregaAtualizar[]): 
   });
 }
 
+function mapPedidoDataEntregaRow(
+  r: Record<string, unknown>,
+  extras?: Partial<PedidoDataEntregaAtualizar>
+): PedidoDataEntregaAtualizar | null {
+  const idPedido = toInt(r.idPedido);
+  const itens = toInt(r.itens);
+  if (idPedido <= 0 || itens <= 0) return null;
+  return {
+    idPedido,
+    pedido: strOrNull(r.pedido) ?? String(idPedido),
+    fornecedor: strOrNull(r.fornecedor),
+    dataEmissao: strOrNull(r.dataEmissao),
+    itens,
+    liberados: toInt(r.liberados),
+    parciais: toInt(r.parciais),
+    preEntradas: toInt(r.preEntradas),
+    semData: toInt(r.semData),
+    menorDias: intOrNull(r.menorDias),
+    menorDataEntrega: strOrNull(r.menorDataEntrega),
+    ...extras,
+  };
+}
+
+/** Pedido elegível com entrega além da janela de alerta (não entra na lista normal). */
+export function pedidoForaDaJanelaAlerta(p: Pick<PedidoDataEntregaAtualizar, 'semData' | 'menorDias'>): boolean {
+  if (p.semData > 0) return false;
+  return p.menorDias != null && p.menorDias > DATA_ENTREGA_DIAS_ALERTA;
+}
+
 export async function listarDatasEntregaAtualizar(): Promise<{
   pedidos: PedidoDataEntregaAtualizar[];
   erro?: string;
@@ -1339,26 +1476,70 @@ export async function listarDatasEntregaAtualizar(): Promise<{
   try {
     const rows = await queryAgg(SQL_DATAS_ENTREGA_PEDIDOS);
     const pedidos = rows
-      .map((r) => ({
-        idPedido: toInt(r.idPedido),
-        pedido: strOrNull(r.pedido) ?? String(toInt(r.idPedido)),
-        fornecedor: strOrNull(r.fornecedor),
-        dataEmissao: strOrNull(r.dataEmissao),
-        itens: toInt(r.itens),
-        liberados: toInt(r.liberados),
-        parciais: toInt(r.parciais),
-        preEntradas: toInt(r.preEntradas),
-        semData: toInt(r.semData),
-        menorDias: intOrNull(r.menorDias),
-        menorDataEntrega: strOrNull(r.menorDataEntrega),
-      }))
-      .filter((p) => p.idPedido > 0 && p.itens > 0);
+      .map((r) => mapPedidoDataEntregaRow(r))
+      .filter((p): p is PedidoDataEntregaAtualizar => p != null);
     return { pedidos: ordenarPedidosDataEntrega(pedidos) };
   } catch (err) {
     return { pedidos: [], erro: formatNomusErroConexao(err) };
   }
 }
 
+/**
+ * Busca pedidos elegíveis cuja data de entrega está além da janela (não saem na lista normal).
+ * Termo vazio ou curto demais → lista vazia (evita varrer o Nomus).
+ */
+export async function buscarDatasEntregaForaJanela(termo: string): Promise<{
+  pedidos: PedidoDataEntregaAtualizar[];
+  erro?: string;
+}> {
+  const q = termo.trim();
+  if (q.length < 2) return { pedidos: [] };
+  const off = exigirNomus();
+  if (off) return { pedidos: [], erro: off };
+  try {
+    const like = termoParaPadraoLikeSql(q);
+    const rows = await queryPorParams(SQL_DATAS_ENTREGA_FORA_JANELA_BUSCA, [like, like, like, like]);
+    const pedidos = rows
+      .map((r) => mapPedidoDataEntregaRow(r, { foraDaJanela: true }))
+      .filter((p): p is PedidoDataEntregaAtualizar => p != null && pedidoForaDaJanelaAlerta(p));
+    return { pedidos };
+  } catch (err) {
+    return { pedidos: [], erro: formatNomusErroConexao(err) };
+  }
+}
+
+/** Lê o pedido elegível atual no Nomus (para pin forçado). */
+export async function obterPedidoDataEntregaElegivel(idPedido: number): Promise<{
+  pedido: PedidoDataEntregaAtualizar | null;
+  erro?: string;
+  naoEncontrado?: boolean;
+}> {
+  if (!Number.isFinite(idPedido) || idPedido <= 0) {
+    return { pedido: null, erro: 'Pedido inválido.' };
+  }
+  const off = exigirNomus();
+  if (off) return { pedido: null, erro: off };
+  try {
+    const rows = await queryPorParams(SQL_DATAS_ENTREGA_PEDIDO_ELEGIVEIS, [idPedido, idPedido]);
+    const pedido = rows[0] ? mapPedidoDataEntregaRow(rows[0]) : null;
+    if (!pedido) return { pedido: null, naoEncontrado: true, erro: 'Pedido sem itens elegíveis para atualizar a data.' };
+    return {
+      pedido: {
+        ...pedido,
+        foraDaJanela: pedidoForaDaJanelaAlerta(pedido),
+      },
+    };
+  } catch (err) {
+    return { pedido: null, erro: formatNomusErroConexao(err) };
+  }
+}
+
+async function queryPorParams(sql: string, params: unknown[]): Promise<Record<string, unknown>[]> {
+  const pool = getNomusPool();
+  if (!pool) throw new Error('NOMUS_DB_URL não configurado');
+  const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql, params);
+  return Array.isArray(rows) ? rows : [];
+}
 async function queryPorId(sql: string, id: number): Promise<Record<string, unknown>[]> {
   const pool = getNomusPool();
   if (!pool) throw new Error('NOMUS_DB_URL não configurado');

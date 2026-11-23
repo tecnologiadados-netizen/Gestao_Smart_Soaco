@@ -1,9 +1,12 @@
 import type { Request, Response } from 'express';
+import { prisma } from '../config/prisma.js';
 import {
+  buscarDatasEntregaForaJanela,
   listarDatasEntregaAtualizar,
   listarDetalheAcompanhamento,
   listarPipelineAcompanhamento,
   obterDocumentoAcompanhamento,
+  obterPedidoDataEntregaElegivel,
   type EtapaAcompanhamento,
   type TipoDocumentoAcompanhamento,
 } from '../data/acompanhamentoSolicitacaoRepository.js';
@@ -42,6 +45,60 @@ export async function getDatasEntregaAtualizar(_req: Request, res: Response): Pr
     return;
   }
   res.json({ pedidos: r.pedidos });
+}
+
+/** GET ?q= — pedidos elegíveis fora da janela de 7 dias (busca forçada). */
+export async function getDatasEntregaForaJanelaBusca(req: Request, res: Response): Promise<void> {
+  const q = String(req.query.q ?? '');
+  const r = await buscarDatasEntregaForaJanela(q);
+  if (r.erro) {
+    res.status(503).json({ error: r.erro });
+    return;
+  }
+  res.json({ pedidos: r.pedidos });
+}
+
+/**
+ * POST { idPedido } — registra o pin forçado no histórico e devolve o pedido
+ * para exibição pontual na tabela (fora da janela de alerta).
+ */
+export async function postDatasEntregaForcar(req: Request, res: Response): Promise<void> {
+  const idPedido = Number((req.body as { idPedido?: unknown } | undefined)?.idPedido);
+  const r = await obterPedidoDataEntregaElegivel(idPedido);
+  if (!r.pedido) {
+    res.status(r.naoEncontrado ? 404 : r.erro === 'Pedido inválido.' ? 400 : 503).json({
+      error: r.erro ?? 'Pedido não encontrado.',
+    });
+    return;
+  }
+  if (!r.pedido.foraDaJanela) {
+    res.status(400).json({
+      error:
+        'Este pedido já entra no recorte normal (atrasado, sem data ou vencendo em até 7 dias). Use a lista principal.',
+    });
+    return;
+  }
+
+  const usuarioLogin = req.user?.login ?? 'anon';
+  try {
+    await prisma.materiaisAChegarDataEntregaForcada.create({
+      data: {
+        idPedidoCompra: r.pedido.idPedido,
+        pedido: r.pedido.pedido,
+        fornecedor: r.pedido.fornecedor,
+        menorDataEntrega: r.pedido.menorDataEntrega,
+        menorDias: r.pedido.menorDias,
+        usuarioLogin,
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[acompanhamentoSolicitacao] postDatasEntregaForcar histórico:', msg);
+    res.status(503).json({ error: 'Não foi possível registrar o histórico do pin forçado.' });
+    return;
+  }
+
+  res.json({ pedido: r.pedido });
 }
 
 export async function getDocumentoAcompanhamento(req: Request, res: Response): Promise<void> {

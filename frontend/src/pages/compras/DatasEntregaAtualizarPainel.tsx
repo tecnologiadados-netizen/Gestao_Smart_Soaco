@@ -1,10 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GradeFiltroCabecalhoBtn from '../../components/grade/GradeFiltroCabecalhoBtn';
 import GradeFiltroExcelPortal from '../../components/grade/GradeFiltroExcelPortal';
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
+import {
+  buscarDatasEntregaForaJanela,
+  forcarDatasEntregaPedido,
+  type PedidoDataEntregaAtualizar,
+} from '../../api/acompanhamentoSolicitacao';
 import { cellToYmd } from '../../utils/gradeFiltroData';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
-import type { PedidoDataEntregaAtualizar } from '../../api/acompanhamentoSolicitacao';
 import PrazoEntregaBadge, { rotuloPrazoEntrega } from './PrazoEntregaBadge';
 
 type FiltroPrazo = 'todos' | 'atrasados' | 'semana' | 'sem_data';
@@ -39,6 +43,7 @@ const CLASSE_FILTRO =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
 
 function passaPrazo(p: PedidoDataEntregaAtualizar, filtro: FiltroPrazo): boolean {
+  if (p.foraDaJanela) return filtro === 'todos';
   if (filtro === 'todos') return true;
   if (filtro === 'sem_data') return p.semData > 0;
   if (p.menorDias == null) return false;
@@ -107,21 +112,83 @@ type Props = {
   pedidos: PedidoDataEntregaAtualizar[];
   carregando: boolean;
   erro: string | null;
-  onAbrirPedido: (pedido: PedidoDataEntregaAtualizar) => void;
+  /** Incrementa após salvar data: limpa pins forçados e volta ao recorte normal. */
+  recargaDatasToken: number;
+  onAbrirPedido: (pedido: PedidoDataEntregaAtualizar, forcarAtualizacao?: boolean) => void;
 };
 
-export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro, onAbrirPedido }: Props) {
+export default function DatasEntregaAtualizarPainel({
+  pedidos,
+  carregando,
+  erro,
+  recargaDatasToken,
+  onAbrirPedido,
+}: Props) {
   const [busca, setBusca] = useState('');
   const [prazo, setPrazo] = useState<FiltroPrazo>('todos');
+  const [sugestoesFora, setSugestoesFora] = useState<PedidoDataEntregaAtualizar[]>([]);
+  const [buscandoFora, setBuscandoFora] = useState(false);
+  const [erroFora, setErroFora] = useState<string | null>(null);
+  const [forcandoId, setForcandoId] = useState<number | null>(null);
+  const [forcados, setForcados] = useState<PedidoDataEntregaAtualizar[]>([]);
+  const buscaSeqRef = useRef(0);
+
+  useEffect(() => {
+    setForcados([]);
+  }, [recargaDatasToken]);
+
+  useEffect(() => {
+    const idsNormais = new Set(pedidos.map((p) => p.idPedido));
+    setForcados((atual) => atual.filter((p) => !idsNormais.has(p.idPedido)));
+  }, [pedidos]);
+
+  useEffect(() => {
+    const termo = busca.trim();
+    if (termo.length < 2) {
+      setSugestoesFora([]);
+      setErroFora(null);
+      setBuscandoFora(false);
+      return;
+    }
+    const seq = ++buscaSeqRef.current;
+    setBuscandoFora(true);
+    setErroFora(null);
+    const t = window.setTimeout(() => {
+      void (async () => {
+        const r = await buscarDatasEntregaForaJanela(termo);
+        if (seq !== buscaSeqRef.current) return;
+        if (r.error) {
+          setSugestoesFora([]);
+          setErroFora(r.error);
+        } else {
+          const idsNormais = new Set(pedidos.map((p) => p.idPedido));
+          const idsForcados = new Set(forcados.map((p) => p.idPedido));
+          setSugestoesFora(
+            r.pedidos.filter((p) => !idsNormais.has(p.idPedido) && !idsForcados.has(p.idPedido))
+          );
+          setErroFora(null);
+        }
+        setBuscandoFora(false);
+      })();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [busca, pedidos, forcados]);
+
+  const pedidosTabela = useMemo(() => {
+    const ids = new Set(pedidos.map((p) => p.idPedido));
+    const extras = forcados.filter((p) => !ids.has(p.idPedido));
+    return [...extras, ...pedidos];
+  }, [pedidos, forcados]);
 
   const preFiltrados = useMemo(() => {
     const match = criarMatcherTextoLivre(busca);
     const temBusca = busca.trim().length > 0;
-    return pedidos.filter((p) => {
+    return pedidosTabela.filter((p) => {
+      if (p.foraDaJanela) return true;
       if (temBusca && !match(p.pedido) && !match(p.fornecedor ?? '')) return false;
       return passaPrazo(p, prazo);
     });
-  }, [pedidos, busca, prazo]);
+  }, [pedidosTabela, busca, prazo]);
 
   const grade = useGradeFiltrosExcel({
     rows: preFiltrados,
@@ -144,12 +211,35 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
     [grade]
   );
 
+  const selecionarForcado = useCallback(
+    async (candidato: PedidoDataEntregaAtualizar) => {
+      setForcandoId(candidato.idPedido);
+      setErroFora(null);
+      const r = await forcarDatasEntregaPedido(candidato.idPedido);
+      setForcandoId(null);
+      if (r.error || !r.pedido) {
+        setErroFora(r.error ?? 'Não foi possível forçar este pedido.');
+        return;
+      }
+      const pin = { ...r.pedido, foraDaJanela: true };
+      setForcados((atual) => {
+        if (atual.some((p) => p.idPedido === pin.idPedido)) return atual;
+        return [pin, ...atual];
+      });
+      setSugestoesFora((atual) => atual.filter((p) => p.idPedido !== pin.idPedido));
+      setBusca(pin.pedido);
+      onAbrirPedido(pin, true);
+    },
+    [onAbrirPedido]
+  );
+
   return (
     <div className="flex flex-col gap-3 pb-4">
       <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-100">
         Pedidos de compra com item Liberado, Atendido parcialmente ou Atendido totalmente com pré-entrada, cuja data de
         entrega está atrasada, vazia ou vence nos próximos 7 dias. A data de entrega desses itens precisa ser
-        atualizada: abra o pedido e use <strong>Alterar data</strong> em cada item marcado.
+        atualizada: abra o pedido e use <strong>Alterar data</strong> em cada item marcado. Pedidos com prazo além de 7
+        dias não entram nesta lista; pesquise o número para forçar a atualização.
       </p>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -197,6 +287,52 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
         ) : null}
       </div>
 
+      {buscandoFora ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">Buscando pedidos fora da janela de 7 dias…</p>
+      ) : null}
+
+      {erroFora ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          {erroFora}
+        </p>
+      ) : null}
+
+      {sugestoesFora.length > 0 ? (
+        <div className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-950 dark:border-sky-500/50 dark:bg-sky-500/10 dark:text-sky-100">
+          <p className="font-medium">
+            {sugestoesFora.length === 1
+              ? 'Este pedido não aparece na tabela porque o período de entrega está além do filtro de 7 dias.'
+              : 'Estes pedidos não aparecem na tabela porque o período de entrega está além do filtro de 7 dias.'}{' '}
+            Selecionar força a atualização da data de entrega e registra no histórico.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {sugestoesFora.map((p) => (
+              <li
+                key={p.idPedido}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200 bg-white/80 px-2.5 py-2 dark:border-sky-500/40 dark:bg-slate-900/40"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900 dark:text-slate-50">{p.pedido}</p>
+                  <p className="truncate text-xs text-slate-600 dark:text-slate-300">
+                    {p.fornecedor ?? '—'}
+                    {p.menorDataEntrega ? ` · entrega ${p.menorDataEntrega}` : ''}
+                    {p.menorDias != null ? ` · ${rotuloPrazoEntrega(p.menorDias)}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={forcandoId === p.idPedido}
+                  onClick={() => void selecionarForcado(p)}
+                  className="whitespace-nowrap rounded border border-sky-600 bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                >
+                  {forcandoId === p.idPedido ? 'Selecionando…' : 'Selecionar e forçar'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {erro ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
           {erro}
@@ -210,6 +346,9 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
       ) : preFiltrados.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-600">
           Nenhum pedido com data de entrega a atualizar.
+          {busca.trim().length >= 2 && !buscandoFora && sugestoesFora.length === 0
+            ? ' Se o pedido tem entrega além de 7 dias, confirme o número ou o fornecedor.'
+            : ''}
         </p>
       ) : (
         <div
@@ -246,17 +385,33 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
                 visiveis.map((p) => (
                   <tr
                     key={p.idPedido}
-                    onClick={() => onAbrirPedido(p)}
-                    className="cursor-pointer border-t border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/40"
+                    onClick={() => onAbrirPedido(p, p.foraDaJanela === true)}
+                    className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/40 ${
+                      p.foraDaJanela ? 'bg-sky-50/70 dark:bg-sky-500/10' : ''
+                    }`}
                   >
-                    <td className="px-3 py-2 font-semibold text-slate-900 dark:text-slate-50">{p.pedido}</td>
+                    <td className="px-3 py-2 font-semibold text-slate-900 dark:text-slate-50">
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        {p.pedido}
+                        {p.foraDaJanela ? (
+                          <span
+                            className="rounded-full border border-sky-300 bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:border-sky-500/60 dark:bg-sky-500/20 dark:text-sky-100"
+                            title="Pin forçado: fora da janela de 7 dias"
+                          >
+                            Forçado
+                          </span>
+                        ) : null}
+                      </span>
+                    </td>
                     <td
                       className="max-w-[18rem] truncate px-3 py-2 text-slate-700 dark:text-slate-200"
                       title={p.fornecedor ?? ''}
                     >
                       {p.fornecedor ?? '—'}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-slate-200">{p.dataEmissao ?? '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-slate-200">
+                      {p.dataEmissao ?? '—'}
+                    </td>
                     <td className="px-3 py-2">
                       <span className="flex flex-wrap gap-1">
                         <Situacao
@@ -276,7 +431,9 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
                         />
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">{p.itens}</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                      {p.itens}
+                    </td>
                     <td
                       className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-slate-200"
                       title={
@@ -303,7 +460,7 @@ export default function DatasEntregaAtualizarPainel({ pedidos, carregando, erro,
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onAbrirPedido(p);
+                          onAbrirPedido(p, p.foraDaJanela === true);
                         }}
                         className="whitespace-nowrap rounded border border-sky-600 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-500 dark:bg-sky-500/15 dark:text-sky-100 dark:hover:bg-sky-500/25"
                       >

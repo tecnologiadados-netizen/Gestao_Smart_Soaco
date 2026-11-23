@@ -24,6 +24,11 @@ export type AlvoDocumento = {
   idProdutoOrigem?: number;
   /** Na aba de datas, mostra somente os status aceitos por essa consulta. */
   escopo?: EscopoDocumentoAcompanhamento;
+  /**
+   * Pin forçado (pedido fora da janela de 7 dias): libera Alterar data em todos
+   * os itens elegíveis do pedido, não só os com alerta de prazo.
+   */
+  forcarAtualizacao?: boolean;
 };
 
 type Props = {
@@ -277,7 +282,16 @@ export default function MateriaisAChegarDocumentoModal({
     }));
   }, [doc]);
 
-  const alertasData = useMemo(() => (doc?.itens ?? []).filter((i) => i.alertaDataEntrega).length, [doc]);
+  const ehPedido = alvo?.tipo === 'pedido';
+  const forcarAtualizacao = alvo?.forcarAtualizacao === true && alvo?.escopo === 'datas_entrega';
+  const alertaOuForcado = useCallback(
+    (item: ItemDocumentoAcompanhamento) => item.alertaDataEntrega || forcarAtualizacao,
+    [forcarAtualizacao]
+  );
+  const alertasData = useMemo(
+    () => (doc?.itens ?? []).filter(alertaOuForcado).length,
+    [doc, alertaOuForcado]
+  );
 
   const onDataSalva = useCallback(() => {
     if (alvo) cacheRef.current.delete(chave(alvo));
@@ -285,13 +299,13 @@ export default function MateriaisAChegarDocumentoModal({
     onDataEntregaAlterada();
   }, [alvo, cacheRef, onDataEntregaAlterada]);
 
-  const ehPedido = alvo?.tipo === 'pedido';
   const titulo = alvo ? `${TITULO_TIPO[alvo.tipo]} ${doc?.numero ?? alvo.numero}` : '';
   const subtitulo = doc
     ? [
         doc.fornecedor ? `Fornecedor: ${doc.fornecedor}` : null,
         doc.dataEmissao ? `${ehPedido ? 'Emissão' : 'Emissão da NF'}: ${doc.dataEmissao}` : null,
         doc.numeroNfe ? `NF-e: ${doc.numeroNfe}` : null,
+        forcarAtualizacao ? 'Atualização forçada (fora da janela de 7 dias)' : null,
       ]
         .filter(Boolean)
         .join(' · ')
@@ -342,10 +356,22 @@ export default function MateriaisAChegarDocumentoModal({
                     Documento já efetivado (não é mais pré-entrada)
                   </span>
                 ) : null}
+                {forcarAtualizacao ? (
+                  <span
+                    className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-900 dark:border-sky-500/60 dark:bg-sky-500/15 dark:text-sky-100"
+                    title="Pedido fora da janela de 7 dias; pin forçado para atualizar a data de entrega"
+                  >
+                    Forçado · fora da janela
+                  </span>
+                ) : null}
                 {alertasData > 0 ? (
                   <span
                     className="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-800 dark:border-red-500/60 dark:bg-red-500/15 dark:text-red-200"
-                    title="Itens com entrega atrasada, sem data ou vencendo nos próximos 7 dias"
+                    title={
+                      forcarAtualizacao
+                        ? 'Itens elegíveis com data a forçar (fora da janela de 7 dias)'
+                        : 'Itens com entrega atrasada, sem data ou vencendo nos próximos 7 dias'
+                    }
                   >
                     {alertasData} {alertasData === 1 ? 'item' : 'itens'} com data de entrega a atualizar
                   </span>
@@ -443,7 +469,7 @@ export default function MateriaisAChegarDocumentoModal({
                                 <td className="px-2 py-2 text-right tabular-nums">{fmtQtde(item.saldo ?? 0)}</td>
                                 <td className="px-2 py-2">
                                   <span className="block whitespace-nowrap">{celula(item.dataEntrega)}</span>
-                                  {item.alertaDataEntrega ? (
+                                  {alertaOuForcado(item) ? (
                                     <span className="mt-1 block">
                                       <PrazoEntregaBadge dias={item.diasEntrega} />
                                     </span>
@@ -472,7 +498,7 @@ export default function MateriaisAChegarDocumentoModal({
                             </td>
                             <td className="px-2 py-2 text-right">
                               <div className="flex flex-col items-end gap-1">
-                                {ehPedido && item.alertaDataEntrega && podeAlterarData ? (
+                                {ehPedido && alertaOuForcado(item) && podeAlterarData ? (
                                   <button
                                     type="button"
                                     onClick={() =>

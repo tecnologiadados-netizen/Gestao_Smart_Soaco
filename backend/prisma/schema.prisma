@@ -609,6 +609,23 @@ model PedidoCompraDataEntregaAlteracao {
   @@map("pedido_compra_data_entrega_alteracao")
 }
 
+/// Pin forçado na aba "Datas de entrega a atualizar" (pedido fora da janela de 7 dias).
+model MateriaisAChegarDataEntregaForcada {
+  id               Int      @id @default(autoincrement())
+  idPedidoCompra   Int
+  pedido           String
+  fornecedor       String?
+  menorDataEntrega String?
+  menorDias        Int?
+  usuarioLogin     String
+  criadoEm         DateTime @default(now())
+
+  @@index([idPedidoCompra])
+  @@index([pedido])
+  @@index([criadoEm])
+  @@map("materiais_a_chegar_data_entrega_forcada")
+}
+
 model ColetaPrecos {
   id                  Int       @id @default(autoincrement())
   createdAt           DateTime  @default(now())

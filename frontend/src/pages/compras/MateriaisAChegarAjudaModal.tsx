@@ -78,10 +78,15 @@ const SECOES: SecaoAjuda[] = [
     id: 'datas-entrega',
     titulo: 'Datas de entrega a atualizar',
     oQueE:
-      'Aba que lista os pedidos de compra cuja data de entrega precisa ser atualizada. A regra usa o status real do item no Nomus: entra o item Liberado ou Atendido parcialmente (com saldo a receber), ou Atendido totalmente mas com documento de entrada ainda em pré-entrada (173). Item Aguardando liberação não entra. Além disso, a data de entrega do item precisa estar atrasada, vazia ou vencer nos próximos 7 dias. Entra todo pedido de compra, com ou sem solicitação vinculada.',
+      'Aba que lista os pedidos de compra cuja data de entrega precisa ser atualizada. A regra usa o status real do item no Nomus: entra o item Liberado ou Atendido parcialmente (com saldo a receber), ou Atendido totalmente mas com documento de entrada ainda em pré-entrada (173). Item Aguardando liberação não entra. Além disso, a data de entrega do item precisa estar atrasada, vazia ou vencer nos próximos 7 dias. Entra todo pedido de compra, com ou sem solicitação vinculada. Pedido com entrega além desses 7 dias não entra na lista normal.',
     comoLe:
       'Cada linha é um pedido: situação dos itens (liberados, parciais, pré-entrada), quantos itens estão a atualizar, a data de entrega mais antiga entre esses itens (ou "Sem data") e o prazo mais crítico (Sem data, Atrasada há X dias ou Vence em X dias). A lista vem com os sem data primeiro e depois os mais atrasados. Clique no pedido para abrir somente os itens com status aceito nesta aba: Liberado, Atendido parcialmente ou Atendido totalmente com pré-entrada vinculada. Os que estão na janela de prazo aparecem com destaque e o botão Alterar data, que usa a mesma alteração da tela de Integração (nova data, motivo e observação, com histórico). Depois de salvar, a lista se atualiza; se a nova data ficar a mais de 7 dias, o item sai dela.',
     detalhes: [
+      {
+        titulo: 'Busca forçada (fora da janela)',
+        texto:
+          'Se o pedido tem entrega além de 7 dias, ele não aparece na tabela. Pesquise o número do pedido ou o fornecedor: a tela avisa que o período está além do filtro e oferece Selecionar e forçar. Ao selecionar, o pedido entra pontualmente na tabela com a etiqueta Forçado, o histórico do pin é gravado e o modal libera Alterar data nos itens elegíveis. Depois de atualizar a data, a tabela volta a mostrar só o recorte normal (atrasado, sem data ou até 7 dias).',
+      },
       {
         titulo: 'Permissões',
         texto:

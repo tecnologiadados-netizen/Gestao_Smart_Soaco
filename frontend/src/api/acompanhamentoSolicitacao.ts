@@ -172,6 +172,8 @@ export type PedidoDataEntregaAtualizar = {
   menorDias: number | null;
   /** Data de entrega mais antiga entre os itens com data (dd/mm/aaaa). */
   menorDataEntrega: string | null;
+  /** Pedido elegível além da janela de 7 dias (só busca/pin forçado). */
+  foraDaJanela?: boolean;
 };
 
 export async function listarDatasEntregaAtualizar(): Promise<{
@@ -182,6 +184,35 @@ export async function listarDatasEntregaAtualizar(): Promise<{
   const body = (await res.json().catch(() => ({}))) as { pedidos?: PedidoDataEntregaAtualizar[]; error?: string };
   if (!res.ok) return { pedidos: [], error: body.error ?? res.statusText };
   return { pedidos: Array.isArray(body.pedidos) ? body.pedidos : [] };
+}
+
+/** Pedidos elegíveis fora da janela de alerta (não aparecem na lista normal). */
+export async function buscarDatasEntregaForaJanela(termo: string): Promise<{
+  pedidos: PedidoDataEntregaAtualizar[];
+  error?: string;
+}> {
+  const qs = new URLSearchParams({ q: termo.trim() });
+  const res = await apiFetch(`${BASE}/datas-entrega/busca-fora-janela?${qs.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as { pedidos?: PedidoDataEntregaAtualizar[]; error?: string };
+  if (!res.ok) return { pedidos: [], error: body.error ?? res.statusText };
+  return { pedidos: Array.isArray(body.pedidos) ? body.pedidos : [] };
+}
+
+/** Registra histórico e devolve o pedido para pin pontual na tabela. */
+export async function forcarDatasEntregaPedido(idPedido: number): Promise<{
+  pedido: PedidoDataEntregaAtualizar | null;
+  error?: string;
+}> {
+  const res = await apiFetch(`${BASE}/datas-entrega/forcar`, {
+    method: 'POST',
+    body: { idPedido },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    pedido?: PedidoDataEntregaAtualizar;
+    error?: string;
+  };
+  if (!res.ok) return { pedido: null, error: body.error ?? res.statusText };
+  return { pedido: body.pedido ?? null };
 }
 
 export async function obterDocumentoAcompanhamento(
