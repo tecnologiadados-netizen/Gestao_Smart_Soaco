@@ -26,9 +26,17 @@ const COLUNAS = [
   'Cartório',
 ] as const;
 
-const COL_DESCRICAO = 9;
-const COL_ANOTACAO = 12;
-const COL_SALDO = 14;
+/** Índices 0-based (jsPDF-AutoTable). */
+const COL_DESCRICAO = COLUNAS.indexOf('Descrição');
+const COL_ANOTACAO = COLUNAS.indexOf('Observação');
+/** Índices 1-based (ExcelJS). */
+const COL_ANOTACAO_XLS = COL_ANOTACAO + 1;
+const COL_SALDO = COLUNAS.indexOf('Saldo a pagar') + 1;
+
+function rgbDeHex(hex: string): [number, number, number] {
+  const n = hex.replace('#', '');
+  return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
+}
 
 function argbDeHex(hex: string): string {
   const n = hex.replace('#', '').toUpperCase();
@@ -38,6 +46,7 @@ function argbDeHex(hex: string): string {
 
 function pintarCelulaObservacao(cell: Cell, hex: string) {
   const argb = argbDeHex(hex);
+  // fill/font por célula (evita compartilhar style id entre linhas no ExcelJS).
   cell.fill = {
     type: 'pattern',
     pattern: 'solid',
@@ -49,23 +58,28 @@ function pintarCelulaObservacao(cell: Cell, hex: string) {
     size: 10,
     color: { argb: corTextoSobreFundo(hex) },
   };
+  cell.alignment = { wrapText: true, vertical: 'top' };
 }
 
+const VERMELHO = 'FFDC2626';
+const TEXTO = [30, 41, 59] as [number, number, number];
+const VERMELHO_RGB = [220, 38, 38] as [number, number, number];
+
 function corTextoSobreFundo(hex: string): string {
-  const n = hex.replace('#', '');
-  const r = parseInt(n.slice(0, 2), 16);
-  const g = parseInt(n.slice(2, 4), 16);
-  const b = parseInt(n.slice(4, 6), 16);
+  const [r, g, b] = rgbDeHex(hex);
   const luma = (r * 299 + g * 587 + b * 114) / 1000;
   return luma < 140 ? 'FFFFFFFF' : 'FF1E293B';
+}
+
+function corTextoRgbSobreFundo(hex: string): [number, number, number] {
+  const [r, g, b] = rgbDeHex(hex);
+  const luma = (r * 299 + g * 587 + b * 114) / 1000;
+  return luma < 140 ? [255, 255, 255] : TEXTO;
 }
 
 function maiusculo(valor: string | null | undefined): string {
   return (valor ?? '').toLocaleUpperCase('pt-BR');
 }
-const VERMELHO = 'FFDC2626';
-const TEXTO = [30, 41, 59] as [number, number, number];
-const VERMELHO_RGB = [220, 38, 38] as [number, number, number];
 
 export type TotaisDiario = {
   qtd: number;
@@ -183,6 +197,8 @@ export async function exportarDiarioContasPagarExcel(opts: {
     row.getCell(4).numFmt = 'dd/mm/yyyy';
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
     row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
+    const fundo = hexObservacaoDiario(l.anotacaoCor);
+    if (fundo) pintarCelulaObservacao(row.getCell(COL_ANOTACAO_XLS), fundo);
   }
 
   const total = ws.addRow([
@@ -215,10 +231,11 @@ export async function exportarDiarioContasPagarExcel(opts: {
     to: { row: Math.max(1, opts.linhas.length + 1), column: colunas.length },
   };
   autosize(ws, colunas.length);
+  // Reaplica após autosize: garante que o fundo da Observação sobreviva no .xlsx.
   opts.linhas.forEach((l, i) => {
     const fundo = hexObservacaoDiario(l.anotacaoCor);
     if (!fundo) return;
-    pintarCelulaObservacao(ws.getRow(i + 2).getCell(COL_ANOTACAO), fundo);
+    pintarCelulaObservacao(ws.getRow(i + 2).getCell(COL_ANOTACAO_XLS), fundo);
   });
   await baixarWorkbook(wb, nomeArquivo(opts.dataInicio, opts.dataFim, 'xlsx'));
 }
@@ -372,6 +389,14 @@ export function exportarDiarioContasPagarPdf(opts: {
       16: { cellWidth: 14 },
     },
     horizontalPageBreak: true,
+    didParseCell(data) {
+      if (data.section !== 'body' || data.column.index !== COL_ANOTACAO) return;
+      const linha = opts.linhas[data.row.index];
+      const fundo = hexObservacaoDiario(linha?.anotacaoCor);
+      if (!fundo) return;
+      data.cell.styles.fillColor = rgbDeHex(fundo);
+      data.cell.styles.textColor = corTextoRgbSobreFundo(fundo);
+    },
     willDrawCell(data) {
       if (data.section === 'body' && data.column.index === COL_DESCRICAO) {
         data.cell.text = [];
