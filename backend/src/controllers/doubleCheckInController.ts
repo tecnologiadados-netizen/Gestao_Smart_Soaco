@@ -54,6 +54,7 @@ import {
   type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
+import { buscarEvidenciaPorToken, obterOuCriarLinkEvidencia } from '../data/doubleCheckInEspelhoLink.js';
 import {
   carregarEspelhoPrimeiraLeitura,
   registrarDivergenciasApontadas,
@@ -454,6 +455,83 @@ export async function getDoubleCheckInItens(req: Request, res: Response): Promis
     return;
   }
   res.json({ itens, dataEmissao, limiarPct, idDocumento });
+}
+
+/** Comparativo que a tela mostra: vínculo atual, ou o espelho quando o vínculo foi retirado. */
+export async function carregarComparativoVisivel(idDocumento: number): Promise<{
+  linhas: ReturnType<typeof linhasComNatureza>;
+  semVinculo: boolean;
+  erro?: string;
+}> {
+  const { linhas, erro } = await queryDoubleCheckInComparativoPc({ idDocumento });
+  if (erro) return { linhas: [], semVinculo: false, erro };
+  if (linhas.length > 0) {
+    await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
+    return { linhas: linhasComNatureza(linhas, []), semVinculo: false };
+  }
+  const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
+  return { linhas: linhasComNatureza(espelho, []), semVinculo: espelho.length > 0 };
+}
+
+/**
+ * POST /api/compras/double-checkin/notas/:idDocumento/link-evidencia
+ * Devolve sempre o mesmo endereço do documento.
+ */
+export async function postDoubleCheckInLinkEvidencia(req: Request, res: Response): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.idDocumento));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  const texto = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  try {
+    const token = await obterOuCriarLinkEvidencia(idDocumento, {
+      numeroDocumentoFiscal: texto(req.body?.numeroDocumentoFiscal),
+      numeroNfe: texto(req.body?.numeroNfe),
+      dataEntrada: texto(req.body?.dataEntrada),
+      dataEmissao: texto(req.body?.dataEmissao),
+      nomeParceiro: texto(req.body?.nomeParceiro),
+    });
+    const url = `${resolveAppBaseUrl()}/e/${token}`;
+    res.json({ token, url });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
+}
+
+const TOKEN_EVIDENCIA_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** GET público. O token do link é o acesso. */
+export async function getDoubleCheckInEvidenciaPublica(req: Request, res: Response): Promise<void> {
+  const token = String(req.params.token ?? '').trim();
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  if (!TOKEN_EVIDENCIA_RE.test(token)) {
+    res.status(404).json({ error: 'Link não encontrado.' });
+    return;
+  }
+  try {
+    const acesso = await buscarEvidenciaPorToken(token);
+    if (!acesso) {
+      res.status(404).json({ error: 'Link não encontrado.' });
+      return;
+    }
+    const comparativo = await carregarComparativoVisivel(acesso.idDocumentoEstoque);
+    if (comparativo.erro) {
+      res.status(503).json({ error: comparativo.erro });
+      return;
+    }
+    res.json({
+      cabecalho: acesso.cabecalho,
+      linhas: comparativo.linhas,
+      semVinculo: comparativo.semVinculo,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getDoubleCheckInEvidenciaPublica]', msg);
+    res.status(503).json({ error: 'Não foi possível abrir a evidência.' });
+  }
 }
 
 /**

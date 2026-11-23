@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, ChevronDown, ClipboardCheck, Eye, History, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, SlidersHorizontal, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, ChevronDown, ClipboardCheck, Eye, History, Library, Link2, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, SlidersHorizontal, Users } from 'lucide-react';
 import DoubleCheckInHistoricoModal from './DoubleCheckInHistoricoModal';
 import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
@@ -11,6 +11,7 @@ import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   conferirDoubleCheckIn,
+  criarLinkEvidenciaDoubleCheck,
   CRITERIOS_DIVERGENCIA_PADRAO,
   fetchDoubleCheckInComparativoPc,
   fetchDoubleCheckInCriterios,
@@ -183,6 +184,9 @@ export default function DoubleCheckInPage() {
   const [senhaDraft, setSenhaDraft] = useState('');
   const [senhaErro, setSenhaErro] = useState<string | null>(null);
   const [senhaSalvando, setSenhaSalvando] = useState(false);
+  const [linkCopiadoId, setLinkCopiadoId] = useState<number | null>(null);
+  const [linkManual, setLinkManual] = useState<string | null>(null);
+  const [linkErro, setLinkErro] = useState<string | null>(null);
 
   const comparativoCacheRef = useRef(new Map<number, ComparativoCache>());
   const syncSeqRef = useRef(0);
@@ -442,6 +446,23 @@ export default function DoubleCheckInPage() {
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
   }, [totalPages]);
+
+  const copiarLinkEvidencia = async (nota: DoubleCheckInNota) => {
+    setLinkErro(null);
+    setLinkManual(null);
+    const r = await criarLinkEvidenciaDoubleCheck(nota);
+    if (r.erro || !r.url) {
+      setLinkErro(r.erro ?? 'Não foi possível gerar o link.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(r.url);
+      setLinkCopiadoId(nota.idDocumento);
+      window.setTimeout(() => setLinkCopiadoId((atual) => (atual === nota.idDocumento ? null : atual)), 2500);
+    } catch {
+      setLinkManual(r.url);
+    }
+  };
 
   const abrirParametros = () => {
     setConfigAberto(false);
@@ -1036,6 +1057,13 @@ export default function DoubleCheckInPage() {
                         )}
                         <GradeCelulaModalBtn
                           align="left"
+                          title={linkCopiadoId === n.idDocumento ? 'Link copiado' : 'Copiar link da evidência'}
+                          onClick={() => void copiarLinkEvidencia(n)}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </GradeCelulaModalBtn>
+                        <GradeCelulaModalBtn
+                          align="left"
                           title="Ver itens"
                           onClick={() => void abrirDetalhe(n)}
                         >
@@ -1152,6 +1180,14 @@ export default function DoubleCheckInPage() {
                       <Maximize2 className="h-4 w-4" aria-hidden />
                     )}
                     {modalTelaCheia ? 'Sair' : 'Tela cheia'}
+                  </button>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={() => void copiarLinkEvidencia(modalNota)}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    {linkCopiadoId === modalNota.idDocumento ? 'Link copiado' : 'Copiar link'}
                   </button>
                   <button
                     type="button"
@@ -1367,6 +1403,37 @@ export default function DoubleCheckInPage() {
       {historicoNota && (
         <DoubleCheckInHistoricoModal nota={historicoNota} onClose={() => setHistoricoNota(null)} />
       )}
+      {(linkErro || linkManual) &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed bottom-4 left-1/2 z-[10080] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-600 dark:bg-slate-800">
+            {linkErro ? <p className="text-sm text-rose-600">{linkErro}</p> : null}
+            {linkManual ? (
+              <>
+                <p className="mb-1 text-xs text-slate-500">Copie o link da evidência:</p>
+                <input
+                  className={`${inputClass} w-full`}
+                  readOnly
+                  value={linkManual}
+                  onFocus={(e) => e.target.select()}
+                />
+              </>
+            ) : null}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setLinkErro(null);
+                  setLinkManual(null);
+                }}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
       {cadastrosAberto && <DoubleCheckInJustificativasModal onClose={() => setCadastrosAberto(false)} />}
 
       {divergAberto &&

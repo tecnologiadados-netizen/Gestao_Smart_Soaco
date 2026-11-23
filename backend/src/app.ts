@@ -44,6 +44,7 @@ import lojaEstoqueKitsRoutes from './routes/lojaEstoqueKitsRoutes.js';
 import recebimentoRoutes from './routes/recebimentoRoutes.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { getDoubleCheckInConferenciaPagina } from './controllers/doubleCheckInConferenciaPaginaController.js';
+import { getDoubleCheckInEvidenciaPublica } from './controllers/doubleCheckInController.js';
 import { getColetaAprovacaoPagina, postColetaAprovacaoPagina } from './controllers/coletaAprovacaoPaginaController.js';
 import { rhUploadRoot } from './rh/utils/rhUpload.js';
 import { qualidadeUploadRoot } from './utils/qualidadeUpload.js';
@@ -225,6 +226,10 @@ app.get('/health', async (_req, res) => {
 // Link permanente do WhatsApp (conferência NF × PC). Antes do SPA para não cair no login.
 app.get('/c/:token', (req, res, next) => {
   getDoubleCheckInConferenciaPagina(req, res).catch(next);
+});
+
+app.get('/api/public/double-checkin/espelho/:token', (req, res, next) => {
+  getDoubleCheckInEvidenciaPublica(req, res).catch(next);
 });
 
 app.get('/a/:token', (req, res, next) => {

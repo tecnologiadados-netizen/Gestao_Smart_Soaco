@@ -258,6 +258,17 @@ model DoubleCheckInConferenciaPagina {
   @@map("double_checkin_conferencia_pagina")
 }
 
+/// Link estável da evidência visual das divergências. O token é o acesso, sem login.
+model DoubleCheckInEspelhoLink {
+  id                 Int      @id @default(autoincrement())
+  token              String   @unique
+  idDocumentoEstoque Int      @unique
+  cabecalhoJson      String
+  criadoEm           DateTime @default(now())
+
+  @@map("double_checkin_espelho_link")
+}
+
 /// Opções pré-cadastradas de justificativa (divergência NF × PC).
 model DoubleCheckInJustificativaOpcao {
   id        Int      @id @default(autoincrement())

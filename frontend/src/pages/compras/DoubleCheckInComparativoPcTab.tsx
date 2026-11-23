@@ -360,6 +360,8 @@ type Props = {
   idDocumento: number;
   conferido: boolean;
   somenteLeitura?: boolean;
+  /** Evidência pública: mostra os valores e esconde o estado da decisão interna. */
+  evidencia?: boolean;
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
@@ -386,6 +388,7 @@ export default function DoubleCheckInComparativoPcTab({
   idDocumento,
   conferido,
   somenteLeitura = false,
+  evidencia = false,
   linhas,
   decisoes,
   justificativas,
@@ -810,9 +813,11 @@ export default function DoubleCheckInComparativoPcTab({
           ) : decVigente?.decisao === 'recusa' ? (
             <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
           ) : (
+            evidencia ? null : (
             <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
               {somenteLeitura ? 'Sem decisão' : 'Pendente'}
             </span>
+            )
           )}
         </div>
         <div className={`space-y-0.5 text-xs ${c.kind === 'text' ? '' : 'tabular-nums'}`}>

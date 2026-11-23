@@ -8,6 +8,7 @@ import TransicaoRotaProvider from './components/TransicaoRotaProvider';
 import { layoutChildRoutes } from './layoutChildRoutes';
 import { VisualizarDocumentoPage } from './modules/qualidade/pages/DocumentosVisualizarPage';
 import PdvEntry from './modules/pdv/PdvEntry';
+import EspelhoDivergenciaPublicaPage from './pages/compras/EspelhoDivergenciaPublicaPage';
 
 const future = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
 
@@ -40,6 +41,10 @@ export const router = createBrowserRouter(
         {
           path: 'pdv',
           element: <PdvEntry />,
+        },
+        {
+          path: 'e/:token',
+          element: <EspelhoDivergenciaPublicaPage />,
         },
         {
           path: '*',

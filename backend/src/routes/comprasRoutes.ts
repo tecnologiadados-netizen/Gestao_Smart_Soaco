@@ -30,6 +30,7 @@ import {
   putDoubleCheckInJustificativa,
   deleteDoubleCheckInJustificativa,
   getDoubleCheckInCriterios,
+  postDoubleCheckInLinkEvidencia,
   getDoubleCheckInNotas,
   getDoubleCheckInParametros,
   postDoubleCheckInConferir,
@@ -545,6 +546,11 @@ router.get(
   '/double-checkin/notas/:idDocumento/historico/leitura',
   requireMaster,
   async503(getDoubleCheckInHistoricoLeitura)
+);
+router.post(
+  '/double-checkin/notas/:idDocumento/link-evidencia',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(postDoubleCheckInLinkEvidencia)
 );
 router.get(
   '/double-checkin/notas/:idDocumento/comparativo-pc',

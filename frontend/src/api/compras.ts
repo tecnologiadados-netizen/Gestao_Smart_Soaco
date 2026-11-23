@@ -1917,6 +1917,29 @@ export type DoubleCheckInSolicitacaoOtimiza = {
   status?: 'in_progress' | 'completed' | 'cancelled' | null;
 };
 
+export async function criarLinkEvidenciaDoubleCheck(nota: {
+  idDocumento: number;
+  numeroDocumentoFiscal?: string | null;
+  numeroNfe?: string | null;
+  dataEntrada?: string | null;
+  dataEmissao?: string | null;
+  nomeParceiro?: string | null;
+}): Promise<{ url: string; erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/notas/${nota.idDocumento}/link-evidencia`, {
+    method: 'POST',
+    body: {
+      numeroDocumentoFiscal: nota.numeroDocumentoFiscal ?? null,
+      numeroNfe: nota.numeroNfe ?? null,
+      dataEntrada: nota.dataEntrada ?? null,
+      dataEmissao: nota.dataEmissao ?? null,
+      nomeParceiro: nota.nomeParceiro ?? null,
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+  if (!res.ok || !body.url) return { url: '', erro: body.error ?? 'Não foi possível gerar o link.' };
+  return { url: body.url };
+}
+
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
