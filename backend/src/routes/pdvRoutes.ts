@@ -20,6 +20,7 @@ import {
   postAbrirCaixa,
   postCertificado,
   postCliente,
+  postEmitirFiscal,
   postFecharCaixa,
   postMovimento,
   postRetomar,
@@ -85,6 +86,9 @@ router.post('/vendas/:id/retomar', (req, res, next) => {
 });
 router.post('/vendas/:id/transformar', (req, res, next) => {
   postTransformar(req, res).catch(next);
+});
+router.post('/vendas/:id/emitir-fiscal', (req, res, next) => {
+  postEmitirFiscal(req, res).catch(next);
 });
 router.get('/vendas/:id', (req, res, next) => {
   getVenda(req, res).catch(next);

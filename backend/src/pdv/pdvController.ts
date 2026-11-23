@@ -25,6 +25,7 @@ import {
   abrirCaixa,
   caixaAberto,
   confirmarVenda,
+  emitirFiscalVendaPdv,
   fecharCaixa,
   movimentarCaixa,
   PdvErro,
@@ -450,14 +451,37 @@ export async function postTransformar(req: Request, res: Response): Promise<void
   try {
     const ctx = await contextoPdv(req);
     const idEmpresa = exigirEmpresa(ctx);
-    const fiscalRaw = String(req.body?.fiscal ?? 'nenhuma');
-    const fiscal = fiscalRaw === 'nfce' || fiscalRaw === 'nfe' ? fiscalRaw : 'nenhuma';
+    // Nota fiscal fica para o modal pós-gravação (/emitir-fiscal).
     const venda = await transformarOrcamento({
       usuarioId: ctx.usuarioId,
       idEmpresa,
       vendaId: Number(req.params.id),
       pagamentos: Array.isArray(req.body?.pagamentos) ? req.body.pagamentos : undefined,
-      fiscal,
+      fiscal: 'nenhuma',
+      clienteDocumento: String(req.body?.clienteDocumento ?? ''),
+      clienteContribuinte: Boolean(req.body?.clienteContribuinte),
+      clienteIe: String(req.body?.clienteIe ?? ''),
+      clienteUf: String(req.body?.clienteUf ?? ''),
+    });
+    res.json(venda);
+  } catch (err) {
+    res.status(statusDe(err)).json({ error: mensagem(err) });
+  }
+}
+
+export async function postEmitirFiscal(req: Request, res: Response): Promise<void> {
+  try {
+    const ctx = await contextoPdv(req);
+    const idEmpresa = exigirEmpresa(ctx);
+    const fiscalRaw = String(req.body?.fiscal ?? '');
+    if (fiscalRaw !== 'nfce' && fiscalRaw !== 'nfe') {
+      res.status(400).json({ error: 'Informe fiscal=nfce ou fiscal=nfe.' });
+      return;
+    }
+    const venda = await emitirFiscalVendaPdv({
+      idEmpresa,
+      vendaId: Number(req.params.id),
+      fiscal: fiscalRaw,
       clienteDocumento: String(req.body?.clienteDocumento ?? ''),
       clienteContribuinte: Boolean(req.body?.clienteContribuinte),
       clienteIe: String(req.body?.clienteIe ?? ''),
@@ -473,8 +497,8 @@ export async function postVenda(req: Request, res: Response): Promise<void> {
   try {
     const ctx = await contextoPdv(req);
     const idEmpresa = exigirEmpresa(ctx);
-    const fiscalRaw = String(req.body?.fiscal ?? 'nenhuma');
-    const fiscal = fiscalRaw === 'nfce' || fiscalRaw === 'nfe' ? fiscalRaw : 'nenhuma';
+    // Nota fiscal fica para o modal pós-gravação (/emitir-fiscal).
+    const fiscal = 'nenhuma' as const;
     const body = req.body ?? {};
     const mapAtributos = (lista: unknown) =>
       Array.isArray(lista)

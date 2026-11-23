@@ -710,6 +710,82 @@ export async function transformarOrcamento(input: {
   });
 }
 
+/** Emite NFC-e/NF-e de uma venda já concluída (pedido + documento no Nomus). */
+export async function emitirFiscalVendaPdv(input: {
+  idEmpresa: number;
+  vendaId: number;
+  fiscal: 'nfce' | 'nfe';
+  clienteDocumento?: string;
+  clienteContribuinte?: boolean;
+  clienteIe?: string;
+  clienteUf?: string;
+}) {
+  const venda = await prisma.pdvVenda.findFirst({
+    where: { id: input.vendaId, idEmpresa: input.idEmpresa },
+    include: { itens: true, pagamentos: true },
+  });
+  if (!venda) throw new PdvErro('Venda não encontrada.', 404);
+  if (venda.status !== 'concluida' || venda.destinoNomus !== 'pedido') {
+    throw new PdvErro('Só é possível emitir nota de pedido já concluído.', 409);
+  }
+  if (!venda.idPedidoNomus) {
+    throw new PdvErro('Esta venda ainda não tem pedido no Nomus.', 409);
+  }
+  if (venda.statusFiscal === 'autorizada' && venda.chave) {
+    throw new PdvErro('Esta venda já tem nota autorizada.', 409);
+  }
+
+  await garantirCertificado(input.idEmpresa, input.fiscal);
+  const formas = await listarFormas().catch(() => []);
+  try {
+    const fiscalResult = await emitirFiscal({
+      idEmpresa: input.idEmpresa,
+      modelo: input.fiscal === 'nfce' ? '65' : '55',
+      clienteNome: venda.clienteNome,
+      clienteDocumento: String(input.clienteDocumento ?? ''),
+      clienteContribuinte: Boolean(input.clienteContribuinte),
+      clienteIe: String(input.clienteIe ?? ''),
+      clienteUf: String(input.clienteUf ?? ''),
+      itens: venda.itens.map((item) => ({
+        idProduto: item.idProduto,
+        codigo: item.codigo,
+        descricao: item.descricao,
+        quantidade: item.quantidade,
+        valorUnitario: item.valorUnitario,
+        descontoPercentual: item.descontoPercentual,
+        ncm: item.ncm,
+        origem: item.origem,
+        idUnidadeMedida: item.idUnidadeMedida,
+        aliquotaIpi: item.aliquotaIpi,
+      })),
+      pagamentos: venda.pagamentos.map((p) => ({
+        idFormaPagamento: p.idFormaPagamento,
+        valor: p.valor,
+      })),
+      formas,
+    });
+    return prisma.pdvVenda.update({
+      where: { id: venda.id },
+      data: {
+        fiscalTipo: input.fiscal,
+        ...fiscalResult,
+      },
+      include: { itens: true, pagamentos: true },
+    });
+  } catch (err) {
+    const motivo = err instanceof Error ? err.message : 'Falha na emissão.';
+    await prisma.pdvVenda.update({
+      where: { id: venda.id },
+      data: {
+        fiscalTipo: input.fiscal,
+        statusFiscal: 'rejeitada',
+        motivoFiscal: motivo,
+      },
+    });
+    throw err instanceof PdvErro ? err : new PdvErro(motivo, 502);
+  }
+}
+
 async function garantirCertificado(idEmpresa: number, fiscal: 'nfce' | 'nfe') {
   const cert = await prisma.pdvCertificado.findUnique({ where: { idEmpresa } });
   if (!cert?.pfxCipher || !cert.senhaCipher) {

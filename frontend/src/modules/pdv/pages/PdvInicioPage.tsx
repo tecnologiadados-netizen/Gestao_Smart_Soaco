@@ -202,6 +202,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
   const [destino, setDestino] = useState<DestinoVenda>('pedido');
   const [enviando, setEnviando] = useState(false);
   const [comprovante, setComprovante] = useState<VendaResposta | null>(null);
+  /** Pedido já gravado no Nomus — escolher NFC-e / NF-e / sem nota. */
+  const [modalFiscal, setModalFiscal] = useState<VendaResposta | null>(null);
+  const [emitindoFiscal, setEmitindoFiscal] = useState(false);
   const [esperas, setEsperas] = useState<VendaResposta[]>([]);
   const [orcamentos, setOrcamentos] = useState<VendaResposta[]>([]);
   const [painelEspera, setPainelEspera] = useState(false);
@@ -740,7 +743,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
           body: {
             espera,
             destino: destinoEscolhido,
-            fiscal: espera || destinoEscolhido === 'orcamento' ? 'nenhuma' : fiscal,
+            // Nota fiscal: modal pós-gravação do pedido (não emite aqui).
+            fiscal: 'nenhuma',
             itens: carrinho.map((item) => ({
               idProduto: item.id,
               codigo: item.codigo,
@@ -783,6 +787,10 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         if (espera) {
           setAviso(`Venda ${venda.id} ficou em espera.`);
           setEtapa('balcao');
+        } else if (destinoEscolhido === 'pedido' && venda.idPedidoNomus) {
+          setFiscal('nenhuma');
+          setModalFiscal(venda);
+          setEtapa('balcao');
         } else {
           setComprovante(venda);
           setEtapa('balcao');
@@ -817,7 +825,6 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       dataValidade,
       destinoEfetivo,
       documento,
-      fiscal,
       formaAtualId,
       formaReceberId,
       idCondicaoPagamento,
@@ -991,7 +998,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       const venda = await pdvJson<VendaResposta>(`/api/pdv/vendas/${id}/transformar`, {
         method: 'POST',
         body: {
-          fiscal,
+          // Nota fiscal: modal pós-gravação do pedido (não emite aqui).
+          fiscal: 'nenhuma',
           pagamentos: pagamentos.filter((p) => p.valor > 0 && p.idFormaPagamento),
           clienteDocumento: documento,
           clienteContribuinte: contribuinte,
@@ -1000,12 +1008,52 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
         },
       });
       setPainelOrcamentos(false);
-      setComprovante(venda);
+      if (venda.idPedidoNomus) {
+        setFiscal('nenhuma');
+        setModalFiscal(venda);
+      } else {
+        setComprovante(venda);
+      }
       recarregarSessao();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'Não foi possível transformar o orçamento.');
     } finally {
       setEnviando(false);
+    }
+  }
+
+  function fecharModalFiscalSemNota() {
+    if (!modalFiscal || emitindoFiscal) return;
+    setComprovante(modalFiscal);
+    setModalFiscal(null);
+    setFiscal('nenhuma');
+  }
+
+  async function confirmarEmissaoFiscal() {
+    if (!modalFiscal || fiscal === 'nenhuma') {
+      fecharModalFiscalSemNota();
+      return;
+    }
+    setEmitindoFiscal(true);
+    setAviso('');
+    try {
+      const venda = await pdvJson<VendaResposta>(`/api/pdv/vendas/${modalFiscal.id}/emitir-fiscal`, {
+        method: 'POST',
+        body: {
+          fiscal,
+          clienteDocumento: documento,
+          clienteContribuinte: contribuinte,
+          clienteIe: ie,
+          clienteUf: ufCliente,
+        },
+      });
+      setModalFiscal(null);
+      setComprovante(venda);
+      setFiscal('nenhuma');
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'Não foi possível emitir a nota.');
+    } finally {
+      setEmitindoFiscal(false);
     }
   }
 
@@ -1704,17 +1752,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 </select>
               ) : null}
               {destinoEfetivo === 'pedido' ? (
-                <fieldset className="flex flex-wrap gap-3 text-xs text-slate-600">
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={fiscal === 'nenhuma'} onChange={() => setFiscal('nenhuma')} /> Sem nota
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={fiscal === 'nfce'} onChange={() => setFiscal('nfce')} disabled={!certOk || !sessao.certificado?.temCsc} /> NFC-e
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={fiscal === 'nfe'} onChange={() => setFiscal('nfe')} disabled={!certOk} /> NF-e
-                  </label>
-                </fieldset>
+                <p className="text-xs text-slate-500">
+                  Após gravar o pedido, você poderá escolher Sem nota, NFC-e ou NF-e.
+                </p>
               ) : null}
             </section>
 
@@ -2234,6 +2274,71 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 className="rounded-xl bg-[#1E22AA] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
               >
                 {salvandoCliente ? 'Salvando…' : 'Salvar no Nomus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {modalFiscal ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--pdv-line)] bg-[var(--pdv-field)] p-5 text-sm text-[var(--pdv-text)] shadow-xl">
+            <h2 className="text-base font-semibold">Pedido gravado · emitir nota?</h2>
+            <p className="mt-2 text-xs text-[var(--pdv-muted)]">
+              Pedido Nomus {modalFiscal.idPedidoNomus ?? '—'} · venda {modalFiscal.id} · {brl(modalFiscal.total)}
+            </p>
+            <fieldset className="mt-4 space-y-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="modal-fiscal"
+                  checked={fiscal === 'nenhuma'}
+                  onChange={() => setFiscal('nenhuma')}
+                  disabled={emitindoFiscal}
+                />
+                Sem nota
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="modal-fiscal"
+                  checked={fiscal === 'nfce'}
+                  onChange={() => setFiscal('nfce')}
+                  disabled={emitindoFiscal || !certOk || !sessao.certificado?.temCsc}
+                />
+                NFC-e
+                {!certOk || !sessao.certificado?.temCsc ? (
+                  <span className="text-xs text-[var(--pdv-muted)]">(certificado/CSC)</span>
+                ) : null}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="modal-fiscal"
+                  checked={fiscal === 'nfe'}
+                  onChange={() => setFiscal('nfe')}
+                  disabled={emitindoFiscal || !certOk}
+                />
+                NF-e
+                {!certOk ? <span className="text-xs text-[var(--pdv-muted)]">(certificado)</span> : null}
+              </label>
+            </fieldset>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className={botaoContorno}
+                disabled={emitindoFiscal}
+                onClick={fecharModalFiscalSemNota}
+              >
+                Sem nota
+              </button>
+              <button
+                type="button"
+                disabled={emitindoFiscal || (fiscal !== 'nenhuma' && !certOk) || (fiscal === 'nfce' && !sessao.certificado?.temCsc)}
+                onClick={() => void confirmarEmissaoFiscal()}
+                className="rounded-xl bg-[#1E22AA] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {emitindoFiscal ? 'Emitindo…' : fiscal === 'nenhuma' ? 'Continuar' : fiscal === 'nfce' ? 'Emitir NFC-e' : 'Emitir NF-e'}
               </button>
             </div>
           </div>
