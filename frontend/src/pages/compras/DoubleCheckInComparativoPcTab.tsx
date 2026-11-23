@@ -327,7 +327,7 @@ function pedidoDaAcao(natureza: 'real' | 'benigna' | undefined, ajuste: string):
   return `Ajustar ${ajuste}.`;
 }
 
-/** Frase curta de uma divergência, para o card e para o texto consolidado. */
+/** Frase curta de uma divergência (corpo), sem o cabeçalho padrão do Otimiza. */
 function fraseDivergencia(
   linha: DoubleCheckInComparativoLinha,
   campo: DoubleCheckInCampoComparativo
@@ -349,9 +349,23 @@ function fraseDivergencia(
   return `Condição de pagamento (${nomePedidoLinha(linha)}): ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'a condição de pagamento do pedido')}`;
 }
 
+const CABECALHO_SUGESTAO_OTIMIZA =
+  'ATENÇÃO: COMPARAR NF X PC COMO UM TODO.\n\nDIVERGÊNCIAS EVIDENTES NO MOMENTO:';
+
+/** Monta o texto pronto para colar no Otimiza, com cabeçalho padrão em caixa alta. */
+function formatarSugestaoOtimiza(corpo: string): string {
+  const texto = corpo.trim();
+  if (!texto) return '';
+  return `${CABECALHO_SUGESTAO_OTIMIZA}\n${texto}`;
+}
+
 function textoConsolidadoDivergencias(frases: string[]): string {
   if (frases.length === 0) return '';
-  return `Setor de compras, neste documento:\n${frases.map((frase) => `• ${frase}`).join('\n')}`;
+  const corpo =
+    frases.length === 1
+      ? frases[0]!
+      : frases.map((frase) => `• ${frase}`).join('\n');
+  return formatarSugestaoOtimiza(corpo);
 }
 
 function historicoDaDecisao(dec: DoubleCheckInComparativoDecisao | undefined): DoubleCheckInComparativoObsHist[] {
@@ -956,12 +970,13 @@ export default function DoubleCheckInComparativoPcTab({
           </div>
         </div>
         {(() => {
+          if (evidencia) return null;
           const obsBenigna =
             diverg && natureza === 'benigna'
               ? linha.observacaoNaturezaDivergencias?.[c.id]?.trim() || null
               : null;
           if (!frase && !obsBenigna) return null;
-          const textoSugestao = frase ?? obsBenigna ?? '';
+          const textoSugestao = frase ? formatarSugestaoOtimiza(frase) : '';
           return (
             <div className="mt-1.5 flex justify-end">
               <button
@@ -976,7 +991,7 @@ export default function DoubleCheckInComparativoPcTab({
                     }`,
                     texto: textoSugestao,
                     chave: chaveFrase,
-                    ...(frase && obsBenigna ? { contexto: obsBenigna } : {}),
+                    ...(obsBenigna ? { contexto: obsBenigna } : {}),
                   })
                 }
               >
@@ -1131,7 +1146,7 @@ export default function DoubleCheckInComparativoPcTab({
         ))}
       </div>
 
-      {textoConsolidado ? (
+      {textoConsolidado && !evidencia ? (
         <section className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-800 dark:bg-sky-950/40">
           <div className="flex items-center justify-between gap-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
@@ -1585,23 +1600,37 @@ export default function DoubleCheckInComparativoPcTab({
                   Fechar
                 </button>
               </div>
-              {textoModal.contexto ? (
-                <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                  {textoModal.contexto}
-                </p>
-              ) : null}
-              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                {textoModal.texto}
-              </p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  onClick={() => void copiarTexto(textoModal.chave, textoModal.texto)}
-                >
-                  <Copy className="h-3.5 w-3.5" aria-hidden />
-                  {textoCopiado === textoModal.chave ? 'Copiado' : 'Copiar'}
-                </button>
+              <div className="mt-4 space-y-4">
+                {textoModal.contexto ? (
+                  <section>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+                      Explicação da Benignidade
+                    </h4>
+                    <p className="mt-1.5 rounded-md bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                      {textoModal.contexto}
+                    </p>
+                  </section>
+                ) : null}
+                {textoModal.texto ? (
+                  <section>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">
+                      Sugestão de texto para otimiza
+                    </h4>
+                    <p className="mt-1.5 whitespace-pre-line rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-relaxed text-slate-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-slate-200">
+                      {textoModal.texto}
+                    </p>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        className={btnPrimary}
+                        onClick={() => void copiarTexto(textoModal.chave, textoModal.texto)}
+                      >
+                        <Copy className="h-3.5 w-3.5" aria-hidden />
+                        {textoCopiado === textoModal.chave ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
               </div>
             </div>
           </div>,
