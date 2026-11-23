@@ -1,6 +1,6 @@
-import { Workbook, type Cell, type Worksheet } from 'exceljs';
+import { Workbook, type Cell, type Row, type Worksheet } from 'exceljs';
 import { jsPDF } from 'jspdf';
-import autoTable, { type CellHookData } from 'jspdf-autotable';
+import autoTable, { type CellHookData, type CellInput } from 'jspdf-autotable';
 import type { DiarioContaPagarLinha } from '../../../api/diarioFinanceiro';
 import { baixarWorkbook, MONEY_FMT, styleHeader } from '../exportFinanceiroXlsxShared';
 import { hexObservacaoDiario } from './coresObservacaoDiario';
@@ -33,6 +33,10 @@ const COL_ANOTACAO = COLUNAS.indexOf('Observação');
 const COL_ANOTACAO_XLS = COL_ANOTACAO + 1;
 const COL_SALDO = COLUNAS.indexOf('Saldo a pagar') + 1;
 
+const VERMELHO = 'FFDC2626';
+const TEXTO = [30, 41, 59] as [number, number, number];
+const VERMELHO_RGB = [220, 38, 38] as [number, number, number];
+
 function rgbDeHex(hex: string): [number, number, number] {
   const n = hex.replace('#', '');
   return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
@@ -44,27 +48,6 @@ function argbDeHex(hex: string): string {
   return `FF${n}`;
 }
 
-function pintarCelulaObservacao(cell: Cell, hex: string) {
-  const argb = argbDeHex(hex);
-  // fill/font por célula (evita compartilhar style id entre linhas no ExcelJS).
-  cell.fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb },
-    bgColor: { argb },
-  };
-  cell.font = {
-    name: 'Calibri',
-    size: 10,
-    color: { argb: corTextoSobreFundo(hex) },
-  };
-  cell.alignment = { wrapText: true, vertical: 'top' };
-}
-
-const VERMELHO = 'FFDC2626';
-const TEXTO = [30, 41, 59] as [number, number, number];
-const VERMELHO_RGB = [220, 38, 38] as [number, number, number];
-
 function corTextoSobreFundo(hex: string): string {
   const [r, g, b] = rgbDeHex(hex);
   const luma = (r * 299 + g * 587 + b * 114) / 1000;
@@ -75,6 +58,47 @@ function corTextoRgbSobreFundo(hex: string): [number, number, number] {
   const [r, g, b] = rgbDeHex(hex);
   const luma = (r * 299 + g * 587 + b * 114) / 1000;
   return luma < 140 ? [255, 255, 255] : TEXTO;
+}
+
+/** Novo objeto a cada chamada — ExcelJS compartilha style id se a mesma ref for reutilizada. */
+function fillSolido(argb: string) {
+  return {
+    type: 'pattern' as const,
+    pattern: 'solid' as const,
+    fgColor: { argb },
+  };
+}
+
+function pintarCelula(cell: Cell, hex: string, opts?: { wrap?: boolean }) {
+  const argb = argbDeHex(hex);
+  cell.fill = fillSolido(argb);
+  cell.font = {
+    name: 'Calibri',
+    size: 10,
+    color: { argb: corTextoSobreFundo(hex) },
+  };
+  if (opts?.wrap) {
+    cell.alignment = { wrapText: true, vertical: 'top' };
+  }
+}
+
+/**
+ * Pinta a linha inteira com a cor da Observação (comportamento visível no Excel)
+ * e reforça a célula Observação.
+ */
+function pintarLinhaComCorObservacao(row: Row, hex: string, colAnotacao: number, colCount: number) {
+  const fonte = corTextoSobreFundo(hex);
+  const argb = argbDeHex(hex);
+  for (let c = 1; c <= colCount; c++) {
+    const cell = row.getCell(c);
+    cell.fill = fillSolido(argb);
+    // Descrição com richText: só o fundo; o restante recebe fonte sólida.
+    if (c === COL_DESCRICAO + 1) continue;
+    cell.font = { name: 'Calibri', size: 10, color: { argb: fonte } };
+  }
+  const obs = row.getCell(colAnotacao);
+  pintarCelula(obs, hex, { wrap: true });
+  if (obs.value == null || obs.value === '') obs.value = '';
 }
 
 function maiusculo(valor: string | null | undefined): string {
@@ -117,7 +141,10 @@ function empresaExibida(l: DiarioContaPagarLinha): string {
 function nomeArquivo(inicio: string, fim: string, ext: 'xlsx' | 'pdf'): string {
   const a = inicio || 'inicio';
   const b = fim || 'fim';
-  return `diario-financeiro-${a}-a-${b}.${ext}`;
+  const agora = new Date();
+  const hh = String(agora.getHours()).padStart(2, '0');
+  const mm = String(agora.getMinutes()).padStart(2, '0');
+  return `diario-financeiro-${a}-a-${b}_${hh}${mm}.${ext}`;
 }
 
 function valorTextoCelula(value: unknown): string {
@@ -154,6 +181,20 @@ function richTextDescricao(texto: string | null) {
   };
 }
 
+function celulaObsPdf(l: DiarioContaPagarLinha): CellInput {
+  const texto = maiusculo(l.anotacao);
+  const fundo = hexObservacaoDiario(l.anotacaoCor);
+  if (!fundo) return texto;
+  return {
+    content: texto,
+    styles: {
+      fillColor: rgbDeHex(fundo),
+      textColor: corTextoRgbSobreFundo(fundo),
+      fontStyle: 'bold',
+    },
+  };
+}
+
 export async function exportarDiarioContasPagarExcel(opts: {
   linhas: DiarioContaPagarLinha[];
   totais: TotaisDiario;
@@ -168,6 +209,11 @@ export async function exportarDiarioContasPagarExcel(opts: {
     ...COLUNAS,
     ...(opts.incluirResultadoAprovacao ? ['STATUS DA APROVAÇÃO', 'BANCO'] : []),
   ];
+  const colAnotacao =
+    colunas.findIndex((c) => c === 'Observação') >= 0
+      ? colunas.findIndex((c) => c === 'Observação') + 1
+      : COL_ANOTACAO_XLS;
+
   ws.addRow(colunas);
   styleHeader(ws, colunas.length);
 
@@ -184,7 +230,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
       maiusculo(l.fornecedor),
       richTextDescricao(maiusculo(l.descricao)),
       maiusculo(l.observacao),
-      maiusculo(l.anotacao),
+      maiusculo(l.anotacao) || '',
       maiusculo(l.pedidoCompra),
       l.saldo,
       maiusculo(l.notaFiscal),
@@ -198,7 +244,7 @@ export async function exportarDiarioContasPagarExcel(opts: {
     row.getCell(COL_SALDO).numFmt = MONEY_FMT;
     row.getCell(COL_SALDO).alignment = { horizontal: 'right' };
     const fundo = hexObservacaoDiario(l.anotacaoCor);
-    if (fundo) pintarCelulaObservacao(row.getCell(COL_ANOTACAO_XLS), fundo);
+    if (fundo) pintarLinhaComCorObservacao(row, fundo, colAnotacao, colunas.length);
   }
 
   const total = ws.addRow([
@@ -231,12 +277,14 @@ export async function exportarDiarioContasPagarExcel(opts: {
     to: { row: Math.max(1, opts.linhas.length + 1), column: colunas.length },
   };
   autosize(ws, colunas.length);
-  // Reaplica após autosize: garante que o fundo da Observação sobreviva no .xlsx.
+
+  // Reaplica após autosize (alguns leitores ExcelJS perdem fill se só pintar antes).
   opts.linhas.forEach((l, i) => {
     const fundo = hexObservacaoDiario(l.anotacaoCor);
     if (!fundo) return;
-    pintarCelulaObservacao(ws.getRow(i + 2).getCell(COL_ANOTACAO_XLS), fundo);
+    pintarLinhaComCorObservacao(ws.getRow(i + 2), fundo, colAnotacao, colunas.length);
   });
+
   await baixarWorkbook(wb, nomeArquivo(opts.dataInicio, opts.dataFim, 'xlsx'));
 }
 
@@ -322,7 +370,7 @@ export function exportarDiarioContasPagarPdf(opts: {
   doc.setFontSize(8);
   doc.text(`Vencimento ${formatData(opts.dataInicio)} a ${formatData(opts.dataFim)}`, 8, 15);
 
-  const body = opts.linhas.map((l) => [
+  const body: CellInput[][] = opts.linhas.map((l) => [
     l.codigoClassificacao != null && l.codigoClassificacao > 0 ? String(l.codigoClassificacao) : '',
     maiusculo(l.status),
     maiusculo(l.planoContas),
@@ -334,7 +382,7 @@ export function exportarDiarioContasPagarPdf(opts: {
     maiusculo(l.fornecedor),
     maiusculo(l.descricao),
     maiusculo(l.observacao),
-    maiusculo(l.anotacao),
+    celulaObsPdf(l),
     maiusculo(l.pedidoCompra),
     formatMoeda(l.saldo),
     maiusculo(l.notaFiscal),
@@ -390,12 +438,16 @@ export function exportarDiarioContasPagarPdf(opts: {
     },
     horizontalPageBreak: true,
     didParseCell(data) {
-      if (data.section !== 'body' || data.column.index !== COL_ANOTACAO) return;
+      if (data.section !== 'body') return;
       const linha = opts.linhas[data.row.index];
       const fundo = hexObservacaoDiario(linha?.anotacaoCor);
       if (!fundo) return;
+      // Linha inteira no PDF (mesma regra do Excel).
       data.cell.styles.fillColor = rgbDeHex(fundo);
       data.cell.styles.textColor = corTextoRgbSobreFundo(fundo);
+      if (data.column.index === COL_ANOTACAO) {
+        data.cell.styles.fontStyle = 'bold';
+      }
     },
     willDrawCell(data) {
       if (data.section === 'body' && data.column.index === COL_DESCRICAO) {
