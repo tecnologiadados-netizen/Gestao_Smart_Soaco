@@ -30,6 +30,7 @@ import {
   NOMUS_SETOR_ESTOQUE_PADRAO,
   SETORES_VINCULO_PAINEL_COBERTURA_SQL,
 } from './sql/sqlComprasEstoqueFragments.js';
+import { padraoSuprimentoEhComprado } from '../utils/metodoRessuprimentoProduto.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 
 export const CONSULTA_ESTOQUE_CONFIRM_ROWS = 50;
@@ -907,45 +908,63 @@ async function consultarIdsProdutosPaiFiltrados(
 }
 
 /**
- * Indica se os produtos casados com código/descrição possuem ficha técnica (BOM).
+ * Indica se os produtos casados com código/descrição possuem ficha técnica (BOM)
+ * e se o ressuprimento de todos é comprado (Comprado ou Como padrão comprado).
  * - temBom: pelo menos um pai tem BOM
  * - todosTemBom: todos os pais resolvidos têm BOM (e há pelo menos 1)
+ * - todosComprados: todos os pais resolvidos estão parametrizados como comprados
  * Mistura = temBom && !todosTemBom → bloqueada no frontend.
  */
 export async function consultarProdutoFiltroTemBom(
   filtros: Pick<FiltrosConsultaEstoque, 'codigos' | 'descricoes'>
-): Promise<{ temBom: boolean; todosTemBom: boolean; erro?: string }> {
+): Promise<{ temBom: boolean; todosTemBom: boolean; todosComprados: boolean; erro?: string }> {
   if (!filtrosConsultaTemTermoProduto(filtros)) {
-    return { temBom: false, todosTemBom: false };
+    return { temBom: false, todosTemBom: false, todosComprados: false };
   }
 
   const pool = getNomusPool();
   if (!pool || !isNomusEnabled()) {
-    return { temBom: false, todosTemBom: false, erro: 'NOMUS_DB_URL não configurado' };
+    return { temBom: false, todosTemBom: false, todosComprados: false, erro: 'NOMUS_DB_URL não configurado' };
   }
 
   const ids = await consultarIdsProdutosPaiFiltrados(filtros);
-  if (ids.length === 0) return { temBom: false, todosTemBom: false };
+  if (ids.length === 0) return { temBom: false, todosTemBom: false, todosComprados: false };
 
   const bomSql = loadBomListaMateriaisAcabadoSemProdutoSql();
   const placeholders = ids.map(() => '?').join(', ');
-  const sql = `
+  const sqlBom = `
 Select Count(Distinct bom.idprodutopai) As qtdeComBom
 From (${bomSql}) bom
 Where bom.idprodutopai In (${placeholders})
 `.trim();
+  const sqlPadrao = `
+Select p.id, p.padraoSuprimento
+From produto p
+Where p.id In (${placeholders})
+`.trim();
 
   try {
-    const [rows] = (await queryNomus(sql, ids)) as [Record<string, unknown>[], unknown];
-    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    const [bomResult, padraoResult] = await Promise.all([
+      queryNomus(sqlBom, ids),
+      queryNomus(sqlPadrao, ids),
+    ]);
+    const [bomRows] = bomResult as [Record<string, unknown>[], unknown];
+    const [padraoRows] = padraoResult as [Record<string, unknown>[], unknown];
+    const row = Array.isArray(bomRows) && bomRows.length > 0 ? bomRows[0] : null;
     const qtdeComBom = Number(row?.qtdeComBom ?? row?.qtdecombom ?? 0);
     const temBom = qtdeComBom > 0;
     const todosTemBom = ids.length > 0 && qtdeComBom >= ids.length;
-    return { temBom, todosTemBom };
+    const comprados = new Set<number>();
+    for (const r of Array.isArray(padraoRows) ? padraoRows : []) {
+      const id = Number(r.id ?? 0);
+      if (id > 0 && padraoSuprimentoEhComprado(r.padraoSuprimento)) comprados.add(id);
+    }
+    const todosComprados = ids.length > 0 && ids.every((id) => comprados.has(id));
+    return { temBom, todosTemBom, todosComprados };
   } catch (err) {
     const msg = formatNomusErroConexao(err);
     console.error('[consultaEstoqueRepository] consultarProdutoFiltroTemBom:', msg);
-    return { temBom: false, todosTemBom: false, erro: msg };
+    return { temBom: false, todosTemBom: false, todosComprados: false, erro: msg };
   }
 }
 

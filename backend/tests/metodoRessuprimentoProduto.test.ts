@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseFiltroMetodosRessuprimento, rotuloMetodoRessuprimento } from '../src/utils/metodoRessuprimentoProduto.js';
+import {
+  padraoSuprimentoEhComprado,
+  parseFiltroMetodosRessuprimento,
+  rotuloMetodoRessuprimento,
+} from '../src/utils/metodoRessuprimentoProduto.js';
 
 describe('rotuloMetodoRessuprimento', () => {
   it('mapeia padraoSuprimento da aba Geral', () => {
@@ -7,6 +11,14 @@ describe('rotuloMetodoRessuprimento', () => {
     expect(rotuloMetodoRessuprimento(2)).toBe('Fabricado');
     expect(rotuloMetodoRessuprimento(3)).toBe('Como padrão fabricado');
     expect(rotuloMetodoRessuprimento(4)).toBe('Como padrão comprado');
+  });
+
+  it('comprado cobre Comprado e Como padrão comprado', () => {
+    expect(padraoSuprimentoEhComprado(1)).toBe(true);
+    expect(padraoSuprimentoEhComprado(4)).toBe(true);
+    expect(padraoSuprimentoEhComprado(2)).toBe(false);
+    expect(padraoSuprimentoEhComprado(3)).toBe(false);
+    expect(padraoSuprimentoEhComprado(null)).toBe(false);
   });
 
   it('vazio quando não preenchido', () => {

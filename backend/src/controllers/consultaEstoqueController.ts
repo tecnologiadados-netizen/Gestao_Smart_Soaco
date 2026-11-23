@@ -147,12 +147,12 @@ export async function getBuscarPedidosGerenciadorTypeahead(req: Request, res: Re
 /** Indica se o(s) produto(s) do filtro possuem ficha técnica (BOM) — opções do modal de produto. */
 export async function postProdutoFiltroTemBom(req: Request, res: Response): Promise<void> {
   const filtros = filtrosFromBody(req.body);
-  const { temBom, todosTemBom, erro } = await consultarProdutoFiltroTemBom(filtros);
+  const { temBom, todosTemBom, todosComprados, erro } = await consultarProdutoFiltroTemBom(filtros);
   if (erro) {
-    res.status(503).json({ error: erro, temBom: false, todosTemBom: false });
+    res.status(503).json({ error: erro, temBom: false, todosTemBom: false, todosComprados: false });
     return;
   }
-  res.json({ temBom, todosTemBom });
+  res.json({ temBom, todosTemBom, todosComprados });
 }
 
 export async function postContarConsultaEstoque(req: Request, res: Response): Promise<void> {

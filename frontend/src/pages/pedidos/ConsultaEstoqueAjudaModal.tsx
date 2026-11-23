@@ -12,7 +12,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A grade traz só valores consolidados (estoque, empenho, SC, Pré Compra, PC, saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
     comoLe:
-      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo).',
+      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo). O modal aberto pelo código do produto no pedido, no sequenciamento, no heatmap e no calendário usa esta mesma grade: empenho, estoque, solicitação, pré compra, pedido de compra e saldo projetado, com o mesmo clique em cada coluna.',
   },
   {
     id: 'saldo',
@@ -42,7 +42,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'produto',
     titulo: 'Filtro por produto (item ou componentes)',
     oQueE:
-      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar, se a única visualização possível é “Item filtrado” (nenhum item tem BOM), a consulta carrega direto, sem perguntar como visualizar, e o empenho considera todos os pedidos. Quando todos os itens têm BOM, abre o modal para escolher “Item filtrado” ou “Componentes do item filtrado”. O aviso amarelo só aparece se esse modal for fechado sem confirmar. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece.',
+      'Código e descrição aceitam vários itens na mesma consulta. Não é permitido misturar produtos com e sem ficha técnica (BOM). Ao clicar em Filtrar, a consulta abre direto o próprio item, com empenho de todos os pedidos, quando todos os itens estão com ressuprimento Comprado ou Como padrão comprado (aba Geral do produto no Nomus), e também quando nenhum item tem ficha técnica (BOM). Sem BOM, o botão Alterar fica oculto. Com BOM e ressuprimento comprado, a consulta também abre direto no próprio item, e Alterar continua disponível para ver os componentes. Quando há item com BOM e o ressuprimento não é comprado em todos, o Filtrar abre o modal para escolher “Item filtrado” ou “Componentes do item filtrado”. O aviso amarelo só aparece se esse modal for fechado sem confirmar. O empenho só é perguntado no modo componentes sem PD específico. Com PD selecionado, o escopo do pedido prevalece. O mesmo atalho vale ao abrir a consulta de estoque pelo código do produto nas outras telas (pedido, heatmap, sequenciamento e calendário).',
     comoLe:
       'Em “Componentes do item filtrado” a grade traz SÓ os componentes — o item pai não aparece nas linhas. No empenho “Somente do item filtrado” (só no modo componentes sem PD), a coluna considera apenas a demanda gerada pelo(s) item(ns) pai filtrado(s); o modal analítico usa o mesmo escopo e fecha com a grade. Ao tentar misturar PA com MP, a seleção é revertida com aviso.',
   },
@@ -52,7 +52,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Tipo, grupo, coleta, setor e subgrupo cascateiam entre si; código e descrição aceitam busca de texto livre (use % como curinga).',
     comoLe:
-      'Escolha filtros de cima para baixo: ao mudar um nível, as opções dos níveis seguintes se atualizam. Código/descrição não substituem a cascata — combinam com ela. Sem BOM, Filtrar carrega o próprio item; quando todos têm BOM, a consulta pede a visualização no modal de produto.',
+      'Escolha filtros de cima para baixo: ao mudar um nível, as opções dos níveis seguintes se atualizam. Código/descrição não substituem a cascata — combinam com ela. Com ressuprimento comprado em todos os itens, ou sem BOM, Filtrar carrega o próprio item. Quando há BOM e o ressuprimento não é comprado, a consulta pede a visualização no modal de produto.',
   },
   {
     id: 'pa',

@@ -210,6 +210,24 @@ export function escolhaAutomaticaSoItemFiltrado(
   return { modoProduto: 'diretos', empenhoEscopo: 'todos' };
 }
 
+const ESCOLHA_ITEM_FILTRADO: ProdutoFiltroConsultaEstoque = {
+  modoProduto: 'diretos',
+  empenhoEscopo: 'todos',
+};
+
+/**
+ * Pula o modal “Como visualizar os produtos?” e abre direto o próprio item.
+ * Vale quando todos os itens estão com ressuprimento Comprado ou Como padrão
+ * comprado, e também quando nenhum item tem ficha técnica (BOM).
+ */
+export function escolhaAutomaticaProdutoConsulta(opts: {
+  temBom: boolean;
+  todosComprados: boolean;
+}): ProdutoFiltroConsultaEstoque | null {
+  if (opts.todosComprados) return ESCOLHA_ITEM_FILTRADO;
+  return escolhaAutomaticaSoItemFiltrado(opts.temBom);
+}
+
 export const OPCOES_EMPENHO_PRODUTO_CONSULTA: {
   valor: EmpenhoProdutoEscopoConsultaEstoque;
   titulo: string;

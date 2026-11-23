@@ -134,11 +134,11 @@ export async function buscarPedidosGerenciadorTypeahead(
   return { data: (j as { data: PedidoGerenciadorTypeaheadItem[] }).data ?? [] };
 }
 
-/** Verifica se o(s) produto(s) do filtro possuem ficha técnica (BOM). */
+/** Verifica BOM e se o ressuprimento de todos os itens do filtro é comprado. */
 export async function verificarProdutoFiltroTemBom(params: {
   codigos?: string[];
   descricoes?: string[];
-}): Promise<{ temBom: boolean; todosTemBom: boolean; error?: string }> {
+}): Promise<{ temBom: boolean; todosTemBom: boolean; todosComprados: boolean; error?: string }> {
   const res = await apiFetch('/api/pcp/consulta-estoque/produto-filtro/tem-bom', {
     method: 'POST',
     body: { filtros: params },
@@ -148,13 +148,15 @@ export async function verificarProdutoFiltroTemBom(params: {
     return {
       temBom: false,
       todosTemBom: false,
+      todosComprados: false,
       error: (j as { error?: string }).error ?? res.statusText,
     };
   }
-  const body = j as { temBom?: boolean; todosTemBom?: boolean };
+  const body = j as { temBom?: boolean; todosTemBom?: boolean; todosComprados?: boolean };
   return {
     temBom: Boolean(body.temBom),
     todosTemBom: Boolean(body.todosTemBom),
+    todosComprados: Boolean(body.todosComprados),
   };
 }
 

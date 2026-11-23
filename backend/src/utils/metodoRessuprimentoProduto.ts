@@ -23,6 +23,12 @@ export function rotuloMetodoRessuprimento(padraoSuprimento: unknown): string {
   return ROTULOS[n] ?? '';
 }
 
+/** Item suprido por compra: Comprado (1) ou Como padrão comprado (4). */
+export function padraoSuprimentoEhComprado(padraoSuprimento: unknown): boolean {
+  const n = Number(padraoSuprimento);
+  return n === 1 || n === 4;
+}
+
 /** Lista vinda do calendário; vazia = sem filtro extra. */
 export function parseFiltroMetodosRessuprimento(raw: unknown): string[] {
   const allowed = new Set<string>(ROTULOS_METODO_RESSUPRIMENTO);
