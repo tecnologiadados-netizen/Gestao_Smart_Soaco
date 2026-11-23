@@ -525,3 +525,192 @@ export async function carregarEspelhoPrimeiraLeitura(
   }
   return recuperadas;
 }
+
+export type BlocoEspelhoHistorico =
+  | {
+      tipo: 'leitura';
+      ordem: number;
+      gravadoEm: string | null;
+      linhas: DoubleCheckInComparativoLinha[];
+    }
+  | { tipo: 'marco'; id: string; titulo: string };
+
+type LeituraEspelhoRow = {
+  ordem: number;
+  chaveItens: string;
+  chaveVinculo: string;
+  linhasJson: string;
+  gravadoEm: string | null;
+};
+
+let tabelaLeiturasPronta = false;
+
+async function ensureTabelaLeituras(): Promise<void> {
+  if (tabelaLeiturasPronta) return;
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "double_checkin_espelho_leitura" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "idDocumentoEstoque" INTEGER NOT NULL,
+      "ordem" INTEGER NOT NULL,
+      "chaveItens" TEXT NOT NULL,
+      "chaveVinculo" TEXT NOT NULL DEFAULT '',
+      "linhasJson" TEXT NOT NULL,
+      "gravadoEm" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "double_checkin_espelho_leitura_documento_ordem_key"
+    ON "double_checkin_espelho_leitura"("idDocumentoEstoque", "ordem")
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "double_checkin_espelho_estado" (
+      "idDocumentoEstoque" INTEGER NOT NULL PRIMARY KEY,
+      "desvinculado" INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  tabelaLeiturasPronta = true;
+}
+
+function chaveItensEspelho(linhas: DoubleCheckInComparativoLinha[]): string {
+  return linhasVinculadas(linhas)
+    .map((linha) => `${linha.idItemDocumentoEstoque}:${linha.idItemPedidoCompra}:${linha.idPedidoCompra ?? 0}`)
+    .sort()
+    .join('|');
+}
+
+async function lerLeiturasEspelho(idDocumento: number): Promise<LeituraEspelhoRow[]> {
+  await ensureTabelaLeituras();
+  return prisma.$queryRaw<LeituraEspelhoRow[]>`
+    SELECT ordem, chaveItens, chaveVinculo, linhasJson, gravadoEm
+    FROM double_checkin_espelho_leitura
+    WHERE idDocumentoEstoque = ${idDocumento}
+    ORDER BY ordem ASC
+  `;
+}
+
+async function lerDesvinculado(idDocumento: number): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ desvinculado: number }[]>`
+    SELECT desvinculado FROM double_checkin_espelho_estado
+    WHERE idDocumentoEstoque = ${idDocumento}
+    LIMIT 1
+  `;
+  return Number(rows[0]?.desvinculado) === 1;
+}
+
+async function gravarDesvinculado(idDocumento: number, desvinculado: boolean): Promise<void> {
+  const flag = desvinculado ? 1 : 0;
+  await prisma.$executeRaw`
+    INSERT INTO double_checkin_espelho_estado (idDocumentoEstoque, desvinculado)
+    VALUES (${idDocumento}, ${flag})
+    ON CONFLICT(idDocumentoEstoque) DO UPDATE SET desvinculado = ${flag}
+  `;
+}
+
+function blocosDasLeituras(leituras: LeituraEspelhoRow[], desvinculado: boolean): BlocoEspelhoHistorico[] {
+  const blocos: BlocoEspelhoHistorico[] = [];
+  leituras.forEach((leitura, indice) => {
+    if (indice > 0) {
+      blocos.push({ tipo: 'marco', id: `desvinculo-${leitura.ordem}`, titulo: 'Desvínculo com o PC' });
+      blocos.push({ tipo: 'marco', id: `vinculo-${leitura.ordem}`, titulo: 'Vínculo com o PC' });
+    }
+    blocos.push({
+      tipo: 'leitura',
+      ordem: leitura.ordem,
+      gravadoEm: leitura.gravadoEm,
+      linhas: lerListaRetrato(leitura.linhasJson),
+    });
+  });
+  if (desvinculado && leituras.length > 0) {
+    blocos.push({ tipo: 'marco', id: 'desvinculo-atual', titulo: 'Desvínculo com o PC' });
+  }
+  return blocos;
+}
+
+/**
+ * Acumula um espelho por cenário de vínculo. A primeira leitura não é substituída.
+ * Um desvínculo seguido de novo vínculo gera a leitura seguinte.
+ */
+export async function sincronizarEspelhosLeitura(
+  idDocumento: number,
+  linhas: DoubleCheckInComparativoLinha[],
+  chaveVinculo = ''
+): Promise<BlocoEspelhoHistorico[]> {
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) return [];
+  await ensureTabelaLeituras();
+  let leituras = await lerLeiturasEspelho(idDocumento);
+  if (leituras.length === 0) {
+    const primeira = await carregarEspelhoPrimeiraLeitura(idDocumento);
+    const vinculadas = linhasVinculadas(primeira);
+    if (vinculadas.length > 0) {
+      await prisma.$executeRaw`
+        INSERT INTO double_checkin_espelho_leitura
+          (idDocumentoEstoque, ordem, chaveItens, chaveVinculo, linhasJson)
+        VALUES (
+          ${idDocumento},
+          1,
+          ${chaveItensEspelho(vinculadas)},
+          '',
+          ${JSON.stringify(vinculadas)}
+        )
+      `;
+      leituras = await lerLeiturasEspelho(idDocumento);
+    }
+  }
+
+  const vinculadas = linhasVinculadas(linhas);
+  if (vinculadas.length === 0) {
+    if (leituras.length > 0) await gravarDesvinculado(idDocumento, true);
+    return blocosDasLeituras(leituras, leituras.length > 0);
+  }
+
+  const chaveItens = chaveItensEspelho(vinculadas);
+  const vinculo = chaveVinculo.trim();
+  const desvinculado = await lerDesvinculado(idDocumento);
+  const ultima = leituras[leituras.length - 1];
+  if (!ultima) {
+    await prisma.$executeRaw`
+      INSERT INTO double_checkin_espelho_leitura
+        (idDocumentoEstoque, ordem, chaveItens, chaveVinculo, linhasJson)
+      VALUES (${idDocumento}, 1, ${chaveItens}, ${vinculo}, ${JSON.stringify(vinculadas)})
+    `;
+    await gravarDesvinculado(idDocumento, false);
+  } else if (chaveItens === ultima.chaveItens && !desvinculado) {
+    if (vinculo && vinculo !== ultima.chaveVinculo) {
+      if (!ultima.chaveVinculo) {
+        await prisma.$executeRaw`
+          UPDATE double_checkin_espelho_leitura
+          SET chaveVinculo = ${vinculo}
+          WHERE idDocumentoEstoque = ${idDocumento} AND ordem = ${ultima.ordem}
+        `;
+      } else {
+        await prisma.$executeRaw`
+          INSERT INTO double_checkin_espelho_leitura
+            (idDocumentoEstoque, ordem, chaveItens, chaveVinculo, linhasJson)
+          VALUES (
+            ${idDocumento},
+            ${ultima.ordem + 1},
+            ${chaveItens},
+            ${vinculo},
+            ${JSON.stringify(vinculadas)}
+          )
+        `;
+      }
+    }
+  } else {
+    await prisma.$executeRaw`
+      INSERT INTO double_checkin_espelho_leitura
+        (idDocumentoEstoque, ordem, chaveItens, chaveVinculo, linhasJson)
+      VALUES (
+        ${idDocumento},
+        ${ultima.ordem + 1},
+        ${chaveItens},
+        ${vinculo},
+        ${JSON.stringify(vinculadas)}
+      )
+    `;
+    await gravarDesvinculado(idDocumento, false);
+  }
+
+  const atualizadas = await lerLeiturasEspelho(idDocumento);
+  return blocosDasLeituras(atualizadas, await lerDesvinculado(idDocumento));
+}

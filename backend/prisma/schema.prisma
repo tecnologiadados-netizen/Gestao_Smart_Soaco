@@ -362,6 +362,28 @@ model DoubleCheckInEspelhoPrimeiraLeitura {
   @@map("double_checkin_espelho_primeira_leitura")
 }
 
+/// Cada cenário de vínculo do Double Check, em ordem. A primeira leitura não é substituída.
+model DoubleCheckInEspelhoLeitura {
+  id                 Int      @id @default(autoincrement())
+  idDocumentoEstoque Int
+  ordem              Int
+  chaveItens         String
+  chaveVinculo       String   @default("")
+  linhasJson         String
+  gravadoEm          DateTime @default(now())
+
+  @@unique([idDocumentoEstoque, ordem])
+  @@map("double_checkin_espelho_leitura")
+}
+
+/// Marca que o documento foi visto sem vínculo depois de uma leitura, para gravar a próxima.
+model DoubleCheckInEspelhoEstado {
+  idDocumentoEstoque Int     @id
+  desvinculado       Boolean @default(false)
+
+  @@map("double_checkin_espelho_estado")
+}
+
 /// Histórico acumulativo de observações por divergência (campo) do comparativo NF × PC.
 model DoubleCheckInComparativoObsHist {
   id                     Int      @id @default(autoincrement())

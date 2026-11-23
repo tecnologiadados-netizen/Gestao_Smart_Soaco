@@ -1599,6 +1599,15 @@ export type DoubleCheckInHistoricoEvento = {
   legenda?: boolean;
 };
 
+export type DoubleCheckInHistoricoBloco =
+  | {
+      tipo: 'leitura';
+      ordem: number;
+      gravadoEm: string | null;
+      linhas: DoubleCheckInComparativoLinha[];
+    }
+  | { tipo: 'marco'; id: string; titulo: string };
+
 export type DoubleCheckInHistorico = {
   documento: {
     idDocumento: number;
@@ -1612,6 +1621,7 @@ export type DoubleCheckInHistorico = {
   };
   aviso: string;
   eventos: DoubleCheckInHistoricoEvento[];
+  blocos?: DoubleCheckInHistoricoBloco[];
 };
 
 export async function fetchDoubleCheckInHistorico(

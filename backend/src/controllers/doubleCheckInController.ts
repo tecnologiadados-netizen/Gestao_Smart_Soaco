@@ -59,6 +59,7 @@ import {
   carregarEspelhoPrimeiraLeitura,
   registrarDivergenciasApontadas,
   registrarEspelhoPrimeiraLeitura,
+  sincronizarEspelhosLeitura,
 } from '../data/doubleCheckInDivergenciaApontada.js';
 import { carregarHistoricoDoubleCheck } from '../data/doubleCheckInHistorico.js';
 import { carregarRetratoPrimeiraLeitura } from '../data/doubleCheckInDivergenciaApontada.js';
@@ -467,8 +468,10 @@ export async function carregarComparativoVisivel(idDocumento: number): Promise<{
   if (erro) return { linhas: [], semVinculo: false, erro };
   if (linhas.length > 0) {
     await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
+    await sincronizarEspelhosLeitura(idDocumento, linhas);
     return { linhas: linhasComNatureza(linhas, []), semVinculo: false };
   }
+  await sincronizarEspelhosLeitura(idDocumento, []);
   const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
   return { linhas: linhasComNatureza(espelho, []), semVinculo: espelho.length > 0 };
 }
@@ -559,11 +562,13 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     const regime = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
     if (linhas.length > 0) {
       await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
+      await sincronizarEspelhosLeitura(idDocumento, linhas);
       if (regime === 'completa') {
         await registrarDivergenciasApontadas(new Map([[idDocumento, linhas]]));
       }
     }
     if (linhas.length === 0) {
+      await sincronizarEspelhosLeitura(idDocumento, []);
       const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
       if (espelho.length > 0) {
         res.json({

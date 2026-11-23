@@ -5,9 +5,17 @@
 import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
-import { buscarCompradorPorItemPedido, carregarPrimeirasLeituras } from './doubleCheckInDivergenciaApontada.js';
+import {
+  buscarCompradorPorItemPedido,
+  carregarPrimeirasLeituras,
+  sincronizarEspelhosLeitura,
+  type BlocoEspelhoHistorico,
+} from './doubleCheckInDivergenciaApontada.js';
 import { listarDecisoesComparativo } from './doubleCheckInLocalRepository.js';
-import { queryDoubleCheckInComparativoPc } from './doubleCheckInRepository.js';
+import {
+  queryDoubleCheckInComparativoPc,
+  type DoubleCheckInComparativoLinha,
+} from './doubleCheckInRepository.js';
 import { textoComparativoCampo, type LinhaComparativoDia } from './gestaoEntradasClassificacao.js';
 import type { CampoRelato, RelatoConferencia } from '../services/doubleCheckInConferenciaRelato.js';
 import {
@@ -57,6 +65,8 @@ export type HistoricoDoubleCheck = {
   documento: DocumentoHistoricoCabecalho;
   aviso: string;
   eventos: EventoHistoricoDoubleCheck[];
+  /** Espelhos visuais de cada leitura, com desvínculo e vínculo entre elas. */
+  blocos: BlocoEspelhoHistorico[];
 };
 
 export type ItemHistoricoVinculo = {
@@ -1144,11 +1154,22 @@ export async function carregarHistoricoDoubleCheck(
     const aviso = comparativo.erro
       ? `${AVISO_HISTORICO_DOUBLE_CHECK} A leitura atual do comparativo falhou: ${comparativo.erro}`
       : AVISO_HISTORICO_DOUBLE_CHECK;
+    const chaveVinculo = itens
+      .map((item) => item.idVinculo ?? 0)
+      .filter((id) => id > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+    const blocos = await sincronizarEspelhosLeitura(
+      idDocumento,
+      linhasAtuais as DoubleCheckInComparativoLinha[],
+      chaveVinculo
+    );
 
     return {
       data: {
         documento,
         aviso,
+        blocos,
         eventos: montarEventosHistorico({
           documento,
           itens,
