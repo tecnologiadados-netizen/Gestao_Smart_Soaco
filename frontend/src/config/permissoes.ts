@@ -14,6 +14,8 @@ export const PERMISSOES = {
   COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
   /** Double Check NFe — cadastrar, editar e excluir motivos de divergência. */
   COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS: 'compras.double_checkin.justificativas',
+  /** Double Check NFe — parâmetros, destinatários, cadastros e critérios de divergência. */
+  COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES: 'compras.double_checkin.configuracoes',
   DIVERGENCIAS_REABRIR_CONFERENCIA: 'divergencias.reabrir_conferencia',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1: 'compras.pendencias.prioridade.comprador_1',
   COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2: 'compras.pendencias.prioridade.comprador_2',

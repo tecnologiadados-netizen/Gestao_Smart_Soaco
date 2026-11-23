@@ -1489,6 +1489,8 @@ export type DoubleCheckInNota = {
   dataEmissao: string | null;
   idParceiro: number | null;
   nomeParceiro: string | null;
+  /** Usuário do Nomus que criou o documento. */
+  nomeCriador?: string | null;
   qtdeItens: number;
   regimeConferencia?: 'nao_aplicada' | 'simples' | 'completa';
   conferido?: boolean;
@@ -1733,6 +1735,15 @@ export async function reabrirDoubleCheckIn(
 }
 
 export type DoubleCheckInCampoComparativo = 'valor_unitario' | 'qtde' | 'ipi' | 'condicao_pagamento';
+
+export type CriteriosDivergenciaDoubleCheck = Record<DoubleCheckInCampoComparativo, boolean>;
+
+export const CRITERIOS_DIVERGENCIA_PADRAO: CriteriosDivergenciaDoubleCheck = {
+  valor_unitario: true,
+  qtde: true,
+  ipi: true,
+  condicao_pagamento: true,
+};
 export type DoubleCheckInNaturezaDivergencia = 'benigna' | 'real';
 
 export type DoubleCheckInComparativoLinha = {
@@ -1912,6 +1923,9 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
   pendentes: number;
+  criterios: CriteriosDivergenciaDoubleCheck;
+  camposLancados: DoubleCheckInCampoComparativo[];
+  semVinculo: boolean;
   erro?: string;
 }> {
   const res = await apiFetch(`/api/compras/double-checkin/notas/${idDocumento}/comparativo-pc`);
@@ -1921,9 +1935,22 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     justificativas?: DoubleCheckInJustificativaOpcao[];
     solicitacoesOtimiza?: DoubleCheckInSolicitacaoOtimiza[];
     pendentes?: number;
+    criterios?: Partial<CriteriosDivergenciaDoubleCheck>;
+    camposLancados?: string[];
+    semVinculo?: boolean;
     erro?: string;
     error?: string;
   };
+  const criterios = { ...CRITERIOS_DIVERGENCIA_PADRAO };
+  if (body.criterios && typeof body.criterios === 'object') {
+    for (const campo of Object.keys(criterios) as DoubleCheckInCampoComparativo[]) {
+      if (typeof body.criterios[campo] === 'boolean') criterios[campo] = body.criterios[campo];
+    }
+  }
+  const camposLancados = (Array.isArray(body.camposLancados) ? body.camposLancados : []).filter(
+    (campo): campo is DoubleCheckInCampoComparativo =>
+      campo === 'valor_unitario' || campo === 'qtde' || campo === 'ipi' || campo === 'condicao_pagamento'
+  );
   if (!res.ok) {
     return {
       linhas: [],
@@ -1931,6 +1958,9 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
       justificativas: [],
       solicitacoesOtimiza: [],
       pendentes: 0,
+      criterios,
+      camposLancados: [],
+      semVinculo: false,
       erro: body.erro ?? body.error ?? res.statusText,
     };
   }
@@ -1940,6 +1970,9 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     justificativas: Array.isArray(body.justificativas) ? body.justificativas : [],
     solicitacoesOtimiza: Array.isArray(body.solicitacoesOtimiza) ? body.solicitacoesOtimiza : [],
     pendentes: typeof body.pendentes === 'number' ? body.pendentes : 0,
+    criterios,
+    camposLancados,
+    semVinculo: body.semVinculo === true,
   };
 }
 
@@ -2067,6 +2100,46 @@ export async function addDoubleCheckInComparativoObservacao(params: {
     return { ok: false, erro: body.error ?? res.statusText };
   }
   return { ok: true, entrada: body.entrada, decisao: body.decisao };
+}
+
+export async function fetchDoubleCheckInCriterios(): Promise<{
+  criterios: CriteriosDivergenciaDoubleCheck;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/criterios');
+  const body = (await res.json().catch(() => ({}))) as {
+    criterios?: Partial<CriteriosDivergenciaDoubleCheck>;
+    error?: string;
+  };
+  const criterios = { ...CRITERIOS_DIVERGENCIA_PADRAO };
+  if (body.criterios && typeof body.criterios === 'object') {
+    for (const campo of Object.keys(criterios) as DoubleCheckInCampoComparativo[]) {
+      if (typeof body.criterios[campo] === 'boolean') criterios[campo] = body.criterios[campo];
+    }
+  }
+  if (!res.ok) return { criterios, erro: body.error ?? res.statusText };
+  return { criterios };
+}
+
+export async function saveDoubleCheckInCriterios(
+  criterios: CriteriosDivergenciaDoubleCheck
+): Promise<{ criterios: CriteriosDivergenciaDoubleCheck; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/criterios', {
+    method: 'PUT',
+    body: { criterios },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    criterios?: Partial<CriteriosDivergenciaDoubleCheck>;
+    error?: string;
+  };
+  const salvos = { ...criterios };
+  if (body.criterios && typeof body.criterios === 'object') {
+    for (const campo of Object.keys(salvos) as DoubleCheckInCampoComparativo[]) {
+      if (typeof body.criterios[campo] === 'boolean') salvos[campo] = body.criterios[campo];
+    }
+  }
+  if (!res.ok) return { criterios: salvos, erro: body.error ?? res.statusText };
+  return { criterios: salvos };
 }
 
 export async function fetchDoubleCheckInParametros(): Promise<{

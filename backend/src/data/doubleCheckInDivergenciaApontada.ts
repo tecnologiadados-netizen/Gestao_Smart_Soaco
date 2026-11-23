@@ -2,6 +2,7 @@
  * Grava a primeira vez que o Double Check lê uma NF vinculada divergente do pedido.
  * O retrato permanece se o conferente desfizer o vínculo.
  */
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import {
@@ -15,6 +16,7 @@ import {
 import { SEM_COMPRADOR } from './gestaoEntradasComprador.js';
 import {
   DOUBLE_CHECKIN_CAMPOS,
+  getCriteriosDivergencia,
   type DoubleCheckInCampoComparativo,
 } from './doubleCheckInLocalRepository.js';
 
@@ -124,6 +126,8 @@ export async function registrarDivergenciasApontadas(
       natureza: string;
       retratoJson: string;
     };
+    await registrarEspelhoPrimeiraLeitura(linhasPorDocumento);
+    const criterios = await getCriteriosDivergencia();
     const porChave = new Map<string, Candidato>();
     for (const [idDocumento, linhas] of linhasPorDocumento) {
       if (!Number.isFinite(idDocumento) || idDocumento <= 0) continue;
@@ -131,6 +135,7 @@ export async function registrarDivergenciasApontadas(
         if (linha.idPedidoCompra == null || linha.idPedidoCompra <= 0) continue;
         if (linha.idItemPedidoCompra <= 0 || linha.idItemDocumentoEstoque <= 0) continue;
         for (const spec of CAMPOS_LINHA) {
+          if (criterios[spec.campo] === false) continue;
           if (!linha[spec.flag]) continue;
           const candidato: Candidato = {
             idDocumentoEstoque: idDocumento,
@@ -302,10 +307,37 @@ export async function carregarRetratoPrimeiraLeitura(idDocumento: number): Promi
   linhas: LinhaPrimeiraLeitura[];
   erro?: string;
 }> {
-  const snaps = await prisma.doubleCheckInDivergenciaApontada.findMany({
-    where: { idDocumentoEstoque: idDocumento },
-    orderBy: { apontadoEm: 'asc' },
-  });
+  const [espelho, snaps] = await Promise.all([
+    carregarEspelhoPrimeiraLeitura(idDocumento),
+    prisma.doubleCheckInDivergenciaApontada.findMany({
+      where: { idDocumentoEstoque: idDocumento },
+      orderBy: { apontadoEm: 'asc' },
+    }),
+  ]);
+  if (espelho.length > 0) {
+    const linhas = espelho.map((linha) => {
+      const naturezas = new Map(
+        snaps
+          .filter(
+            (snap) =>
+              snap.idItemDocumentoEstoque === linha.idItemDocumentoEstoque &&
+              snap.idItemPedidoCompra === linha.idItemPedidoCompra
+          )
+          .map((snap) => [snap.campo, snap.natureza])
+      );
+      return comNaturezaDaLeitura(linha, naturezas);
+    });
+    const divergiu = linhas.some(
+      (linha) => linha.divergValorUnitario || linha.divergQtde || linha.divergIpi || linha.divergCondicaoPagamento
+    );
+    return {
+      origem: 'retrato',
+      aviso: divergiu
+        ? 'Espelho da primeira leitura. Role para ver todas as divergências do documento.'
+        : 'Espelho da primeira leitura. Nesta leitura a nota não divergiu do pedido.',
+      linhas,
+    };
+  }
   if (snaps.length === 0) {
     return {
       origem: 'retrato',
@@ -370,4 +402,126 @@ export async function carregarRetratoPrimeiraLeitura(idDocumento: number): Promi
     aviso,
     linhas,
   };
+}
+
+function linhasVinculadas(linhas: DoubleCheckInComparativoLinha[]): DoubleCheckInComparativoLinha[] {
+  return linhas.filter(
+    (linha) =>
+      linha.idPedidoCompra != null &&
+      linha.idPedidoCompra > 0 &&
+      linha.idItemPedidoCompra > 0 &&
+      linha.idItemDocumentoEstoque > 0
+  );
+}
+
+function lerListaRetrato(raw: string | null | undefined): DoubleCheckInComparativoLinha[] {
+  if (!raw) return [];
+  try {
+    const valor = JSON.parse(raw) as unknown;
+    if (!Array.isArray(valor)) return [];
+    return valor.filter((item): item is DoubleCheckInComparativoLinha => {
+      if (!item || typeof item !== 'object') return false;
+      const linha = item as Partial<DoubleCheckInComparativoLinha>;
+      return Number.isFinite(Number(linha.idItemDocumentoEstoque)) && Number.isFinite(Number(linha.idItemPedidoCompra));
+    });
+  } catch {
+    return [];
+  }
+}
+
+let tabelaEspelhoPronta = false;
+
+async function ensureTabelaEspelho(): Promise<void> {
+  if (tabelaEspelhoPronta) return;
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "double_checkin_espelho_primeira_leitura" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "idDocumentoEstoque" INTEGER NOT NULL,
+      "linhasJson" TEXT NOT NULL,
+      "gravadoEm" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "double_checkin_espelho_primeira_leitura_idDocumentoEstoque_key"
+    ON "double_checkin_espelho_primeira_leitura"("idDocumentoEstoque")
+  `);
+  tabelaEspelhoPronta = true;
+}
+
+/**
+ * Grava uma vez o comparativo completo da primeira leitura com vínculo.
+ * Leitura seguinte, desvínculo ou novo vínculo não substituem esse espelho.
+ */
+export async function registrarEspelhoPrimeiraLeitura(
+  linhasPorDocumento: Map<number, DoubleCheckInComparativoLinha[]>
+): Promise<void> {
+  const candidatos: { idDocumentoEstoque: number; linhasJson: string }[] = [];
+  for (const [idDocumento, linhas] of linhasPorDocumento) {
+    if (!Number.isFinite(idDocumento) || idDocumento <= 0) continue;
+    const vinculadas = linhasVinculadas(linhas);
+    if (vinculadas.length === 0) continue;
+    candidatos.push({ idDocumentoEstoque: idDocumento, linhasJson: JSON.stringify(vinculadas) });
+  }
+  if (candidatos.length === 0) return;
+  await ensureTabelaEspelho();
+  const ids = candidatos.map((item) => item.idDocumentoEstoque);
+  const existentes = await prisma.$queryRaw<{ idDocumentoEstoque: number }[]>(
+    Prisma.sql`SELECT idDocumentoEstoque FROM double_checkin_espelho_primeira_leitura WHERE idDocumentoEstoque IN (${Prisma.join(ids)})`
+  );
+  const ja = new Set(existentes.map((row) => Number(row.idDocumentoEstoque)));
+  const novos = candidatos.filter((item) => !ja.has(item.idDocumentoEstoque));
+  for (const item of novos) {
+    await prisma.$executeRaw`
+      INSERT INTO double_checkin_espelho_primeira_leitura (idDocumentoEstoque, linhasJson)
+      VALUES (${item.idDocumentoEstoque}, ${item.linhasJson})
+    `;
+  }
+}
+
+async function retratosApontados(idDocumento: number): Promise<DoubleCheckInComparativoLinha[]> {
+  const snaps = await prisma.doubleCheckInDivergenciaApontada.findMany({
+    where: { idDocumentoEstoque: idDocumento },
+    orderBy: { apontadoEm: 'asc' },
+  });
+  const linhas: DoubleCheckInComparativoLinha[] = [];
+  const vistos = new Set<string>();
+  for (const snap of snaps) {
+    const chave = `${snap.idItemDocumentoEstoque}:${snap.idItemPedidoCompra}`;
+    if (vistos.has(chave)) continue;
+    const retrato = lerRetrato(snap.retratoJson);
+    if (!retrato) continue;
+    vistos.add(chave);
+    linhas.push(retrato);
+  }
+  return linhas;
+}
+
+/** Espelho da primeira leitura. Se o documento já foi desvinculado antes desta gravação, recupera o retrato apontado. */
+export async function carregarEspelhoPrimeiraLeitura(
+  idDocumento: number
+): Promise<DoubleCheckInComparativoLinha[]> {
+  await ensureTabelaEspelho();
+  const rows = await prisma.$queryRaw<{ linhasJson: string }[]>`
+    SELECT linhasJson FROM double_checkin_espelho_primeira_leitura
+    WHERE idDocumentoEstoque = ${idDocumento}
+    LIMIT 1
+  `;
+  if (rows[0]) return lerListaRetrato(rows[0].linhasJson);
+  const recuperadas = await retratosApontados(idDocumento);
+  if (recuperadas.length === 0) return [];
+  const linhasJson = JSON.stringify(recuperadas);
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO double_checkin_espelho_primeira_leitura (idDocumentoEstoque, linhasJson)
+      VALUES (${idDocumento}, ${linhasJson})
+    `;
+  } catch {
+    const existente = await prisma.$queryRaw<{ linhasJson: string }[]>`
+      SELECT linhasJson FROM double_checkin_espelho_primeira_leitura
+      WHERE idDocumentoEstoque = ${idDocumento}
+      LIMIT 1
+    `;
+    if (existente[0]) return lerListaRetrato(existente[0].linhasJson);
+  }
+  return recuperadas;
 }

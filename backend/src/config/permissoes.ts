@@ -14,6 +14,8 @@ export const PERMISSOES = {
   COMPRAS_DOUBLE_CHECKIN: 'compras.double_checkin',
   /** Double Check NFe — cadastrar, editar e excluir motivos de divergência. */
   COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS: 'compras.double_checkin.justificativas',
+  /** Double Check NFe — parâmetros, destinatários, cadastros e critérios de divergência. */
+  COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES: 'compras.double_checkin.configuracoes',
   /** Divergências — reabrir uma conferência já concluída para exigir novas decisões. */
   DIVERGENCIAS_REABRIR_CONFERENCIA: 'divergencias.reabrir_conferencia',
   /** Pendências compras — editar prioridade fixa do Comprador 1. */
@@ -225,6 +227,7 @@ export const TODAS_PERMISSOES: CodigoPermissao[] = [
   PERMISSOES.COMPRAS_EDITAR,
   PERMISSOES.COMPRAS_DOUBLE_CHECKIN,
   PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS,
+  PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES,
   PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1,
   PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_2,
@@ -410,6 +413,7 @@ export const LABELS_PERMISSOES: Record<CodigoPermissao, string> = {
   [PERMISSOES.COMPRAS_DOUBLE_CHECKIN]: 'Double Check NFe',
   [PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS]:
     'Double Check NFe — cadastrar motivos de divergência',
+  [PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES]: 'Double Check NFe — configurações',
   [PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA]:
     'Reabrir conferência e exigir novas decisões',
   [PERMISSOES.COMPRAS_PENDENCIAS_PRIORIDADE_COMPRADOR_1]:

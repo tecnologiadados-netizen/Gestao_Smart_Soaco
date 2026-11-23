@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  CRITERIOS_DIVERGENCIA_PADRAO,
   fetchDoubleCheckInComparativoPc,
   fetchDoubleCheckInHistorico,
   fetchDoubleCheckInPrimeiraLeitura,
+  type CriteriosDivergenciaDoubleCheck,
+  type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInHistorico,
@@ -58,6 +61,8 @@ function ComparativoHistoricoModal({
   const [decisoes, setDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [justificativas, setJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [solicitacoesOtimiza, setSolicitacoesOtimiza] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
+  const [criterios, setCriterios] = useState<CriteriosDivergenciaDoubleCheck>(CRITERIOS_DIVERGENCIA_PADRAO);
+  const [camposLancados, setCamposLancados] = useState<DoubleCheckInCampoComparativo[]>([]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -82,6 +87,8 @@ function ComparativoHistoricoModal({
             decisoes: [] as DoubleCheckInComparativoDecisao[],
             justificativas: [] as DoubleCheckInJustificativaOpcao[],
             solicitacoesOtimiza: [] as DoubleCheckInSolicitacaoOtimiza[],
+            criterios: CRITERIOS_DIVERGENCIA_PADRAO,
+            camposLancados: [] as DoubleCheckInCampoComparativo[],
             aviso: r.aviso,
             origem: r.origem,
             erro: r.erro ?? null,
@@ -91,7 +98,11 @@ function ComparativoHistoricoModal({
             decisoes: r.decisoes,
             justificativas: r.justificativas,
             solicitacoesOtimiza: r.solicitacoesOtimiza,
-            aviso: null as string | null,
+            criterios: r.semVinculo ? CRITERIOS_DIVERGENCIA_PADRAO : r.criterios,
+            camposLancados: r.camposLancados,
+            aviso: r.semVinculo
+              ? 'Este documento está sem vínculo com pedido de compra. Os cards são o espelho da primeira leitura.'
+              : (null as string | null),
             origem: null as 'retrato' | 'nao_gravada' | null,
             erro: r.erro ?? null,
           }));
@@ -101,6 +112,8 @@ function ComparativoHistoricoModal({
       setDecisoes(r.decisoes);
       setJustificativas(r.justificativas);
       setSolicitacoesOtimiza(r.solicitacoesOtimiza);
+      setCriterios(r.criterios);
+      setCamposLancados(r.camposLancados);
       setAviso(r.aviso);
       setOrigem(r.origem);
       setErro(r.erro);
@@ -166,6 +179,8 @@ function ComparativoHistoricoModal({
                 decisoes={decisoes}
                 justificativas={justificativas}
                 solicitacoesOtimiza={solicitacoesOtimiza}
+                criterios={criterios}
+                camposLancados={camposLancados}
                 loading={loading}
                 erro={erro}
                 onDecisoesChange={setDecisoes}

@@ -295,6 +295,54 @@ export function fetchConferenciaFisicaDocumento(
   );
 }
 
+export type SituacaoPreEntrada = 'pre_entrada' | 'efetivada';
+export type ConferenciaDoubleCheckPreEntrada = 'pendente' | 'conferida' | 'nao_aplicada';
+export type StatusOtimizaPreEntrada = 'in_progress' | 'completed' | 'cancelled' | null;
+
+export type LinhaPreEntrada = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  nomeParceiro: string | null;
+  dataEmissao: string | null;
+  dataEntrada: string | null;
+  situacao: SituacaoPreEntrada;
+  nomeTipo: string | null;
+  usuarioAlteracao: string | null;
+  pedidos: Array<{ idPedido: number; nome: string }>;
+  conferencia: ConferenciaDoubleCheckPreEntrada;
+  usuarioConferencia: string | null;
+  comunicacoes: Array<{ numero: number; status: StatusOtimizaPreEntrada }>;
+  /** null quando a consulta ao Otimiza não respondeu. Lista vazia: não há chamado aberto. */
+  chamadosAbertos: number[] | null;
+};
+
+export type GradePreEntrada = {
+  dataInicio: string | null;
+  dataFim: string | null;
+  chamadoOtimizaOk: boolean;
+  linhas: LinhaPreEntrada[];
+};
+
+export async function fetchGestaoEntradasPreEntradas(params: {
+  dataInicio?: string | null;
+  dataFim?: string | null;
+}): Promise<{ data?: GradePreEntrada; erro?: string }> {
+  const sp = new URLSearchParams();
+  if (params.dataInicio && params.dataFim) {
+    sp.set('dataInicio', params.dataInicio);
+    sp.set('dataFim', params.dataFim);
+  }
+  const qs = sp.toString();
+  const res = await apiFetch(`/api/compras/gestao-entradas/pre-entradas${qs ? `?${qs}` : ''}`);
+  const body = (await res.json().catch(() => ({}))) as GradePreEntrada & {
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) return { erro: body.erro ?? body.error ?? res.statusText };
+  return { data: body };
+}
+
 export async function fetchGestaoEntradasDia(params: {
   dataInicio: string;
   dataFim: string;

@@ -138,6 +138,25 @@ const CAMPOS: CampoCfg[] = [
   },
 ];
 
+const CAMPOS_ITEM = CAMPOS.filter((c) => c.id !== 'condicao_pagamento');
+const CAMPO_PAGAMENTO = CAMPOS.find((c) => c.id === 'condicao_pagamento')!;
+
+function nomePedidoLinha(linha: DoubleCheckInComparativoLinha): string {
+  return (
+    linha.nomePedidoCompra ??
+    (linha.idPedidoCompra != null ? `PC ${linha.idPedidoCompra}` : 'Pedido')
+  );
+}
+
+function contextoDivergencia(
+  linha: DoubleCheckInComparativoLinha,
+  campo: DoubleCheckInCampoComparativo
+): string {
+  const label = CAMPOS.find((c) => c.id === campo)?.label ?? campo;
+  if (campo === 'condicao_pagamento') return `${label} · ${nomePedidoLinha(linha)}`;
+  return `${label} · ${linha.codigoProduto ?? linha.idProduto ?? '—'}`;
+}
+
 function chaveDecisao(
   idItemDocumentoEstoque: number,
   idItemPedidoCompra: number,
@@ -345,6 +364,8 @@ type Props = {
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
+  criterios?: Partial<Record<DoubleCheckInCampoComparativo, boolean>>;
+  camposLancados?: DoubleCheckInCampoComparativo[];
   loading: boolean;
   erro: string | null;
   onDecisoesChange: (next: DoubleCheckInComparativoDecisao[]) => void;
@@ -369,11 +390,15 @@ export default function DoubleCheckInComparativoPcTab({
   decisoes,
   justificativas,
   solicitacoesOtimiza,
+  criterios,
+  camposLancados = [],
   loading,
   erro,
   onDecisoesChange,
   onSolicitacoesChange,
 }: Props) {
+  const campoVisivel = (campo: DoubleCheckInCampoComparativo) =>
+    criterios?.[campo] !== false || camposLancados.includes(campo);
   const [draft, setDraft] = useState<DraftJustif | null>(null);
   const [opcaoId, setOpcaoId] = useState<number | ''>('');
   const [obs, setObs] = useState('');
@@ -442,6 +467,34 @@ export default function DoubleCheckInComparativoPcTab({
     () => (somenteLeitura ? 0 : contarPendentesComparativo(linhas, decisoes)),
     [linhas, decisoes, somenteLeitura]
   );
+
+  /** Cond. pagamento é do documento × pedido, não de cada item. */
+  const gruposPagamento = useMemo(() => {
+    const porPc = new Map<string, DoubleCheckInComparativoLinha[]>();
+    for (const linha of linhas) {
+      if (linha.comparaCondicaoPagamento === false) continue;
+      const key = String(linha.idPedidoCompra ?? 'sem-pc');
+      const lista = porPc.get(key) ?? [];
+      lista.push(linha);
+      porPc.set(key, lista);
+    }
+    return [...porPc.entries()].map(([key, candidatas]) => {
+      const comDecisao = candidatas.find((linha) =>
+        decisoes.some(
+          (d) =>
+            d.campo === 'condicao_pagamento' &&
+            d.vigente !== false &&
+            d.idItemDocumentoEstoque === linha.idItemDocumentoEstoque &&
+            d.idItemPedidoCompra === linha.idItemPedidoCompra
+        )
+      );
+      const linha =
+        comDecisao ??
+        candidatas.find((item) => item.divergCondicaoPagamento) ??
+        candidatas[0];
+      return { key, linha, nome: nomePedidoLinha(linha) };
+    });
+  }, [linhas, decisoes]);
 
   const opcoesDoCampo = useMemo(() => {
     if (!draft) return [];
@@ -688,6 +741,218 @@ export default function DoubleCheckInComparativoPcTab({
     }
   };
 
+  const renderCampoCard = (linha: DoubleCheckInComparativoLinha, c: CampoCfg) => {
+    const diverg = Boolean(linha[c.divergKey]);
+    const vals = valoresExibicao(linha, c);
+    const dec = decisaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+    );
+    const decVigente = dec?.vigente === false ? undefined : dec;
+    const natureza =
+      decVigente &&
+      ['arredondamento', 'ipi_reflexo'].includes(decVigente.justificativaCodigo)
+        ? 'benigna'
+        : linha.naturezaDivergencias?.[c.id];
+    const hist = historicoDaDecisao(dec);
+    const solicitacaoCampo = solicitacaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+    );
+    const numeroSolicitacaoOtimiza =
+      dec?.numeroSolicitacaoOtimiza ?? solicitacaoCampo?.numero ?? null;
+    const otimizaEmAndamento = !decVigente && solicitacaoCampo?.status === 'in_progress';
+    return (
+      <div
+        key={c.id}
+        className={`rounded-lg border px-2.5 py-2 ${
+          diverg
+            ? 'border-amber-400/80 bg-white dark:border-amber-600 dark:bg-slate-900/50'
+            : 'border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20'
+        }`}
+      >
+        {diverg && numeroSolicitacaoOtimiza != null ? (
+          <p
+            className={`mb-1 text-[11px] font-bold leading-tight ${
+              otimizaEmAndamento
+                ? 'text-amber-800 dark:text-amber-200'
+                : 'text-sky-800 dark:text-sky-200'
+            }`}
+            title={
+              otimizaEmAndamento
+                ? `Solicitação ${numeroSolicitacaoOtimiza} do Otimiza ainda está em andamento`
+                : `Solicitação no Otimiza nº ${numeroSolicitacaoOtimiza}`
+            }
+          >
+            Otimiza nº {numeroSolicitacaoOtimiza}
+            {otimizaEmAndamento ? ' · em andamento' : ''}
+          </p>
+        ) : null}
+        <div className="mb-1 flex items-center justify-between gap-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {c.id === 'ipi' && linha.conferenciaIpi === 'percentual' ? 'IPI %' : c.label}
+            </span>
+            {diverg && natureza ? (
+              <span
+                className={
+                  natureza === 'real'
+                    ? 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                    : 'rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                }
+              >
+                {natureza === 'real' ? 'Real' : 'Benigna'}
+              </span>
+            ) : null}
+          </div>
+          {!diverg ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
+          ) : decVigente?.decisao === 'aceita' ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Aceita" />
+          ) : decVigente?.decisao === 'recusa' ? (
+            <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
+          ) : (
+            <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
+              {somenteLeitura ? 'Sem decisão' : 'Pendente'}
+            </span>
+          )}
+        </div>
+        <div className={`space-y-0.5 text-xs ${c.kind === 'text' ? '' : 'tabular-nums'}`}>
+          <div className="flex justify-between gap-2">
+            <span className="shrink-0 text-slate-400">NF</span>
+            <span className="min-w-0 text-right">
+              <span
+                className="block font-medium text-slate-800 dark:text-slate-100 break-words"
+                title={vals.nfTitle ?? vals.nf}
+              >
+                {vals.nf}
+              </span>
+              {vals.nfDetalhe ? (
+                vals.prazosClicavel ? (
+                  <button
+                    type="button"
+                    className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                    title="Ver tabela de data base e vencimentos"
+                    onClick={() => setPrazosModalLinha(linha)}
+                  >
+                    {vals.nfDetalhe}
+                  </button>
+                ) : (
+                  <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                    {vals.nfDetalhe}
+                  </span>
+                )
+              ) : null}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="shrink-0 text-slate-400">PC</span>
+            <span className="min-w-0 text-right">
+              <span
+                className="block font-medium text-slate-800 dark:text-slate-100 break-words"
+                title={vals.pcTitle ?? vals.pc}
+              >
+                {vals.pc}
+              </span>
+              {vals.pcDetalhe ? (
+                vals.prazosClicavel ? (
+                  <button
+                    type="button"
+                    className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
+                    title="Ver tabela de data base e vencimentos"
+                    onClick={() => setPrazosModalLinha(linha)}
+                  >
+                    {vals.pcDetalhe}
+                  </button>
+                ) : (
+                  <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                    {vals.pcDetalhe}
+                  </span>
+                )
+              ) : null}
+            </span>
+          </div>
+        </div>
+        {diverg && natureza === 'benigna' && linha.observacaoNaturezaDivergencias?.[c.id] ? (
+          <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+            {linha.observacaoNaturezaDivergencias[c.id]}
+          </p>
+        ) : null}
+        {diverg && (
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-1">
+              <span className="truncate text-[10px] text-slate-500" title={dec?.justificativaLabel ?? ''}>
+                {dec
+                  ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
+                  : 'Divergente'}
+              </span>
+              {!somenteLeitura && (!conferido || !decVigente) && (
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    title={
+                      natureza === 'benigna'
+                        ? 'Aceitar divergência benigna'
+                        : 'Aceitar divergência (exige solicitação concluída no Otimiza)'
+                    }
+                    className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                    onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Recusar divergência (com justificativa/observação)"
+                    className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
+                    onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+            {hist.length > 0 && (
+              <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Observações ({hist.length})
+                </div>
+                <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                  {hist.map((h, idx) => (
+                    <li
+                      key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
+                      className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
+                        <span className="font-medium">{h.usuarioLogin || '—'}</span>
+                        <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
+                      </div>
+                      <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                        {h.texto}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {dec?.vigente === false ? (
+              <p className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                Decisão anterior preservada. Aceite ou recuse novamente.
+              </p>
+            ) : null}
+            {conferido && decVigente && (
+              <button
+                type="button"
+                className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                onClick={() => abrirNovaObservacao(linha, c.id)}
+              >
+                <MessageSquarePlus className="h-3 w-3" aria-hidden />
+                Nova observação
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return <p className="py-8 text-center text-sm text-slate-500 animate-pulse">Carregando comparativo NF × PC…</p>;
   }
@@ -846,12 +1111,35 @@ export default function DoubleCheckInComparativoPcTab({
         </div>
       )}
 
+      {campoVisivel('condicao_pagamento') && gruposPagamento.length > 0 && (
+        <section>
+          <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Divergência do documento
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {gruposPagamento.map((grupo) => (
+              <div key={grupo.key} className="w-full max-w-xs">
+                {gruposPagamento.length > 1 ? (
+                  <p className="mb-1 truncate text-[11px] font-medium text-slate-500 dark:text-slate-400" title={grupo.nome}>
+                    {grupo.nome}
+                  </p>
+                ) : null}
+                {renderCampoCard(grupo.linha, CAMPO_PAGAMENTO)}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="space-y-3">
-        {linhas.map((linha) => (
+        {linhas.map((linha) => {
+          const divergenciaDoItem =
+            linha.divergValorUnitario || linha.divergQtde || linha.divergIpi;
+          return (
           <div
             key={`${linha.idItemDocumentoEstoque}-${linha.idItemPedidoCompra}`}
             className={`rounded-xl border px-3 py-3 ${
-              linha.temDivergencia
+              divergenciaDoItem
                 ? 'border-amber-300 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/30'
                 : 'border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-800/40'
             }`}
@@ -873,229 +1161,12 @@ export default function DoubleCheckInComparativoPcTab({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {CAMPOS.filter(
-                (c) => !(c.id === 'condicao_pagamento' && linha.comparaCondicaoPagamento === false)
-              ).map((c) => {
-                const diverg = Boolean(linha[c.divergKey]);
-                const vals = valoresExibicao(linha, c);
-                const dec = decisaoMap.get(
-                  chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
-                );
-                const decVigente = dec?.vigente === false ? undefined : dec;
-                const natureza =
-                  decVigente &&
-                  ['arredondamento', 'ipi_reflexo'].includes(
-                    decVigente.justificativaCodigo
-                  )
-                    ? 'benigna'
-                    : linha.naturezaDivergencias?.[c.id];
-                const hist = historicoDaDecisao(dec);
-                const solicitacaoCampo = solicitacaoMap.get(
-                  chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
-                );
-                const numeroSolicitacaoOtimiza =
-                  dec?.numeroSolicitacaoOtimiza ?? solicitacaoCampo?.numero ?? null;
-                const otimizaEmAndamento =
-                  !decVigente && solicitacaoCampo?.status === 'in_progress';
-                return (
-                  <div
-                    key={c.id}
-                    className={`rounded-lg border px-2.5 py-2 ${
-                      diverg
-                        ? 'border-amber-400/80 bg-white dark:border-amber-600 dark:bg-slate-900/50'
-                        : 'border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20'
-                    }`}
-                  >
-                    {diverg && numeroSolicitacaoOtimiza != null ? (
-                      <p
-                        className={`mb-1 text-[11px] font-bold leading-tight ${
-                          otimizaEmAndamento
-                            ? 'text-amber-800 dark:text-amber-200'
-                            : 'text-sky-800 dark:text-sky-200'
-                        }`}
-                        title={
-                          otimizaEmAndamento
-                            ? `Solicitação ${numeroSolicitacaoOtimiza} do Otimiza ainda está em andamento`
-                            : `Solicitação no Otimiza nº ${numeroSolicitacaoOtimiza}`
-                        }
-                      >
-                        Otimiza nº {numeroSolicitacaoOtimiza}
-                        {otimizaEmAndamento ? ' · em andamento' : ''}
-                      </p>
-                    ) : null}
-                    <div className="mb-1 flex items-center justify-between gap-1">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          {c.id === 'ipi' && linha.conferenciaIpi === 'percentual' ? 'IPI %' : c.label}
-                        </span>
-                        {diverg && natureza ? (
-                          <span
-                            className={
-                              natureza === 'real'
-                                ? 'rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                                : 'rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            }
-                          >
-                            {natureza === 'real' ? 'Real' : 'Benigna'}
-                          </span>
-                        ) : null}
-                      </div>
-                      {!diverg ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
-                      ) : decVigente?.decisao === 'aceita' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Aceita" />
-                      ) : decVigente?.decisao === 'recusa' ? (
-                        <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
-                      ) : (
-                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                          {somenteLeitura ? 'Sem decisão' : 'Pendente'}
-                        </span>
-                      )}
-                    </div>
-                    <div className={`space-y-0.5 text-xs ${c.kind === 'text' ? '' : 'tabular-nums'}`}>
-                      <div className="flex justify-between gap-2">
-                        <span className="shrink-0 text-slate-400">NF</span>
-                        <span className="min-w-0 text-right">
-                          <span
-                            className="block font-medium text-slate-800 dark:text-slate-100 break-words"
-                            title={vals.nfTitle ?? vals.nf}
-                          >
-                            {vals.nf}
-                          </span>
-                          {vals.nfDetalhe ? (
-                            vals.prazosClicavel ? (
-                              <button
-                                type="button"
-                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
-                                title="Ver tabela de data base e vencimentos"
-                                onClick={() => setPrazosModalLinha(linha)}
-                              >
-                                {vals.nfDetalhe}
-                              </button>
-                            ) : (
-                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                                {vals.nfDetalhe}
-                              </span>
-                            )
-                          ) : null}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <span className="shrink-0 text-slate-400">PC</span>
-                        <span className="min-w-0 text-right">
-                          <span
-                            className="block font-medium text-slate-800 dark:text-slate-100 break-words"
-                            title={vals.pcTitle ?? vals.pc}
-                          >
-                            {vals.pc}
-                          </span>
-                          {vals.pcDetalhe ? (
-                            vals.prazosClicavel ? (
-                              <button
-                                type="button"
-                                className="mt-0.5 block w-full text-right text-[10px] font-semibold text-primary-600 underline decoration-dotted underline-offset-2 hover:text-primary-700 dark:text-primary-400"
-                                title="Ver tabela de data base e vencimentos"
-                                onClick={() => setPrazosModalLinha(linha)}
-                              >
-                                {vals.pcDetalhe}
-                              </button>
-                            ) : (
-                              <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                                {vals.pcDetalhe}
-                              </span>
-                            )
-                          ) : null}
-                        </span>
-                      </div>
-                    </div>
-                    {diverg && natureza === 'benigna' && linha.observacaoNaturezaDivergencias?.[c.id] ? (
-                      <p className="mt-1.5 rounded-md bg-emerald-50 px-1.5 py-1 text-[10px] leading-snug text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                        {linha.observacaoNaturezaDivergencias[c.id]}
-                      </p>
-                    ) : null}
-                    {diverg && (
-                      <div className="mt-2 space-y-1.5">
-                        <div className="flex items-center justify-between gap-1">
-                          <span
-                            className="truncate text-[10px] text-slate-500"
-                            title={dec?.justificativaLabel ?? ''}
-                          >
-                            {dec
-                              ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
-                              : 'Divergente'}
-                          </span>
-                          {!somenteLeitura && (!conferido || !decVigente) && (
-                            <div className="flex shrink-0 gap-1">
-                              <button
-                                type="button"
-                                title={
-                                  natureza === 'benigna'
-                                    ? 'Aceitar divergência benigna'
-                                    : 'Aceitar divergência (exige solicitação concluída no Otimiza)'
-                                }
-                                className="rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-                                onClick={() => abrirJustificativa(linha, c.id, 'aceita')}
-                              >
-                                <Check className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Recusar divergência (com justificativa/observação)"
-                                className="rounded p-1 text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/40"
-                                onClick={() => abrirJustificativa(linha, c.id, 'recusa')}
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        {hist.length > 0 && (
-                          <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
-                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              Observações ({hist.length})
-                            </div>
-                            <ul className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
-                              {hist.map((h, idx) => (
-                                <li
-                                  key={h.id > 0 ? h.id : `${h.criadoEm}-${idx}-${h.texto.slice(0, 12)}`}
-                                  className="border-t border-slate-200/70 pt-1 first:border-0 first:pt-0 dark:border-slate-700/70"
-                                >
-                                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[9px] text-slate-500 dark:text-slate-400">
-                                    <span className="font-medium">{h.usuarioLogin || '—'}</span>
-                                    <span>{h.criadoEm ? fmtDataHora(h.criadoEm) : ''}</span>
-                                  </div>
-                                  <p className="mt-0.5 text-[10px] leading-snug text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                    {h.texto}
-                                  </p>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {dec?.vigente === false ? (
-                          <p className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-                            Decisão anterior preservada. Aceite ou recuse novamente.
-                          </p>
-                        ) : null}
-                        {conferido && decVigente && (
-                          <button
-                            type="button"
-                            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                            onClick={() => abrirNovaObservacao(linha, c.id)}
-                          >
-                            <MessageSquarePlus className="h-3 w-3" aria-hidden />
-                            Nova observação
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {CAMPOS_ITEM.filter((c) => campoVisivel(c.id)).map((c) => renderCampoCard(linha, c))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {draft &&
@@ -1115,8 +1186,7 @@ export default function DoubleCheckInComparativoPcTab({
                 {draft.decisao === 'aceita' ? 'Aceitar divergência' : 'Recusar divergência'}
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                {CAMPOS.find((c) => c.id === draft.campo)?.label} ·{' '}
-                {draft.linha.codigoProduto ?? draft.linha.idProduto}
+                {contextoDivergencia(draft.linha, draft.campo)}
               </p>
               <div className="mt-4 space-y-3">
                 {divergenciaBenigna && (
@@ -1312,8 +1382,7 @@ export default function DoubleCheckInComparativoPcTab({
                 Nova observação
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                {CAMPOS.find((c) => c.id === draftObs.campo)?.label} ·{' '}
-                {draftObs.linha.codigoProduto ?? draftObs.linha.idProduto}
+                {contextoDivergencia(draftObs.linha, draftObs.campo)}
               </p>
               <p className="mt-1 text-xs text-slate-400">
                 A observação será acrescentada ao histórico desta divergência (a decisão não muda).

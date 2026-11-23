@@ -26,8 +26,10 @@ import {
   ensureDoubleCheckInNfPcWhatsappTipo,
   getDocumentoConferido,
   getDoubleCheckInDestinatarios,
+  getCriteriosDivergencia,
   getDoubleCheckInLimiarPct,
   getOrCreateDoubleCheckInAlertaDesdeYmd,
+  listarCamposDivergenciaLancados,
   listarDecisoesComparativo,
   listarSolicitacoesOtimiza,
   gravarSolicitacaoOtimiza,
@@ -43,6 +45,7 @@ import {
   marcarDocumentoConferido,
   reabrirDocumentoConferencia,
   salvarConferenciaPagina,
+  setCriteriosDivergencia,
   setDoubleCheckInDestinatarios,
   setDoubleCheckInLimiarPct,
   upsertDecisaoComparativo,
@@ -51,7 +54,11 @@ import {
   type DoubleCheckInComparativoDecisaoRow,
 } from '../data/doubleCheckInLocalRepository.js';
 import { resolveAppBaseUrl } from '../config/appBaseUrl.js';
-import { registrarDivergenciasApontadas } from '../data/doubleCheckInDivergenciaApontada.js';
+import {
+  carregarEspelhoPrimeiraLeitura,
+  registrarDivergenciasApontadas,
+  registrarEspelhoPrimeiraLeitura,
+} from '../data/doubleCheckInDivergenciaApontada.js';
 import { carregarHistoricoDoubleCheck } from '../data/doubleCheckInHistorico.js';
 import { carregarRetratoPrimeiraLeitura } from '../data/doubleCheckInDivergenciaApontada.js';
 import {
@@ -111,6 +118,51 @@ function validarDecisoesCompletas(
     };
   }
   return { ok: true };
+}
+
+function mascararLinhasPorCriterio(
+  linhas: DoubleCheckInComparativoLinha[],
+  criterios: Awaited<ReturnType<typeof getCriteriosDivergencia>>,
+  lancados: Set<DoubleCheckInCampoComparativo>
+): DoubleCheckInComparativoLinha[] {
+  const ocultar = (campo: DoubleCheckInCampoComparativo) =>
+    criterios[campo] === false && !lancados.has(campo);
+  return linhas.map((linha) => {
+    const divergValorUnitario = ocultar('valor_unitario') ? false : linha.divergValorUnitario;
+    const divergQtde = ocultar('qtde') ? false : linha.divergQtde;
+    const divergIpi = ocultar('ipi') ? false : linha.divergIpi;
+    const divergCondicaoPagamento = ocultar('condicao_pagamento')
+      ? false
+      : linha.divergCondicaoPagamento;
+    return {
+      ...linha,
+      divergValorUnitario,
+      divergQtde,
+      divergIpi,
+      divergCondicaoPagamento,
+      temDivergencia: divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
+    };
+  });
+}
+
+async function linhasComCriteriosAplicados(
+  idDocumento: number,
+  linhas: DoubleCheckInComparativoLinha[]
+): Promise<{
+  linhas: DoubleCheckInComparativoLinha[];
+  criterios: Awaited<ReturnType<typeof getCriteriosDivergencia>>;
+  camposLancados: DoubleCheckInCampoComparativo[];
+}> {
+  const [criterios, lancadosPorDoc] = await Promise.all([
+    getCriteriosDivergencia(),
+    listarCamposDivergenciaLancados([idDocumento]),
+  ]);
+  const lancados = lancadosPorDoc.get(idDocumento) ?? new Set<DoubleCheckInCampoComparativo>();
+  return {
+    linhas: mascararLinhasPorCriterio(linhas, criterios, lancados),
+    criterios,
+    camposLancados: [...lancados],
+  };
 }
 
 type DecisaoParaNatureza = Pick<
@@ -205,9 +257,17 @@ async function carregarResumosDivergenciasAtuais(
   }
 
   await registrarDivergenciasApontadas(linhasResp.linhasPorDocumento);
+  const [criterios, lancadosPorDoc] = await Promise.all([
+    getCriteriosDivergencia(),
+    listarCamposDivergenciaLancados(ids),
+  ]);
 
   for (const id of ids) {
-    const linhas = linhasResp.linhasPorDocumento.get(id) ?? [];
+    const linhas = mascararLinhasPorCriterio(
+      linhasResp.linhasPorDocumento.get(id) ?? [],
+      criterios,
+      lancadosPorDoc.get(id) ?? new Set()
+    );
     const naturezas = linhasComNatureza(linhas, decisoesPorDocumento.get(id) ?? [])
       .flatMap((linha) => Object.values(linha.naturezaDivergencias));
     resumos.set(id, {
@@ -221,6 +281,45 @@ async function carregarResumosDivergenciasAtuais(
     });
   }
   return resumos;
+}
+
+function nomeExibicaoUsuario(
+  nome: string | null | undefined,
+  loginFallback: string | null | undefined
+): string {
+  const n = String(nome ?? '').trim();
+  if (n) return n;
+  return String(loginFallback ?? '').trim();
+}
+
+async function nomeConferidor(usuarioId: number, loginFallback: string): Promise<string> {
+  const row = await prisma.usuario.findUnique({
+    where: { id: usuarioId },
+    select: { nome: true, login: true },
+  });
+  return nomeExibicaoUsuario(row?.nome, row?.login || loginFallback) || loginFallback;
+}
+
+async function nomesConferidores(
+  infos: Array<{ usuarioId: number; usuarioLogin: string }>
+): Promise<Map<number, string>> {
+  const ids = [...new Set(infos.map((i) => i.usuarioId).filter((id) => id > 0))];
+  const map = new Map<number, string>();
+  if (ids.length === 0) return map;
+  const rows = await prisma.usuario.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nome: true, login: true },
+  });
+  const porId = new Map(rows.map((r) => [r.id, r]));
+  for (const info of infos) {
+    if (map.has(info.usuarioId)) continue;
+    const row = porId.get(info.usuarioId);
+    map.set(
+      info.usuarioId,
+      nomeExibicaoUsuario(row?.nome, row?.login || info.usuarioLogin) || info.usuarioLogin
+    );
+  }
+  return map;
 }
 
 export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
@@ -249,6 +348,7 @@ async function enriquecerNotasComConferencia(
     listarDocumentosConferidos(ids),
     carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
   ]);
+  const nomes = await nomesConferidores([...map.values()]);
   return notas.map((n) => {
     const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
     const c = map.get(n.idDocumento);
@@ -269,7 +369,7 @@ async function enriquecerNotasComConferencia(
       regimeConferencia,
       conferido,
       conferidoEm: c?.conferidoEm ?? null,
-      conferidoPor: c?.usuarioLogin ?? null,
+      conferidoPor: c ? (nomes.get(c.usuarioId) ?? c.usuarioLogin) : null,
       conferenciaReaberta,
       conferidoComDivergencia:
         regimeConferencia === 'completa' && conferido && Boolean(atual?.temQualquer),
@@ -378,16 +478,46 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
       res.status(503).json({ linhas: [], decisoes: [], justificativas, erro, error: erro });
       return;
     }
-    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) === 'completa') {
-      await registrarDivergenciasApontadas(new Map([[idDocumento, linhas]]));
+    const regime = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
+    if (linhas.length > 0) {
+      await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
+      if (regime === 'completa') {
+        await registrarDivergenciasApontadas(new Map([[idDocumento, linhas]]));
+      }
     }
-    const validacao = validarDecisoesCompletas(linhas, decisoes);
+    if (linhas.length === 0) {
+      const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
+      if (espelho.length > 0) {
+        res.json({
+          linhas: linhasComNatureza(espelho, decisoes),
+          decisoes,
+          justificativas,
+          solicitacoesOtimiza,
+          pendentes: 0,
+          criterios: {
+            valor_unitario: true,
+            qtde: true,
+            ipi: true,
+            condicao_pagamento: true,
+          },
+          camposLancados: [...DOUBLE_CHECKIN_CAMPOS],
+          semVinculo: true,
+          idDocumento,
+        });
+        return;
+      }
+    }
+    const aplicado = await linhasComCriteriosAplicados(idDocumento, linhas);
+    const validacao = validarDecisoesCompletas(aplicado.linhas, decisoes);
     res.json({
-      linhas: linhasComNatureza(linhas, decisoes),
+      linhas: linhasComNatureza(aplicado.linhas, decisoes),
       decisoes,
       justificativas,
       solicitacoesOtimiza,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
+      criterios: aplicado.criterios,
+      camposLancados: aplicado.camposLancados,
+      semVinculo: false,
       idDocumento,
     });
   } catch (err) {
@@ -594,6 +724,16 @@ export async function putDoubleCheckInComparativoDecisao(req: Request, res: Resp
   if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
     res.status(400).json({ error: 'campo inválido.' });
     return;
+  }
+  const criteriosAtivos = await getCriteriosDivergencia();
+  if (criteriosAtivos[campo] === false) {
+    const lancados = (await listarCamposDivergenciaLancados([idDocumento])).get(idDocumento);
+    if (!lancados?.has(campo)) {
+      res.status(400).json({
+        error: 'Este critério de divergência está inativo para documentos novos.',
+      });
+      return;
+    }
   }
   if (decisaoRaw !== 'aceita' && decisaoRaw !== 'recusa') {
     res.status(400).json({ error: 'decisao deve ser aceita ou recusa.' });
@@ -1058,7 +1198,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         reconferido: Boolean(ja && reconferenciaSolicitada),
         conferido: true,
         conferidoEm: simples.conferidoEm,
-        conferidoPor: simples.usuarioLogin,
+        conferidoPor: await nomeConferidor(simples.usuarioId, simples.usuarioLogin),
         conferidoComDivergencia: false,
         temDivergenciaRealAtual: false,
         temDivergenciaBenignaAtual: false,
@@ -1070,18 +1210,20 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       return;
     }
 
-    const { linhas, erro: erroComp } = await queryDoubleCheckInComparativoPc({ idDocumento });
-    if (erroComp) {
-      res.status(503).json({ error: erroComp });
+    const consulta = await queryDoubleCheckInComparativoPc({ idDocumento });
+    if (consulta.erro) {
+      res.status(503).json({ error: consulta.erro });
       return;
     }
-    if (linhas.length === 0 && (!ja || reconferenciaSolicitada)) {
+    if (consulta.linhas.length === 0 && (!ja || reconferenciaSolicitada)) {
       res.status(400).json({
         error:
           'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.',
       });
       return;
     }
+    await registrarDivergenciasApontadas(new Map([[idDocumento, consulta.linhas]]));
+    const { linhas } = await linhasComCriteriosAplicados(idDocumento, consulta.linhas);
     const decisoes = await listarDecisoesComparativo(idDocumento);
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     if (!validacao.ok) {
@@ -1098,7 +1240,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         jaConferido: true,
         conferido: true,
         conferidoEm: ja.conferidoEm,
-        conferidoPor: ja.usuarioLogin,
+        conferidoPor: await nomeConferidor(ja.usuarioId, ja.usuarioLogin),
         conferidoComDivergencia: Boolean(resumoAtual?.temQualquer),
         temDivergenciaRealAtual: Boolean(resumoAtual?.temReal),
         temDivergenciaBenignaAtual: Boolean(resumoAtual?.temBenigna),
@@ -1117,6 +1259,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     });
 
     const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
+    const conferidoPor = await nomeConferidor(created.usuarioId, created.usuarioLogin);
     const relato = montarRelatoConferencia({
       meta: {
         numeroNfe: typeof req.body?.numeroNfe === 'string' ? req.body.numeroNfe : null,
@@ -1126,7 +1269,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
             : null,
         nomeParceiro: typeof req.body?.nomeParceiro === 'string' ? req.body.nomeParceiro : null,
       },
-      conferidoPor: created.usuarioLogin,
+      conferidoPor,
       conferidoEm: created.conferidoEm,
       linhas,
       decisoes,
@@ -1170,7 +1313,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       reconferido: Boolean(ja && reconferenciaSolicitada),
       conferido: true,
       conferidoEm: created.conferidoEm,
-      conferidoPor: created.usuarioLogin,
+      conferidoPor,
       conferidoComDivergencia,
       temDivergenciaRealAtual: totalReaisHistorica > 0,
       temDivergenciaBenignaAtual: totalBenignasHistorica > 0,
@@ -1233,6 +1376,31 @@ export async function getDoubleCheckInParametros(_req: Request, res: Response): 
 /**
  * PUT /api/compras/double-checkin/parametros  body: { limiarPct }
  */
+export async function getDoubleCheckInCriterios(_req: Request, res: Response): Promise<void> {
+  try {
+    const criterios = await getCriteriosDivergencia();
+    res.json({ criterios });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/** PUT /api/compras/double-checkin/criterios  body: { criterios: { valor_unitario, qtde, ipi, condicao_pagamento } } */
+export async function putDoubleCheckInCriterios(req: Request, res: Response): Promise<void> {
+  try {
+    const body =
+      req.body?.criterios && typeof req.body.criterios === 'object'
+        ? req.body.criterios
+        : req.body;
+    const criterios = await setCriteriosDivergencia(body ?? {});
+    res.json({ criterios });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
 export async function putDoubleCheckInParametros(req: Request, res: Response): Promise<void> {
   try {
     const limiarPct = await setDoubleCheckInLimiarPct(Number(req.body?.limiarPct));

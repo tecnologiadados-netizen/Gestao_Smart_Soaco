@@ -2,7 +2,6 @@ import { Router, type RequestHandler } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/requirePermission.js';
 import { requireMaster } from '../middleware/requireMaster.js';
-import { requireMasterOrAdmin } from '../middleware/requireMasterOrAdmin.js';
 import { PERMISSOES } from '../config/permissoes.js';
 import { getProdutosColeta, getRessupAlmoxRegistroPreview, getRessupAlmoxPcPendDetalhes, getRessupEmpenhoDetalhes, getRessupEmpenhoPorPedido, getOpcoesFiltroRessupAlmox, getBuscarOpcoesFiltroRessupAlmox, postOpcoesFiltroCascataRessupAlmox, postRessupAlmoxAnalise, putRessupAlmoxAnalise, patchRessupAlmoxAnaliseProcessar, patchRessupAlmoxAnaliseConcluir, getRessupAlmoxAnalises, getRessupAlmoxAnaliseById, getRessupNaoAlmoxRegistroPreview, getRessupNaoAlmoxPcPendDetalhes, getOpcoesFiltroRessupNaoAlmox, getBuscarOpcoesFiltroRessupNaoAlmox, postOpcoesFiltroCascataRessupNaoAlmox, getRessupNaoAlmoxEstoque, getRessupNaoAlmoxCatalogo, putRessupNaoAlmoxCatalogoDescricao, putRessupNaoAlmoxCatalogoFundivel, postRessupNaoAlmoxAnalise, putRessupNaoAlmoxAnalise, patchRessupNaoAlmoxAnaliseProcessar, patchRessupNaoAlmoxAnaliseConcluir, getRessupNaoAlmoxAnalises, getRessupNaoAlmoxAnaliseById, getColetasPrecos, getColetasPrecosDebug, getOpcoesFiltroColetas, getOpcoesVinculoFinalizacao, getOpcoesVinculoErroOperacional, getVinculosDerivadosColeta, getVinculosDerivadosPreview, getDashboardErrosVinculoOperacional, getColetasBloqueantes, postCienciaColeta, postConfirmarColeta, getFornecedores, getCondicoesPagamento, getFormasPagamento, putColetaFornecedores, getPrecosColeta, getPrecosCotacao, postPrecosCotacao, patchObservacoesColeta, patchCancelarCotacao, patchReabrirColeta, patchFinalizarCotacao, patchRegistroQtdeAprovada, patchEnviarFinanceiro, deleteColetaPrecos, deleteColetaItem, deleteColetaTodosItens, postColetaItens, getPendenciasComprasOpcoesComprador, getPendenciasComprasConsultar, getPendenciasComprasSaldoSetores, putPendenciasComprasPrioridadeFixa, deletePendenciasComprasPrioridadeFixa, getPendenciasComprasPrioridadeFixaHistorico } from '../controllers/comprasController.js';
 import { getAprovadoresColetaWhatsapp, patchEnviarAprovacaoComLink, postReenviarLinkAprovacao } from '../controllers/coletaAprovacaoController.js';
@@ -15,6 +14,7 @@ import {
   getGestaoEntradasComprador,
   getGestaoEntradasDia,
   getGestaoEntradasPainel,
+  getGestaoEntradasPreEntradas,
 } from '../controllers/gestaoEntradasController.js';
 import { PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS } from '../utils/kpisPermissoes.js';
 import {
@@ -29,6 +29,7 @@ import {
   postDoubleCheckInJustificativa,
   putDoubleCheckInJustificativa,
   deleteDoubleCheckInJustificativa,
+  getDoubleCheckInCriterios,
   getDoubleCheckInNotas,
   getDoubleCheckInParametros,
   postDoubleCheckInConferir,
@@ -36,6 +37,7 @@ import {
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
+  putDoubleCheckInCriterios,
   putDoubleCheckInSolicitacaoOtimiza,
   postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
@@ -571,22 +573,34 @@ router.get(
 );
 router.get(
   '/double-checkin/justificativas/gestao',
-  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  requirePermission(
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS,
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES
+  ),
   async503(getDoubleCheckInJustificativasGestao)
 );
 router.post(
   '/double-checkin/justificativas',
-  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  requirePermission(
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS,
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES
+  ),
   async503(postDoubleCheckInJustificativa)
 );
 router.put(
   '/double-checkin/justificativas/:id',
-  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  requirePermission(
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS,
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES
+  ),
   async503(putDoubleCheckInJustificativa)
 );
 router.delete(
   '/double-checkin/justificativas/:id',
-  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS),
+  requirePermission(
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS,
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES
+  ),
   async503(deleteDoubleCheckInJustificativa)
 );
 router.post(
@@ -598,6 +612,11 @@ router.get(
   '/double-checkin/dashboard',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
+);
+router.get(
+  '/gestao-entradas/pre-entradas',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getGestaoEntradasPreEntradas)
 );
 router.get(
   '/gestao-entradas/conferencia-fisica/documento/:id',
@@ -646,17 +665,27 @@ router.get(
 );
 router.put(
   '/double-checkin/parametros',
-  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES),
   async503(putDoubleCheckInParametros)
 );
 router.get(
+  '/double-checkin/criterios',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES),
+  async503(getDoubleCheckInCriterios)
+);
+router.put(
+  '/double-checkin/criterios',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES),
+  async503(putDoubleCheckInCriterios)
+);
+router.get(
   '/double-checkin/destinatarios',
-  requireMasterOrAdmin,
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES),
   async503(getDoubleCheckInDestinatariosCtrl)
 );
 router.put(
   '/double-checkin/destinatarios',
-  requireMasterOrAdmin,
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES),
   async503(putDoubleCheckInDestinatarios)
 );
 router.post(

@@ -35,6 +35,8 @@ export type DoubleCheckInNota = {
   dataEmissao: string | null;
   idParceiro: number | null;
   nomeParceiro: string | null;
+  /** Usuário do Nomus vinculado ao documento (`documentoestoque.idUsuario`). */
+  nomeCriador: string | null;
   qtdeItens: number;
 };
 
@@ -90,10 +92,12 @@ SELECT
   DATE(de.dataEmissao) AS dataEmissao,
   de.idParceiro AS idParceiro,
   pe.nome AS nomeParceiro,
+  MAX(NULLIF(TRIM(uc.nome), '')) AS nomeCriador,
   COUNT(ide.id) AS qtdeItens
 FROM itemdocumentoestoque ide
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
 LEFT JOIN pessoa pe ON pe.id = de.idParceiro
+LEFT JOIN usuario uc ON uc.id = de.idUsuario
 LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
@@ -208,6 +212,7 @@ export async function queryDoubleCheckInNotas(params: {
       dataEmissao: formatSqlDateYmd(r.dataEmissao ?? r['dataEmissao']),
       idParceiro: r.idParceiro != null ? toInt(r.idParceiro) : null,
       nomeParceiro: strOrNull(r.nomeParceiro ?? r['nomeParceiro']),
+      nomeCriador: strOrNull(r.nomeCriador ?? r['nomeCriador']),
       qtdeItens: toInt(r.qtdeItens ?? r['qtdeItens']),
     }));
     return { notas };

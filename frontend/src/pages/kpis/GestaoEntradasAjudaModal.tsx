@@ -8,17 +8,17 @@ export type GestaoEntradasAjudaModalProps = {
 const SECOES: SecaoAjuda[] = [
   {
     id: 'guias',
-    titulo: 'Duas guias',
+    titulo: 'Três guias',
     oQueE:
-      'A tela tem duas leituras. Acuracidade acompanha a nota de entrada contra o pedido, no Double Check. Conferência física acompanha a contagem às cegas da Gestão Mesa: cada destinação ao conferente, o retorno à Mesa e o tempo entre os dois.',
+      'A tela tem três leituras. Acuracidade acompanha a nota de entrada contra o pedido, no Double Check. Conferência física acompanha a contagem às cegas da Gestão Mesa: cada destinação ao conferente, o retorno à Mesa e o tempo entre os dois. Pré-entradas lista os documentos do tipo 173, a comunicação do Otimiza gravada neles e o chamado em andamento consultado agora no Otimiza.',
     comoLe:
-      'A guia abre em Acuracidade. Conferência física usa início, fim e mês atual, mas a data é a da destinação, não a da entrada da nota. Visão real e visão geral só existem na acuracidade. Os cards são destinações, conferidas e finalizadas, taxa de divergência e lead time.',
+      'A guia abre em Acuracidade. Conferência física usa início, fim e mês atual, mas a data é a da destinação, não a da entrada da nota. Pré-entradas abre sem período; quando o período é informado, a data é a da entrada do documento. Visão real e visão geral só existem na acuracidade. Os cards da conferência física são destinações, conferidas e finalizadas, taxa de divergência e lead time.',
   },
   {
     id: 'universo',
     titulo: 'O que entra na conta',
     oQueE:
-      'Na guia Acuracidade, o painel lê as notas de entrada do Nomus pela data de entrada, nos tipos de movimentação 11, 35 e 111 a 116. A tela Double Check também lista a pré-entrada (tipo 173) enquanto o documento ainda está na Gestão Mesa; esse tipo não entra neste painel. Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
+      'Na guia Acuracidade, o painel lê as notas de entrada do Nomus pela data de entrada, nos tipos de movimentação 11, 35 e 111 a 116. A tela Double Check também lista a pré-entrada (tipo 173) enquanto o documento ainda está na Gestão Mesa; esse tipo não entra na acuracidade e aparece na guia Pré-entradas. Para entradas até 18/09/2026, a conferência é “Não aplicada”. De 19/09 a 20/09/2026, vale a conferência simples: o comparativo NF × PC fica visível somente para consulta e o usuário apenas confirma o documento. A partir de 21/09/2026, vale o fluxo completo, com aceite ou recusa obrigatórios para cada divergência. A leitura padrão é a visão real.',
     comoLe:
       'O período padrão é o mês corrente. Ajuste início e fim e clique em Filtrar. Visão real considera só divergência real. Visão geral inclui também a benigna. Cada nota conta uma vez, mesmo com vários itens. O detalhe do dia usa a mesma leitura que está selecionada.',
   },
@@ -63,6 +63,14 @@ const SECOES: SecaoAjuda[] = [
       'A barra conta notas distintas daquele comprador. O texto ao lado informa quantos pedidos entram na conta. Uma nota com itens de pedidos de dois compradores conta para os dois, por isso a soma das barras pode passar do total de notas. Clique no comprador para abrir os mesmos cards das outras aberturas: campo, natureza, item, valor na NF, valor no pedido, motivo e observação. Em Apontada no vínculo, a nota aparece como Sem divergência e os cards mostram o que divergia na primeira leitura gravada, ou no relato da conferência quando a primeira leitura não guardou o comparativo. Apontadas anteriores a esta gravação só entram se houver aceite, porque o desvínculo antigo não ficou registrado.',
   },
   {
+    id: 'pre-entrada',
+    titulo: 'Pré-entradas',
+    oQueE:
+      'A guia lista os documentos que ainda estão como pré-entrada no Nomus, tipo de movimentação 173, da empresa Só Aço. Cada linha é um documento. A data de emissão é a da NF e a data de entrada é a do documento. Alterado por é o usuário da última gravação do documento no Nomus: o sistema não guarda quem lançou a pré-entrada. Conferido por é quem confirmou a conferência vigente no Double Check. O pedido vinculado é o que está ligado aos itens da nota. Se esse vínculo já foi retirado, o pedido volta do item guardado na comunicação do Otimiza. A conferência do Double Check fica Pendente enquanto o documento não tem conferência vigente: sem confirmação, ou reaberta. Conferida é a confirmação gravada e ainda válida. Entrada até 18/09/2026 fica como Não aplicada. A comunicação do Otimiza é o número gravado na divergência antes do aceite, com o status em andamento, concluída ou cancelada. O Double Check mostra esse número na linha do comparativo NF × pedido. Quando o vínculo sai, o número continua nesta guia. Chamado no otimiza é outra leitura: o sistema pergunta ao Otimiza, pelo número do documento e pela NF, se existe solicitação em andamento agora, e mostra o número desse chamado. Chamado já concluído ou cancelado não entra nessa coluna.',
+    comoLe:
+      'A guia abre com todas as pré-entradas atuais, sem recorte de mês. Informe início e fim e clique em Filtrar para restringir pela data de entrada. Documento sem data de entrada permanece na lista. Mês atual usa o mês corrente. Todas volta ao conjunto inteiro. A busca aceita %: Ferr% começa com Ferr e %Ltda termina com Ltda. No cabeçalho de cada coluna, a seta abre o filtro e a classificação. Emissão e entrada também aceitam intervalo de datas. Alterado por é o usuário da última gravação do documento no Nomus: o sistema não guarda quem lançou a pré-entrada. Conferido por é quem confirmou a conferência vigente no Double Check; documento pendente ou reaberto fica sem esse nome. Chamado no otimiza lista o chamado em andamento encontrado agora no Otimiza. Sem chamado aberto, a célula fica em branco. Se a consulta não responder, a coluna inteira fica em branco e a guia avisa. A coluna Situação mostra Pré-entrada enquanto o tipo no Nomus é 173. Quando o documento sai da pré-entrada, a linha permanece como Efetivada se ele passou pela Gestão Mesa e existe comunicação do Otimiza gravada nele.',
+  },
+  {
     id: 'fisica',
     titulo: 'Conferência física',
     oQueE:
@@ -78,8 +86,8 @@ export default function GestaoEntradasAjudaModal({ aberto, onClose }: GestaoEntr
       aberto={aberto}
       onClose={onClose}
       titulo="Como ler Gestão entradas"
-      subtitulo="Acuracidade da nota e eficiência da conferência física."
-      introducao="A guia Acuracidade acompanha a nota contra o pedido. A visão real, que abre por padrão, ignora divergência benigna. A guia Conferência física acompanha a contagem às cegas: destinação, conferência finalizada, taxa de divergência e lead time."
+      subtitulo="Acuracidade da nota, pré-entradas e eficiência da conferência física."
+      introducao="A guia Acuracidade acompanha a nota contra o pedido. A visão real, que abre por padrão, ignora divergência benigna. A guia Pré-entradas lista o documento tipo 173, o pedido vinculado, a comunicação do Otimiza que permanece depois do desvínculo e o chamado em andamento consultado agora no Otimiza. A guia Conferência física acompanha a contagem às cegas: destinação, conferência finalizada, taxa de divergência e lead time."
       secoes={SECOES}
       tituloId="gestao-entradas-ajuda-titulo"
     />

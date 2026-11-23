@@ -30,6 +30,8 @@ export const DOUBLE_CHECKIN_LIMIAR_KEY = 'double_checkin_limiar_pct';
 export const DOUBLE_CHECKIN_LIMIAR_DEFAULT = 10;
 /** A partir desta data (emissão NF) o sync pode enviar WhatsApp. Histórico anterior só é marcado. */
 export const DOUBLE_CHECKIN_ALERTA_DESDE_KEY = 'double_checkin_alerta_desde';
+/** JSON com valor_unitario, qtde, ipi e condicao_pagamento ativos (true) ou inativos (false). */
+export const DOUBLE_CHECKIN_CRITERIOS_KEY = 'double_checkin_criterios_divergencia';
 
 export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'ipi', 'condicao_pagamento'] as const;
 export type DoubleCheckInCampoComparativo = (typeof DOUBLE_CHECKIN_CAMPOS)[number];
@@ -790,6 +792,73 @@ export async function getDoubleCheckInLimiarPct(): Promise<number> {
   const n = Number(row?.value ?? DOUBLE_CHECKIN_LIMIAR_DEFAULT);
   if (!Number.isFinite(n) || n <= 0) return DOUBLE_CHECKIN_LIMIAR_DEFAULT;
   return Math.min(100, Math.max(0.1, n));
+}
+
+export type CriteriosDivergenciaDoubleCheck = Record<DoubleCheckInCampoComparativo, boolean>;
+
+export function criteriosDivergenciaPadrao(): CriteriosDivergenciaDoubleCheck {
+  return {
+    valor_unitario: true,
+    qtde: true,
+    ipi: true,
+    condicao_pagamento: true,
+  };
+}
+
+export async function getCriteriosDivergencia(): Promise<CriteriosDivergenciaDoubleCheck> {
+  const base = criteriosDivergenciaPadrao();
+  const row = await prisma.config.findUnique({ where: { key: DOUBLE_CHECKIN_CRITERIOS_KEY } });
+  if (!row?.value) return base;
+  try {
+    const parsed = JSON.parse(row.value) as Record<string, unknown>;
+    for (const campo of DOUBLE_CHECKIN_CAMPOS) {
+      if (typeof parsed[campo] === 'boolean') base[campo] = parsed[campo];
+    }
+  } catch {
+    return criteriosDivergenciaPadrao();
+  }
+  return base;
+}
+
+export async function setCriteriosDivergencia(
+  entrada: Partial<CriteriosDivergenciaDoubleCheck>
+): Promise<CriteriosDivergenciaDoubleCheck> {
+  const atual = await getCriteriosDivergencia();
+  for (const campo of DOUBLE_CHECKIN_CAMPOS) {
+    if (typeof entrada[campo] === 'boolean') atual[campo] = entrada[campo];
+  }
+  await prisma.config.upsert({
+    where: { key: DOUBLE_CHECKIN_CRITERIOS_KEY },
+    create: { key: DOUBLE_CHECKIN_CRITERIOS_KEY, value: JSON.stringify(atual) },
+    update: { value: JSON.stringify(atual) },
+  });
+  return atual;
+}
+
+/** Critério já gravado no documento: apontamento ou decisão existente. */
+export async function listarCamposDivergenciaLancados(
+  ids: number[]
+): Promise<Map<number, Set<DoubleCheckInCampoComparativo>>> {
+  const map = new Map<number, Set<DoubleCheckInCampoComparativo>>();
+  const unicos = [...new Set(ids.filter((id) => id > 0))];
+  if (unicos.length === 0) return map;
+  const [apontadas, decisoes] = await Promise.all([
+    prisma.doubleCheckInDivergenciaApontada.findMany({
+      where: { idDocumentoEstoque: { in: unicos } },
+      select: { idDocumentoEstoque: true, campo: true },
+    }),
+    prisma.doubleCheckInComparativoDecisao.findMany({
+      where: { idDocumentoEstoque: { in: unicos } },
+      select: { idDocumentoEstoque: true, campo: true },
+    }),
+  ]);
+  for (const row of [...apontadas, ...decisoes]) {
+    if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(row.campo)) continue;
+    const set = map.get(row.idDocumentoEstoque) ?? new Set<DoubleCheckInCampoComparativo>();
+    set.add(row.campo as DoubleCheckInCampoComparativo);
+    map.set(row.idDocumentoEstoque, set);
+  }
+  return map;
 }
 
 export async function setDoubleCheckInLimiarPct(limiarPct: number): Promise<number> {

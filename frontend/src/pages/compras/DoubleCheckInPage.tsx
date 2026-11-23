@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import DoubleCheckInComparativoPcTab, {
   contarPendentesComparativo,
 } from './DoubleCheckInComparativoPcTab';
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ClipboardCheck, Eye, History, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, Users } from 'lucide-react';
+import { AlertTriangle, CalendarRange, ChevronDown, ClipboardCheck, Eye, History, Library, Maximize2, Minimize2, RefreshCw, RotateCcw, Settings2, SlidersHorizontal, Users } from 'lucide-react';
 import DoubleCheckInHistoricoModal from './DoubleCheckInHistoricoModal';
 import DoubleCheckInJustificativasModal from './DoubleCheckInJustificativasModal';
 import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoesOverlay';
@@ -11,19 +11,21 @@ import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   conferirDoubleCheckIn,
+  CRITERIOS_DIVERGENCIA_PADRAO,
   fetchDoubleCheckInComparativoPc,
+  fetchDoubleCheckInCriterios,
   fetchDoubleCheckInDestinatarios,
-  fetchDoubleCheckInItens,
   fetchDoubleCheckInParametros,
-  fetchDoubleCheckInStatus,
   reabrirDoubleCheckIn,
+  saveDoubleCheckInCriterios,
   saveDoubleCheckInDestinatarios,
   saveDoubleCheckInParametros,
   syncDoubleCheckIn,
+  type CriteriosDivergenciaDoubleCheck,
+  type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInSolicitacaoOtimiza,
   type DoubleCheckInComparativoLinha,
-  type DoubleCheckInItem,
   type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInNota,
   type DoubleCheckInUsuarioDest,
@@ -43,9 +45,6 @@ const btnPrimary =
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
-const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const nfNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
-
 function hojeYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -58,38 +57,21 @@ function fmtDataBr(ymd: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
-function fmtPct(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return '—';
-  const sinal = n > 0 ? '+' : '';
-  return `${sinal}${n.toFixed(1).replace('.', ',')}%`;
-}
-
-function isAdminOuMaster(opts: {
-  isMaster: boolean;
-  login: string | null | undefined;
-  grupo: string | null | undefined;
-}): boolean {
-  const { isMaster, login, grupo } = opts;
-  return (
-    isMaster ||
-    login === 'admin' ||
-    grupo === 'admin' ||
-    grupo === 'Administrador' ||
-    grupo === 'Master'
-  );
-}
-
-type DetalheCache = {
-  itens: DoubleCheckInItem[];
-  limiarPct: number;
-  dataEmissao: string | null;
-};
+const CRITERIOS_OPCOES: { id: DoubleCheckInCampoComparativo; label: string }[] = [
+  { id: 'valor_unitario', label: 'Valor unitário' },
+  { id: 'qtde', label: 'Quantidade' },
+  { id: 'ipi', label: 'IPI' },
+  { id: 'condicao_pagamento', label: 'Condição de pagamento' },
+];
 
 type ComparativoCache = {
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
+  criterios: CriteriosDivergenciaDoubleCheck;
+  camposLancados: DoubleCheckInCampoComparativo[];
+  semVinculo: boolean;
 };
 
 type FiltroSituacao =
@@ -100,6 +82,14 @@ type FiltroSituacao =
   | 'divergencia_benigna';
 
 type RegimeConferencia = NonNullable<DoubleCheckInNota['regimeConferencia']>;
+
+function textoQuemConferiu(nota: DoubleCheckInNota): string {
+  if (regimeDaNota(nota) === 'nao_aplicada') return 'Conferência não aplicada';
+  if (!nota.conferido) return 'Ainda não conferido';
+  const quem = nota.conferidoPor?.trim() || '—';
+  const quando = nota.conferidoEm ? new Date(nota.conferidoEm).toLocaleString('pt-BR') : '';
+  return quando ? `${quem} · ${quando}` : quem;
+}
 
 function regimeDaNota(nota: DoubleCheckInNota): RegimeConferencia {
   if (nota.regimeConferencia) return nota.regimeConferencia;
@@ -130,9 +120,8 @@ function resumoFiltroNotas(lista: DoubleCheckInNota[]) {
 }
 
 export default function DoubleCheckInPage() {
-  const { isMaster, login, grupo, hasPermission } = useAuth();
-  const podeDestinatarios = isAdminOuMaster({ isMaster, login, grupo });
-  const podeCadastros = hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_JUSTIFICATIVAS);
+  const { isMaster, hasPermission } = useAuth();
+  const podeConfiguracoes = hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES);
   const podeReabrirConferencia = hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA);
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
@@ -150,18 +139,10 @@ export default function DoubleCheckInPage() {
   const [alertasEnviados, setAlertasEnviados] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_DEFAULT);
-  /** idDocumento → temForaLimiar (página atual / cache). */
-  const [statusMap, setStatusMap] = useState<Record<number, boolean>>({});
-  const [statusLoading, setStatusLoading] = useState(false);
 
   const [modalNota, setModalNota] = useState<DoubleCheckInNota | null>(null);
   const [historicoNota, setHistoricoNota] = useState<DoubleCheckInNota | null>(null);
-  const [modalAba, setModalAba] = useState<'preco' | 'nf_pc'>('preco');
   const [modalTelaCheia, setModalTelaCheia] = useState(false);
-  const [detalheLoading, setDetalheLoading] = useState(false);
-  const [detalheErro, setDetalheErro] = useState<string | null>(null);
-  const [detalheItens, setDetalheItens] = useState<DoubleCheckInItem[]>([]);
-  const [detalheLimiar, setDetalheLimiar] = useState(10);
 
   const [compLoading, setCompLoading] = useState(false);
   const [compErro, setCompErro] = useState<string | null>(null);
@@ -169,11 +150,23 @@ export default function DoubleCheckInPage() {
   const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [compSolicitacoes, setCompSolicitacoes] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
+  const [compCriterios, setCompCriterios] = useState<CriteriosDivergenciaDoubleCheck>(
+    CRITERIOS_DIVERGENCIA_PADRAO
+  );
+  const [compCamposLancados, setCompCamposLancados] = useState<DoubleCheckInCampoComparativo[]>([]);
+  const [compSemVinculo, setCompSemVinculo] = useState(false);
   const [compBloqueioMsg, setCompBloqueioMsg] = useState<string | null>(null);
   const [reabrindoConferencia, setReabrindoConferencia] = useState(false);
 
+  const [configAberto, setConfigAberto] = useState(false);
   const [paramAberto, setParamAberto] = useState(false);
   const [cadastrosAberto, setCadastrosAberto] = useState(false);
+  const [divergAberto, setDivergAberto] = useState(false);
+  const [criteriosDraft, setCriteriosDraft] = useState<CriteriosDivergenciaDoubleCheck>(
+    CRITERIOS_DIVERGENCIA_PADRAO
+  );
+  const [criteriosSalvando, setCriteriosSalvando] = useState(false);
+  const [criteriosErro, setCriteriosErro] = useState<string | null>(null);
   const [paramDraft, setParamDraft] = useState('10');
   const [paramSalvando, setParamSalvando] = useState(false);
   const [paramErro, setParamErro] = useState<string | null>(null);
@@ -191,19 +184,14 @@ export default function DoubleCheckInPage() {
   const [senhaErro, setSenhaErro] = useState<string | null>(null);
   const [senhaSalvando, setSenhaSalvando] = useState(false);
 
-  const detalheCacheRef = useRef(new Map<number, DetalheCache>());
   const comparativoCacheRef = useRef(new Map<number, ComparativoCache>());
-  const statusCacheRef = useRef(new Map<string, boolean>());
   const syncSeqRef = useRef(0);
-  const statusSeqRef = useRef(0);
   const periodoRef = useRef<HTMLDivElement>(null);
+  const configRef = useRef<HTMLDivElement>(null);
   const appliedRef = useRef({ dataInicio: '2024-01-01', dataFim: hojeYmd() });
 
   const limparCachesGrade = useCallback(() => {
-    detalheCacheRef.current.clear();
     comparativoCacheRef.current.clear();
-    statusCacheRef.current.clear();
-    setStatusMap({});
   }, []);
 
   const carregarParametros = useCallback(async () => {
@@ -235,7 +223,6 @@ export default function DoubleCheckInPage() {
         if (r.alertaDesde) setAlertaDesde(r.alertaDesde);
         setAlertasEnviados(r.alertasEnviados);
         setUltimaSync(new Date().toLocaleTimeString('pt-BR'));
-        detalheCacheRef.current.clear();
         comparativoCacheRef.current.clear();
       } catch (e) {
         if (seq !== syncSeqRef.current) return;
@@ -285,6 +272,22 @@ export default function DoubleCheckInPage() {
   }, [periodoAberto]);
 
   useEffect(() => {
+    if (!configAberto) return;
+    const fecharFora = (event: MouseEvent) => {
+      if (!configRef.current?.contains(event.target as Node)) setConfigAberto(false);
+    };
+    const fecharEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfigAberto(false);
+    };
+    document.addEventListener('mousedown', fecharFora);
+    document.addEventListener('keydown', fecharEscape);
+    return () => {
+      document.removeEventListener('mousedown', fecharFora);
+      document.removeEventListener('keydown', fecharEscape);
+    };
+  }, [configAberto]);
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return;
       void sincronizar({ silencioso: true });
@@ -292,42 +295,15 @@ export default function DoubleCheckInPage() {
     return () => window.clearInterval(id);
   }, [sincronizar]);
 
-  const abrirDetalhe = useCallback(async (nota: DoubleCheckInNota) => {
+  const abrirDetalhe = useCallback((nota: DoubleCheckInNota) => {
     setModalNota(nota);
-    setModalAba('preco');
     setModalTelaCheia(false);
-    setDetalheErro(null);
     setCompErro(null);
     setCompBloqueioMsg(null);
-    // Sempre busca de novo: histórico depende de regras do backend (tipos, limiar).
-    detalheCacheRef.current.delete(nota.idDocumento);
     comparativoCacheRef.current.delete(nota.idDocumento);
-    setDetalheLoading(true);
-    setDetalheItens([]);
     setCompLinhas([]);
     setCompDecisoes([]);
     setCompSolicitacoes([]);
-    try {
-      const r = await fetchDoubleCheckInItens(nota.idDocumento);
-      if (r.erro) {
-        setDetalheErro(r.erro);
-        return;
-      }
-      detalheCacheRef.current.set(nota.idDocumento, {
-        itens: r.itens,
-        limiarPct: r.limiarPct,
-        dataEmissao: r.dataEmissao,
-      });
-      const temFora = r.itens.some((i) => i.foraLimiar);
-      statusCacheRef.current.set(`${nota.idDocumento}:${r.limiarPct}`, temFora);
-      setStatusMap((prev) => ({ ...prev, [nota.idDocumento]: temFora }));
-      setDetalheItens(r.itens);
-      setDetalheLimiar(r.limiarPct);
-    } catch (e) {
-      setDetalheErro(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDetalheLoading(false);
-    }
   }, []);
 
   const carregarComparativo = useCallback(async (idDocumento: number) => {
@@ -337,6 +313,9 @@ export default function DoubleCheckInPage() {
       setCompDecisoes(cached.decisoes);
       setCompJustificativas(cached.justificativas);
       setCompSolicitacoes(cached.solicitacoesOtimiza ?? []);
+      setCompCriterios(cached.criterios ?? CRITERIOS_DIVERGENCIA_PADRAO);
+      setCompCamposLancados(cached.camposLancados ?? []);
+      setCompSemVinculo(Boolean(cached.semVinculo));
       setCompErro(null);
       return;
     }
@@ -350,6 +329,9 @@ export default function DoubleCheckInPage() {
         setCompDecisoes([]);
         setCompSolicitacoes([]);
         setCompJustificativas(r.justificativas);
+        setCompCriterios(r.criterios);
+        setCompCamposLancados([]);
+        setCompSemVinculo(Boolean(r.semVinculo));
         return;
       }
       const payload: ComparativoCache = {
@@ -357,12 +339,18 @@ export default function DoubleCheckInPage() {
         decisoes: r.decisoes,
         justificativas: r.justificativas,
         solicitacoesOtimiza: r.solicitacoesOtimiza,
+        criterios: r.criterios,
+        camposLancados: r.camposLancados,
+        semVinculo: Boolean(r.semVinculo),
       };
       comparativoCacheRef.current.set(idDocumento, payload);
       setCompLinhas(payload.linhas);
       setCompDecisoes(payload.decisoes);
       setCompJustificativas(payload.justificativas);
       setCompSolicitacoes(payload.solicitacoesOtimiza);
+      setCompCriterios(payload.criterios);
+      setCompCamposLancados(payload.camposLancados);
+      setCompSemVinculo(payload.semVinculo);
     } catch (e) {
       setCompErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -371,9 +359,9 @@ export default function DoubleCheckInPage() {
   }, []);
 
   useEffect(() => {
-    if (!modalNota || modalAba !== 'nf_pc') return;
+    if (!modalNota) return;
     void carregarComparativo(modalNota.idDocumento);
-  }, [modalNota, modalAba, carregarComparativo]);
+  }, [modalNota, carregarComparativo]);
 
   const reabrirConferencia = async () => {
     if (!modalNota || !podeReabrirConferencia || reabrindoConferencia) return;
@@ -398,14 +386,12 @@ export default function DoubleCheckInPage() {
               conferidoComDivergencia: false,
             }
           : nota;
+      comparativoCacheRef.current.delete(modalNota.idDocumento);
       setNotas((prev) => prev.map(atualizar));
       setModalNota((prev) => (prev ? atualizar(prev) : prev));
-      comparativoCacheRef.current.delete(modalNota.idDocumento);
       setCompLinhas([]);
       setCompDecisoes([]);
       setCompSolicitacoes([]);
-      setModalAba('nf_pc');
-      await carregarComparativo(modalNota.idDocumento);
     } finally {
       setReabrindoConferencia(false);
     }
@@ -423,6 +409,7 @@ export default function DoubleCheckInPage() {
         match(n.numeroDocumentoFiscal ?? '') ||
         match(n.numeroNfe ?? '') ||
         match(n.nomeParceiro ?? '') ||
+        match(n.nomeCriador ?? '') ||
         match(String(n.idParceiro ?? ''));
       if (!passaTexto) return false;
       if (filtroSituacao === 'pendentes') {
@@ -448,8 +435,6 @@ export default function DoubleCheckInPage() {
       ? []
       : notasFiltradas.slice((pageSafe - 1) * pageSize, pageSafe * pageSize);
 
-  const idsPaginaKey = notasPagina.map((n) => n.idDocumento).join(',');
-
   useEffect(() => {
     setPage(1);
   }, [filtroTexto, filtroSituacao, pageSize, dataInicio, dataFim]);
@@ -458,48 +443,42 @@ export default function DoubleCheckInPage() {
     setPage((p) => Math.min(p, totalPages));
   }, [totalPages]);
 
-  useEffect(() => {
-    if (!idsPaginaKey) {
-      setStatusMap({});
-      return;
-    }
-    const ids = idsPaginaKey.split(',').map(Number).filter((n) => n > 0);
-    const fromCache: Record<number, boolean> = {};
-    const missing: number[] = [];
-    for (const id of ids) {
-      const key = `${id}:${limiarPct}`;
-      if (statusCacheRef.current.has(key)) {
-        fromCache[id] = statusCacheRef.current.get(key)!;
-      } else {
-        missing.push(id);
-      }
-    }
-    setStatusMap(fromCache);
-    if (missing.length === 0) return;
-
-    const seq = ++statusSeqRef.current;
-    setStatusLoading(true);
-    void (async () => {
-      try {
-        const r = await fetchDoubleCheckInStatus(missing);
-        if (seq !== statusSeqRef.current) return;
-        if (r.erro) return;
-        const next: Record<number, boolean> = { ...fromCache };
-        for (const row of r.status) {
-          statusCacheRef.current.set(`${row.idDocumento}:${r.limiarPct}`, row.temForaLimiar);
-          next[row.idDocumento] = row.temForaLimiar;
-        }
-        setStatusMap(next);
-      } finally {
-        if (seq === statusSeqRef.current) setStatusLoading(false);
-      }
-    })();
-  }, [idsPaginaKey, limiarPct]);
-
   const abrirParametros = () => {
+    setConfigAberto(false);
     setParamDraft(String(limiarPct));
     setParamErro(null);
     setParamAberto(true);
+  };
+
+  const abrirDivergencias = async () => {
+    setConfigAberto(false);
+    setCriteriosErro(null);
+    setDivergAberto(true);
+    const r = await fetchDoubleCheckInCriterios();
+    if (r.erro) {
+      setCriteriosErro(r.erro);
+      return;
+    }
+    setCriteriosDraft(r.criterios);
+  };
+
+  const salvarCriterios = async () => {
+    setCriteriosSalvando(true);
+    setCriteriosErro(null);
+    try {
+      const r = await saveDoubleCheckInCriterios(criteriosDraft);
+      if (r.erro) {
+        setCriteriosErro(r.erro);
+        return;
+      }
+      setCriteriosDraft(r.criterios);
+      comparativoCacheRef.current.clear();
+      setDivergAberto(false);
+      if (modalNota) void carregarComparativo(modalNota.idDocumento);
+      void filtrar();
+    } finally {
+      setCriteriosSalvando(false);
+    }
   };
 
   const salvarParametros = async () => {
@@ -614,13 +593,13 @@ export default function DoubleCheckInPage() {
     // Na conferência completa, garante o comparativo carregado antes de validar decisões.
     let linhas = compLinhas;
     let decisoes = compDecisoes;
+    let semVinculoEspelho = compSemVinculo;
     const cached = comparativoCacheRef.current.get(modalNota.idDocumento);
     if (regimeConferencia === 'completa' && !cached) {
       setCompLoading(true);
       try {
         const r = await fetchDoubleCheckInComparativoPc(modalNota.idDocumento);
         if (r.erro) {
-          setModalAba('nf_pc');
           setCompBloqueioMsg(r.erro);
           return;
         }
@@ -629,26 +608,33 @@ export default function DoubleCheckInPage() {
           decisoes: r.decisoes,
           justificativas: r.justificativas,
           solicitacoesOtimiza: r.solicitacoesOtimiza,
+          criterios: r.criterios,
+          camposLancados: r.camposLancados,
+          semVinculo: Boolean(r.semVinculo),
         };
         comparativoCacheRef.current.set(modalNota.idDocumento, payload);
         setCompLinhas(payload.linhas);
         setCompDecisoes(payload.decisoes);
         setCompJustificativas(payload.justificativas);
         setCompSolicitacoes(payload.solicitacoesOtimiza);
+        setCompCriterios(payload.criterios);
+        setCompCamposLancados(payload.camposLancados);
+        setCompSemVinculo(payload.semVinculo);
         linhas = payload.linhas;
         decisoes = payload.decisoes;
+        semVinculoEspelho = payload.semVinculo;
       } finally {
         setCompLoading(false);
       }
     } else if (regimeConferencia === 'completa' && cached) {
       linhas = cached.linhas;
       decisoes = cached.decisoes;
+      semVinculoEspelho = Boolean(cached.semVinculo);
     }
 
-    if (regimeConferencia === 'completa' && linhas.length === 0) {
-      setModalAba('nf_pc');
+    if (regimeConferencia === 'completa' && (linhas.length === 0 || semVinculoEspelho)) {
       setCompBloqueioMsg(
-        'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.'
+        'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra. Os cards exibidos são o espelho da primeira leitura.'
       );
       return;
     }
@@ -658,7 +644,6 @@ export default function DoubleCheckInPage() {
         ? contarPendentesComparativo(linhas, decisoes)
         : 0;
     if (regimeConferencia === 'completa' && pendentes > 0) {
-      setModalAba('nf_pc');
       setCompBloqueioMsg(
         `Há ${pendentes} divergência(s) NF × PC sem decisão. Na divergência real, a solicitação no Otimiza precisa estar concluída. Na benigna, o número é opcional.`
       );
@@ -691,7 +676,6 @@ export default function DoubleCheckInPage() {
         setSenhaErro(r.erro);
         if (/divergência|pedido de compra/i.test(r.erro)) {
           setSenhaAberto(false);
-          setModalAba('nf_pc');
           setCompBloqueioMsg(r.erro);
         }
         return;
@@ -807,7 +791,7 @@ export default function DoubleCheckInPage() {
               className={`${inputClass} w-full`}
               value={filtroTexto}
               onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Número ou fornecedor; use %"
+              placeholder="Número, fornecedor ou criador; use %"
             />
           </div>
           <div className="w-full sm:w-60">
@@ -845,21 +829,69 @@ export default function DoubleCheckInPage() {
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             Sincronizar
           </button>
-          <button type="button" className={btnSecondary} onClick={abrirParametros}>
-            <Settings2 className="h-4 w-4" />
-            Parâmetros
-          </button>
-          {podeCadastros && (
-            <button type="button" className={btnSecondary} onClick={() => setCadastrosAberto(true)}>
-              <Library className="h-4 w-4" />
-              Cadastros
-            </button>
-          )}
-          {podeDestinatarios && (
-            <button type="button" className={btnSecondary} onClick={() => void abrirDestinatarios()}>
-              <Users className="h-4 w-4" />
-              Destinatários WhatsApp
-            </button>
+          {podeConfiguracoes && (
+            <div ref={configRef} className="relative">
+              <button
+                type="button"
+                className={btnSecondary}
+                aria-expanded={configAberto}
+                aria-haspopup="menu"
+                onClick={() => setConfigAberto((aberto) => !aberto)}
+              >
+                <Settings2 className="h-4 w-4" />
+                Configurações
+                <ChevronDown className={`h-4 w-4 transition-transform ${configAberto ? 'rotate-180' : ''}`} />
+              </button>
+              {configAberto ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-700"
+                    onClick={abrirParametros}
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    Parâmetros
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-700"
+                    onClick={() => {
+                      setConfigAberto(false);
+                      void abrirDestinatarios();
+                    }}
+                  >
+                    <Users className="h-4 w-4" />
+                    Destinatários
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-700"
+                    onClick={() => {
+                      setConfigAberto(false);
+                      setCadastrosAberto(true);
+                    }}
+                  >
+                    <Library className="h-4 w-4" />
+                    Cadastros
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-700"
+                    onClick={() => void abrirDivergencias()}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Divergências
+                  </button>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
         {erro && (
@@ -900,7 +932,7 @@ export default function DoubleCheckInPage() {
               <th className="px-3 py-2.5 font-semibold">Emissão</th>
               <th className="px-3 py-2.5 font-semibold">ID Parceiro</th>
               <th className="px-3 py-2.5 font-semibold">Parceiro</th>
-              <th className="px-3 py-2.5 font-semibold">Status</th>
+              <th className="px-3 py-2.5 font-semibold">Criador</th>
               <th className="px-3 py-2.5 font-semibold">Conferência</th>
               <th className="px-3 py-2.5 font-semibold text-right">Itens</th>
               <th className="px-3 py-2.5 font-semibold text-center">Ação</th>
@@ -916,8 +948,6 @@ export default function DoubleCheckInPage() {
             ) : (
               notasPagina.map((n) => {
                 const regimeConferencia = regimeDaNota(n);
-                const temFora = statusMap[n.idDocumento];
-                const statusPronto = Object.prototype.hasOwnProperty.call(statusMap, n.idDocumento);
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
                 const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
@@ -953,28 +983,8 @@ export default function DoubleCheckInPage() {
                     <td className="px-3 py-2 max-w-[18rem] truncate" title={n.nomeParceiro ?? undefined}>
                       {n.nomeParceiro ?? '—'}
                     </td>
-                    <td className="px-3 py-2">
-                      {!statusPronto ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                          {statusLoading ? '…' : '—'}
-                        </span>
-                      ) : temFora && !conferido ? (
-                        <span
-                          className="dci-status-atencao inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200"
-                          title="Há item(ns) com variação acima do limiar"
-                        >
-                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                          <span className="animate-pulse">Atenção</span>
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
-                          title="Todos os itens dentro do limiar"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                          OK
-                        </span>
-                      )}
+                    <td className="px-3 py-2 max-w-[12rem] truncate" title={n.nomeCriador ?? undefined}>
+                      {n.nomeCriador ?? '—'}
                     </td>
                     <td className="px-3 py-2">
                       {regimeConferencia === 'nao_aplicada' ? (
@@ -1039,15 +1049,6 @@ export default function DoubleCheckInPage() {
             )}
           </tbody>
         </table>
-        <style>{`
-          @keyframes dci-status-flash {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.45; }
-          }
-          .dci-status-atencao {
-            animation: dci-status-flash 1.4s ease-in-out infinite;
-          }
-        `}</style>
       </div>
 
       {totalParaPaginacao > 0 && (
@@ -1126,8 +1127,16 @@ export default function DoubleCheckInPage() {
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     Doc {modalNota.numeroDocumentoFiscal ?? '—'} · NF-e {modalNota.numeroNfe ?? '—'} ·
                     Entrada {fmtDataBr(modalNota.dataEntrada)} · Emissão {fmtDataBr(modalNota.dataEmissao)} ·{' '}
-                    {modalNota.nomeParceiro ?? '—'} · limiar ±{detalheLimiar}%
+                    {modalNota.nomeParceiro ?? '—'}
                   </p>
+                  <div className="mt-2 inline-flex min-w-[16rem] max-w-full flex-col gap-0.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      Conferido por
+                    </span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                      {textoQuemConferiu(modalNota)}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
@@ -1156,132 +1165,36 @@ export default function DoubleCheckInPage() {
                   </button>
                 </div>
               </div>
-              <div className="flex shrink-0 gap-1 border-b border-slate-200 px-4 dark:border-slate-600">
-                {(
-                  [
-                    { id: 'preco' as const, label: 'Análise de preço' },
-                    { id: 'nf_pc' as const, label: 'NF × Pedido de compra' },
-                  ] as const
-                ).map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={modalAba === t.id}
-                    onClick={() => {
-                      setModalAba(t.id);
-                      setCompBloqueioMsg(null);
-                    }}
-                    className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition ${
-                      modalAba === t.id
-                        ? 'border-primary-600 text-primary-700 dark:text-primary-400'
-                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
               <div className="relative min-h-[12rem] flex-1 overflow-auto p-4">
-                <CarregandoInformacoesOverlay
-                  show={detalheLoading || (modalAba === 'nf_pc' && compLoading)}
-                  mode="contained"
-                />
+                <CarregandoInformacoesOverlay show={compLoading} mode="contained" />
                 {compBloqueioMsg && (
                   <p className="mb-3 text-sm text-rose-600" role="alert">
                     {compBloqueioMsg}
                   </p>
                 )}
-                {modalAba === 'preco' ? (
-                  <>
-                    {detalheErro && (
-                      <p className="mb-3 text-sm text-rose-600" role="alert">
-                        {detalheErro}
-                      </p>
-                    )}
-                    <table className="min-w-full text-sm">
-                      <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-900">
-                        <tr>
-                          <th className="px-2 py-2">Produto</th>
-                          <th className="px-2 py-2">UM</th>
-                          <th className="px-2 py-2 text-right">Qtde</th>
-                          <th className="px-2 py-2 text-right">Vl. unit.</th>
-                          <th className="px-2 py-2 text-right">Vl. total</th>
-                          <th className="px-2 py-2 text-right">Variação</th>
-                          <th className="px-2 py-2">Histórico (3)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                        {detalheItens.map((it) => (
-                          <tr
-                            key={it.idItem}
-                            className={
-                              it.foraLimiar
-                                ? 'dfc-dci-alerta bg-amber-50/90 dark:bg-amber-950/40 ring-1 ring-inset ring-amber-400/70'
-                                : undefined
-                            }
-                          >
-                            <td className="px-2 py-2">
-                              <div className="font-medium text-slate-800 dark:text-slate-100">
-                                {it.codigoProduto ?? it.idProduto}
-                              </div>
-                              <div className="text-xs text-slate-500 line-clamp-2">
-                                {it.descricaoProduto ?? '—'}
-                              </div>
-                            </td>
-                            <td className="px-2 py-2">{it.unidadeMedida ?? '—'}</td>
-                            <td className="px-2 py-2 text-right tabular-nums">{nfNum.format(it.qtde)}</td>
-                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorUnitario)}</td>
-                            <td className="px-2 py-2 text-right tabular-nums">{nfBrl.format(it.valorTotal)}</td>
-                            <td
-                              className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                                it.foraLimiar
-                                  ? 'text-amber-700 dark:text-amber-300 animate-pulse'
-                                  : 'text-slate-700 dark:text-slate-200'
-                              }`}
-                            >
-                              {fmtPct(it.variacaoPct)}
-                            </td>
-                            <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300">
-                              {it.historico.length === 0 ? (
-                                <span className="text-slate-400">Sem entradas anteriores</span>
-                              ) : (
-                                <ul className="space-y-1">
-                                  {it.historico.map((h, idx) => (
-                                    <li key={`${h.idDocumento}-${idx}`}>
-                                      <span className={idx === 0 ? 'font-semibold' : ''}>
-                                        {fmtDataBr(h.dataEmissao)} · {nfBrl.format(h.valorUnitario)}
-                                        {idx === 0 ? ' (ref.)' : ''}
-                                      </span>
-                                      <span className="block text-[10px] text-slate-400 truncate max-w-[14rem]">
-                                        {h.nomeParceiro ?? '—'} · Doc {h.numeroDocumentoFiscal ?? '—'}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                ) : (
-                  <div className="space-y-3">
+                <div className="space-y-3">
                     {regimeDaNota(modalNota) === 'simples' ? (
                       <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                         Entrada de 19/09 a 20/09/2026: comparativo somente para consulta.
                         Não é necessário aceitar ou recusar divergências.
                       </p>
                     ) : null}
+                    {compSemVinculo ? (
+                      <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                        Este documento está sem vínculo com pedido de compra no Nomus. Os cards abaixo são o
+                        espelho da primeira leitura. Role para ver as demais divergências.
+                      </p>
+                    ) : null}
                     <DoubleCheckInComparativoPcTab
                       idDocumento={modalNota.idDocumento}
                       conferido={Boolean(modalNota.conferido)}
-                      somenteLeitura={regimeDaNota(modalNota) !== 'completa'}
+                      somenteLeitura={regimeDaNota(modalNota) !== 'completa' || compSemVinculo}
                       linhas={compLinhas}
                       decisoes={compDecisoes}
                       justificativas={compJustificativas}
                       solicitacoesOtimiza={compSolicitacoes}
+                      criterios={compCriterios}
+                      camposLancados={compCamposLancados}
                       loading={compLoading}
                       erro={compErro}
                       onSolicitacoesChange={(next) => {
@@ -1306,8 +1219,7 @@ export default function DoubleCheckInPage() {
                         }
                       }}
                     />
-                  </div>
-                )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-600 dark:bg-slate-900/40">
                 <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -1323,6 +1235,11 @@ export default function DoubleCheckInPage() {
                         ? ` em ${new Date(modalNota.conferidoEm).toLocaleString('pt-BR')}`
                         : ''}
                       .
+                    </span>
+                  ) : regimeDaNota(modalNota) === 'completa' && !compLoading && compSemVinculo ? (
+                    <span>
+                      Sem vínculo com pedido de compra. A tela mantém o espelho da primeira leitura para
+                      consulta e impressão. A conferência fica disponível quando o documento for vinculado de novo.
                     </span>
                   ) : regimeDaNota(modalNota) === 'completa' &&
                     !compLoading &&
@@ -1351,7 +1268,7 @@ export default function DoubleCheckInPage() {
                     <button
                       type="button"
                       className={btnSecondary}
-                      disabled={reabrindoConferencia || detalheLoading || compLoading}
+                      disabled={reabrindoConferencia || compLoading}
                       onClick={() => void reabrirConferencia()}
                     >
                       <RotateCcw
@@ -1366,10 +1283,10 @@ export default function DoubleCheckInPage() {
                     disabled={
                       Boolean(modalNota.conferido) ||
                       regimeDaNota(modalNota) === 'nao_aplicada' ||
-                      detalheLoading ||
                       compLoading ||
                       (regimeDaNota(modalNota) === 'completa' &&
-                        comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0)
+                        (compSemVinculo ||
+                          comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0))
                     }
                     onClick={() => void abrirSenhaConferir()}
                   >
@@ -1383,13 +1300,6 @@ export default function DoubleCheckInPage() {
                 </div>
               </div>
             </div>
-            <style>{`
-              @keyframes dci-alerta-pulse {
-                0%, 100% { box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0.35); }
-                50% { box-shadow: inset 0 0 0 4px rgba(245, 158, 11, 0.2); }
-              }
-              .dfc-dci-alerta { animation: dci-alerta-pulse 1.6s ease-in-out infinite; }
-            `}</style>
           </div>,
           document.body
         )}
@@ -1458,6 +1368,76 @@ export default function DoubleCheckInPage() {
         <DoubleCheckInHistoricoModal nota={historicoNota} onClose={() => setHistoricoNota(null)} />
       )}
       {cadastrosAberto && <DoubleCheckInJustificativasModal onClose={() => setCadastrosAberto(false)} />}
+
+      {divergAberto &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10055] flex items-center justify-center p-4 bg-slate-900/55"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => !criteriosSalvando && setDivergAberto(false)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Critérios de divergência
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                O que já foi lançado permanece no documento. Nos documentos novos, o critério inativo
+                deixa de aparecer.
+              </p>
+              <ul className="mt-4 space-y-2">
+                {CRITERIOS_OPCOES.map((opcao) => {
+                  const ativo = criteriosDraft[opcao.id] !== false;
+                  return (
+                    <li key={opcao.id}>
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-600">
+                        <span className="text-sm text-slate-800 dark:text-slate-100">{opcao.label}</span>
+                        <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
+                          {ativo ? 'Ativo' : 'Inativo'}
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={ativo}
+                            onChange={(e) =>
+                              setCriteriosDraft((atual) => ({
+                                ...atual,
+                                [opcao.id]: e.target.checked,
+                              }))
+                            }
+                          />
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              {criteriosErro && <p className="mt-2 text-sm text-rose-600">{criteriosErro}</p>}
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  disabled={criteriosSalvando}
+                  onClick={() => setDivergAberto(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  disabled={criteriosSalvando}
+                  onClick={() => void salvarCriterios()}
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Modal parâmetros */}
       {paramAberto &&

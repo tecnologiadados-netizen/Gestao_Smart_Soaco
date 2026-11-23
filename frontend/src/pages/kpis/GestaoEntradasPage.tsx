@@ -24,6 +24,7 @@ import {
 import GestaoEntradasCompradorModal from './GestaoEntradasCompradorModal';
 import GestaoEntradasAjudaModal from './GestaoEntradasAjudaModal';
 import GestaoEntradasConferenciaFisicaPanel from './GestaoEntradasConferenciaFisicaPanel';
+import GestaoEntradasPreEntradaPanel from './GestaoEntradasPreEntradaPanel';
 import GestaoEntradasCardModal, { type RecorteGestaoEntrada } from './GestaoEntradasCardModal';
 import GestaoEntradasDiaModal, {
   GestaoEntradasRankingModal,
@@ -68,7 +69,7 @@ const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
 type Granularidade = 'dia' | 'mes';
-type GuiaGestaoEntradas = 'acuracidade' | 'fisica';
+type GuiaGestaoEntradas = 'acuracidade' | 'fisica' | 'pre-entrada';
 type EscopoDivergencia = 'reais' | 'geral';
 type ContextoMovimentacao = 'volume' | 'divergencias';
 type SeriePonto = {
@@ -529,7 +530,9 @@ export default function GestaoEntradasPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {guia === 'fisica'
                 ? 'Eficiência da conferência física por data de destinação'
-                : 'Acuracidade das notas de entrada por data de entrada'}
+                : guia === 'pre-entrada'
+                  ? 'Pré-entradas em aberto, a comunicação gravada e o chamado em andamento no Otimiza'
+                  : 'Acuracidade das notas de entrada por data de entrada'}
             </p>
             <div className="mt-2 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">
               <button
@@ -554,6 +557,17 @@ export default function GestaoEntradasPage() {
               >
                 Conferência física
               </button>
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  guia === 'pre-entrada'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                    : 'text-slate-500'
+                }`}
+                onClick={() => setGuia('pre-entrada')}
+              >
+                Pré-entradas
+              </button>
             </div>
           </div>
           <ComoLerBtn onClick={() => setAjudaAberta(true)} title="Como ler Gestão entradas" />
@@ -561,6 +575,8 @@ export default function GestaoEntradasPage() {
 
         {guia === 'fisica' ? (
           <GestaoEntradasConferenciaFisicaPanel />
+        ) : guia === 'pre-entrada' ? (
+          <GestaoEntradasPreEntradaPanel />
         ) : (
         <>
         <div className={`flex flex-wrap items-end gap-3 px-4 py-3 ${panelSurface}`}>

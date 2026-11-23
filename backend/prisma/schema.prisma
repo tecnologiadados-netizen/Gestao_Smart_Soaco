@@ -340,6 +340,17 @@ model DoubleCheckInDivergenciaApontada {
   @@map("double_checkin_divergencia_apontada")
 }
 
+/// Espelho da primeira leitura com vínculo NF × pedido. Não é reescrito se o vínculo mudar.
+model DoubleCheckInEspelhoPrimeiraLeitura {
+  id                 Int      @id @default(autoincrement())
+  idDocumentoEstoque Int      @unique
+  /// Linhas do comparativo, inclusive as que não divergiram.
+  linhasJson         String
+  gravadoEm          DateTime @default(now())
+
+  @@map("double_checkin_espelho_primeira_leitura")
+}
+
 /// Histórico acumulativo de observações por divergência (campo) do comparativo NF × PC.
 model DoubleCheckInComparativoObsHist {
   id                     Int      @id @default(autoincrement())
