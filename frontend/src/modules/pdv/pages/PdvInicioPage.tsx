@@ -1526,9 +1526,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
       </div>
       ) : (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#eef1f4]">
-        <div className="grid min-h-0 flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <div className="flex min-h-0 flex-col gap-3">
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid min-h-0 flex-1 items-stretch gap-3 overflow-hidden p-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div className="flex h-full min-h-0 flex-col gap-3">
+            <section className="shrink-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-slate-800">
@@ -1597,9 +1597,9 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               </div>
             </section>
 
-            <section className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-2 text-sm font-semibold text-slate-800">Itens da venda</h2>
-              <ul className="space-y-1 text-sm">
+            <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-800">Itens da venda</h2>
+              <ul className="min-h-0 flex-1 space-y-1 overflow-auto text-sm">
                 {carrinho.map((item, i) => (
                   <li key={`${item.id}-${i}`} className="flex justify-between gap-2 border-b border-slate-100 py-2">
                     <span className="min-w-0 truncate text-slate-700" title={rotuloItemCarrinho(item)}>
@@ -1612,8 +1612,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             </section>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="flex h-full min-h-0 flex-col gap-3">
+            <div className="grid shrink-0 grid-cols-2 gap-2">
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
                 <div className="text-[10px] uppercase text-slate-400">Cliente</div>
                 <div className="truncate font-medium text-slate-800">{cliente?.nome || 'Ao consumidor'}</div>
@@ -1633,7 +1633,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
             </div>
 
             {destinoEfetivo === 'pedido' ? (
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <section className="shrink-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-2 text-sm font-semibold text-slate-800">Pagamentos recebidos</h2>
                 {pagamentosLista.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">Nenhum pagamento ainda. Confirme à esquerda.</p>
@@ -1650,8 +1650,8 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               </section>
             ) : null}
 
-            <section className="max-h-[42vh] space-y-2 overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-800">Dados da proposta (Nomus)</h2>
+            <section className="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="shrink-0 text-sm font-semibold text-slate-800">Dados da proposta (Nomus)</h2>
               {modo === 'ambos' ? (
                 <fieldset className="flex flex-wrap gap-3 text-xs text-slate-600">
                   <label className="flex items-center gap-1.5">
@@ -1692,9 +1692,14 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
                 Validade da proposta
                 <input type="date" value={dataValidade} onChange={(e) => setDataValidade(e.target.value)} className={`${campoClaro} mt-1 w-full`} />
               </label>
-              <label className="block text-xs text-slate-600">
+              <label className="flex min-h-[4.5rem] flex-1 flex-col text-xs text-slate-600">
                 Observação
-                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={`${campoClaro} mt-1 w-full`} />
+                <textarea
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                  rows={3}
+                  className={`${campoClaro} mt-1 min-h-[4.5rem] w-full flex-1 resize-y`}
+                />
               </label>
               {atributosPrincipais.map((atr) => (
                 <label key={atr.nome} className="block text-xs text-slate-600">
@@ -1758,7 +1763,7 @@ export default function PdvInicioPage({ onSair }: { onSair?: () => void }) {
               ) : null}
             </section>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="mt-auto shrink-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="rounded-lg bg-slate-50 p-2">
                   <div className="text-slate-400">Subtotal</div>
