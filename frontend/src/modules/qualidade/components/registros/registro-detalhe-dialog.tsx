@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Copy, Pencil } from "lucide-react";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
@@ -41,6 +41,8 @@ interface RegistroDetalheDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Abre o diálogo já em modo de edição. */
   editarAoAbrir?: boolean;
+  onClonar?: () => void;
+  clonando?: boolean;
 }
 
 export function RegistroDetalheDialog({
@@ -48,6 +50,8 @@ export function RegistroDetalheDialog({
   open,
   onOpenChange,
   editarAoAbrir = false,
+  onClonar,
+  clonando = false,
 }: RegistroDetalheDialogProps) {
   const getRegistroById = useRegistrosStore((s) => s.getRegistroById);
   const atualizarRegistroRnc = useRegistrosStore((s) => s.atualizarRegistroRnc);
@@ -339,6 +343,17 @@ export function RegistroDetalheDialog({
                 <span />
               )}
               <div className="flex flex-wrap gap-2">
+                {onClonar ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onClonar}
+                    disabled={clonando}
+                  >
+                    <Copy className="mr-2 size-4" />
+                    {clonando ? "Clonando..." : "Clonar"}
+                  </Button>
+                ) : null}
                 {podeEditar ? (
                   <Button type="button" onClick={iniciarEdicao}>
                     <Pencil className="mr-2 size-4" />

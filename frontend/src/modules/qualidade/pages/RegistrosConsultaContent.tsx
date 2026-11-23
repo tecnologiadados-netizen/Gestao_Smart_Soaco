@@ -22,17 +22,20 @@ import {
   sgqTextoOuTraco,
 } from "@qualidade/components/ui/sgq-grade-filtro-cabecalho";
 import { SgqGradeFiltroPortal } from "@qualidade/components/ui/sgq-grade-filtro-portal";
-import { SgqGradeSurface } from "@qualidade/components/ui/sgq-grade-surface";
 import {
   isModuloRegistroTipo,
   moduloRegistroTipoLabelsCurto,
   rotuloStatusRegistro,
   type ModuloRegistroTipo,
 } from "@qualidade/lib/registros/constants";
+import { montarInputCloneRegistro } from "@qualidade/lib/registros/clonar-registro";
 import { useRegistrosStore } from "@qualidade/lib/store/registros-store";
 import { useAvaliacaoFornecedorStore } from "@qualidade/lib/store/avaliacao-fornecedor-store";
 import { useConfigStore } from "@qualidade/lib/store/config-store";
-import { excluirQualidadeRegistro } from "@qualidade/lib/qualidadePersistence";
+import {
+  excluirQualidadeRegistro,
+  persistQualidadeRegistro,
+} from "@qualidade/lib/qualidadePersistence";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { cn } from "@qualidade/lib/utils";
 import {
@@ -95,7 +98,11 @@ export function RegistrosConsultaContent() {
   const [searchParams] = useSearchParams();
   const registros = useRegistrosStore((s) => s.registros);
   const avaliacoes = useAvaliacaoFornecedorStore((s) => s.avaliacoes);
+  const criarRegistro = useRegistrosStore((s) => s.criarRegistro);
+  const getRegistroById = useRegistrosStore((s) => s.getRegistroById);
   const excluirRegistroStore = useRegistrosStore((s) => s.excluirRegistro);
+  const currentUserId = useConfigStore((s) => s.currentUserId);
+  const getCurrentUser = useConfigStore((s) => s.getCurrentUser);
   const users = useConfigStore((s) => s.users);
 
   const [tipoFiltro, setTipoFiltro] = useState<ModuloRegistroTipo>(() => {
@@ -111,6 +118,8 @@ export function RegistrosConsultaContent() {
     useState<Registro | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [erroExclusao, setErroExclusao] = useState("");
+  const [clonandoId, setClonandoId] = useState<string | null>(null);
+  const [erroClone, setErroClone] = useState("");
   const [contagemAvaliacoes, setContagemAvaliacoes] = useState<number | null>(
     null
   );
@@ -236,6 +245,42 @@ export function RegistrosConsultaContent() {
     }
   }
 
+  async function clonarRegistro(origem: Registro) {
+    if (clonandoId) return;
+    setClonandoId(origem.id);
+    setErroClone("");
+    setErroExclusao("");
+    let novoId: string | null = null;
+    try {
+      const usuarioAtual = getCurrentUser();
+      const input = montarInputCloneRegistro(origem, {
+        responsavelId: currentUserId,
+        usuarioCriacao: usuarioAtual?.nome ?? "",
+      });
+      novoId = criarRegistro(input);
+      const registro = getRegistroById(novoId);
+      if (!registro) {
+        throw new Error("Não foi possível preparar o registro clonado.");
+      }
+      await persistQualidadeRegistro(registro);
+      setAbrirEmEdicao(true);
+      setRegistroSelecionadoId(novoId);
+    } catch (err) {
+      if (novoId) {
+        useRegistrosStore.setState((state) => ({
+          registros: state.registros.filter((item) => item.id !== novoId),
+        }));
+      }
+      setErroClone(
+        err instanceof Error
+          ? err.message
+          : "Falha ao clonar o registro no servidor. Tente novamente."
+      );
+    } finally {
+      setClonandoId(null);
+    }
+  }
+
   const filtrados = grade.rowsExibidas;
   const contagemExibida = isAvaliacaoView
     ? (contagemAvaliacoes ?? avaliacoes.length)
@@ -260,12 +305,12 @@ export function RegistrosConsultaContent() {
         </Link>
       </div>
 
-      {erroExclusao ? (
+      {erroExclusao || erroClone ? (
         <p
           className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
           role="alert"
         >
-          {erroExclusao}
+          {erroExclusao || erroClone}
         </p>
       ) : null}
 
@@ -389,11 +434,21 @@ export function RegistrosConsultaContent() {
                         >
                           <TableRowActions
                             onEdit={() => abrirEdicao(registro)}
+                            onClone={() => {
+                              void clonarRegistro(registro);
+                            }}
+                            cloneDisabled={Boolean(clonandoId)}
+                            cloneLabel={
+                              clonandoId === registro.id
+                                ? "Clonando..."
+                                : "Clonar"
+                            }
                             onDelete={
                               isModuloRegistroTipo(registro.tipo) &&
                               temExcluirRegistroQualidade(hasPermission, registro.tipo)
                                 ? () => {
                                     setErroExclusao("");
+                                    setErroClone("");
                                     setRegistroParaExcluir(registro);
                                   }
                                 : undefined
@@ -434,6 +489,18 @@ export function RegistrosConsultaContent() {
           registroId={registroSelecionadoId}
           open={registroSelecionadoId !== null}
           editarAoAbrir={abrirEmEdicao}
+          clonando={
+            registroSelecionadoId !== null &&
+            clonandoId === registroSelecionadoId
+          }
+          onClonar={
+            registroSelecionadoId
+              ? () => {
+                  const origem = getRegistroById(registroSelecionadoId);
+                  if (origem) void clonarRegistro(origem);
+                }
+              : undefined
+          }
           onOpenChange={(open) => {
             if (!open) {
               setRegistroSelecionadoId(null);
