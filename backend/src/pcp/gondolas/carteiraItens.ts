@@ -28,9 +28,9 @@ const ROTAS_FORA_DA_CARTEIRA = [
 
 const SQL_CATEGORIA_SEM_ROMANEIO = `
   CASE
+    WHEN aloreq.opcao = 'Sim' THEN '5-Requisicao'
     WHEN me.opcao = 'Retirada na Só Móveis' THEN '2-Retirada na So Moveis'
     WHEN me.opcao = 'Retirada na Só Aço' THEN '1-Retirada na So Aço'
-    WHEN IFNULL(m.nome, mc.nome) = 'Teresina' AND aloreq.opcao = 'Sim' THEN '5-Requisicao'
     WHEN IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos')
       AND aloreq.opcao = 'Não' THEN '3-Entrega em Grande Teresina'
     ELSE '4-Inserir em Romaneio'
@@ -103,9 +103,9 @@ const SQL_ITENS = `
     (ip.qtde - IFNULL(ip.qtdeAtendida, 0)) + IFNULL(devol.qtdDevolvida, 0) AS pendente,
     IFNULL(prm.qtdeVinculada, 0) AS qtdeRomaneada,
     CASE
+      WHEN (obs.observacoes IS NULL AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
       WHEN (obs.observacoes IS NULL AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
       WHEN (obs.observacoes IS NULL AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-      WHEN (obs.observacoes IS NULL AND IFNULL(m.nome, mc.nome) = 'Teresina' AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
       WHEN (obs.observacoes IS NULL AND IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos') AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
       WHEN obs.observacoes IS NULL THEN '4-Inserir em Romaneio'
       ELSE obs.observacoes

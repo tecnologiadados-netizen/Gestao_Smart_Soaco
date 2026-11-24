@@ -286,7 +286,7 @@ function buildCarradasInfoForCard(
 const STATUS_FINAIS_PERMITIDOS = new Set(['Atendido totalmente', 'Atendido com corte', 'Cancelado']);
 const RESTRICTED_CREATORS = new Set(['wellingtonsousa', 'francelino', 'marcosamorim', 'gilvania']);
 
-/** Lista pedidos do ERP (Nomus) para o dropdown do Novo Pedido. Rota = mesma regra do Gerenciador (Observacoes): com romaneio usa de.observacoes; sem romaneio usa Método de entrega (591) e demais condições. */
+/** Lista pedidos do ERP (Nomus) para o dropdown do Novo Pedido. Rota = mesma regra do Gerenciador (Observacoes): com romaneio usa de.observacoes; sem romaneio, requisição de loja = Sim vem antes do método de entrega (591). */
 const SQL_PEDIDOS_ERP = `
   SELECT
     p.id,
@@ -296,9 +296,9 @@ const SQL_PEDIDOS_ERP = `
     p.dataEntregaPadrao,
     (SELECT MIN(ip.dataEntrega) FROM itempedido ip WHERE ip.idPedido = p.id) AS dataOriginalEntrega,
     (SELECT CASE
+       WHEN (de.observacoes IS NULL AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
        WHEN (de.observacoes IS NULL AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
        WHEN (de.observacoes IS NULL AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-       WHEN (de.observacoes IS NULL AND IFNULL(m.nome, mc.nome) = 'Teresina' AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
        WHEN (de.observacoes IS NULL AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos')) AND (aloreq.opcao = 'Não' OR aloreq.opcao IS NULL)) THEN '3-Entrega em Grande Teresina'
        WHEN (de.observacoes IS NULL) THEN '4-Inserir em Romaneio'
        ELSE de.observacoes

@@ -888,7 +888,7 @@ pe.`idChave`,
 	pe.`OBS_Romaneio`,
 	pe.`Retirada_loja_fabrica`,
 	 CASE
-        WHEN pe.`REQUISITADO` = 'Sim' AND pe.`Regiao` = 'Grande THE' THEN 'Requisições de Loja'
+        WHEN pe.`REQUISITADO` = 'Sim' THEN 'Requisições de Loja'
         WHEN pe.`OBS_Romaneio` = 'Cargas Formadas' AND pe.`Regiao` = 'Grande THE' THEN 'Cargas Formadas'
         WHEN pe.`OBS_Romaneio` = 'Cargas Formadas' THEN 'Cargas Formadas'
         WHEN pe.`Retirada_loja_fabrica` = 'Sim' OR pe.`MetodoEntrega` IN ('Retirada na Só Aço', 'Retirada na Só Móveis') THEN 'Retirada Fabrica/loja'

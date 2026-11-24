@@ -3,12 +3,11 @@ SELECT
 	pd.id AS 'id',
 	CASE
 		WHEN (de.observacoes IS NULL
+		AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+		WHEN (de.observacoes IS NULL
 		AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 		WHEN (de.observacoes IS NULL
 		AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-		WHEN (de.observacoes IS NULL
-		AND IFNULL(m.nome, mc.nome) = 'Teresina'
-		AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 		WHEN (de.observacoes IS NULL
 		AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 		AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -27,12 +26,11 @@ SELECT
 	CASE
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -44,12 +42,11 @@ SELECT
 	CASE
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -222,12 +219,11 @@ SELECT
 	CASE
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -240,12 +236,11 @@ SELECT
 	CASE
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -254,12 +249,11 @@ SELECT
 		END) LIKE '%Retirada%' THEN 'Retirada'
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -268,12 +262,11 @@ SELECT
 		END) LIKE '%Requisi%' THEN 'Requisição'
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -282,12 +275,11 @@ SELECT
 		END) LIKE '%Entrega%' THEN 'Entrega Grande Teresina'
 		WHEN (CASE
 			WHEN (de.observacoes IS NULL
+			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 			WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-			WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-			AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 			WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 			AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -301,12 +293,11 @@ SELECT
         CASE
 			WHEN (CASE
 				WHEN (de.observacoes IS NULL
+				AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+				WHEN (de.observacoes IS NULL
 				AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 				WHEN (de.observacoes IS NULL
 				AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-				WHEN (de.observacoes IS NULL
-				AND IFNULL(m.nome, mc.nome) = 'Teresina'
-				AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 				WHEN (de.observacoes IS NULL
 				AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 				AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -537,12 +528,11 @@ WHERE
 	AND pd.idEmpresa IN (1, 2)
 	AND (CASE
 		WHEN (de.observacoes IS NULL
+				AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+		WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 		WHEN (de.observacoes IS NULL
 			AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-		WHEN (de.observacoes IS NULL
-			AND IFNULL(m.nome, mc.nome) = 'Teresina'
-				AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 		WHEN (de.observacoes IS NULL
 			AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 				AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'
@@ -556,12 +546,11 @@ WHERE
             pd.idEmpresa = 2
 			AND (CASE
 				WHEN (de.observacoes IS NULL
+						AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
+				WHEN (de.observacoes IS NULL
 					AND me.opcao = 'Retirada na Só Móveis') THEN '2-Retirada na So Moveis'
 				WHEN (de.observacoes IS NULL
 					AND me.opcao = 'Retirada na Só Aço') THEN '1-Retirada na So Aço'
-				WHEN (de.observacoes IS NULL
-					AND IFNULL(m.nome, mc.nome) = 'Teresina'
-						AND aloreq.opcao = 'Sim') THEN '5-Requisicao'
 				WHEN (de.observacoes IS NULL
 					AND (IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
 						AND aloreq.opcao = 'Não') THEN '3-Entrega em Grande Teresina'

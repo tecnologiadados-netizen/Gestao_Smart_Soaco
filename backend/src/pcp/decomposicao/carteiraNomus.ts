@@ -40,9 +40,9 @@ function numero(valor: unknown): number {
  */
 const SQL_CATEGORIA_SEM_ROMANEIO = `
   CASE
+    WHEN aloreq.opcao = 'Sim' THEN '5-Requisicao'
     WHEN me.opcao = 'Retirada na Só Móveis' THEN '2-Retirada na So Moveis'
     WHEN me.opcao = 'Retirada na Só Aço' THEN '1-Retirada na So Aço'
-    WHEN IFNULL(m.nome, mc.nome) = 'Teresina' AND aloreq.opcao = 'Sim' THEN '5-Requisicao'
     WHEN IFNULL(m.nome, mc.nome) IN ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos')
       AND aloreq.opcao = 'Não' THEN '3-Entrega em Grande Teresina'
     ELSE '4-Inserir em Romaneio'

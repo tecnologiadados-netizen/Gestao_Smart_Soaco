@@ -1229,8 +1229,8 @@ Select
         Coalesce(
           de.observacoes,
           Case
-            When me.opcao In ('Retirada na Só Móveis', 'Retirada na Só Aço') Then 'Retirada'
             When aloreq.opcao = 'Sim' Then 'Requisição'
+            When me.opcao In ('Retirada na Só Móveis', 'Retirada na Só Aço') Then 'Retirada'
             When (IfNull(m.nome, mc.nome) In ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão', 'Curralinhos'))
               And (aloreq.opcao = 'Não' Or aloreq.opcao Is Null) Then 'Entrega G The'
             Else 'Inserir em romaneio'
@@ -1431,9 +1431,9 @@ const SQL_WHERE_GERENCIADOR_PEDIDO = `
       pd.idEmpresa = 2
       And (
         Case
+          When (de.observacoes Is Null And aloreq.opcao = 'Sim') Then '5-Requisicao'
           When (de.observacoes Is Null And me.opcao = 'Retirada na Só Móveis') Then '2-Retirada na So Moveis'
           When (de.observacoes Is Null And me.opcao = 'Retirada na Só Aço') Then '1-Retirada na So Aço'
-          When (de.observacoes Is Null And IfNull(m.nome, mc.nome) = 'Teresina' And aloreq.opcao = 'Sim') Then '5-Requisicao'
           When (de.observacoes Is Null And (IfNull(m.nome, mc.nome) In ('Timon','Teresina','Nazaria','Demerval Lobão','Curralinhos')) And aloreq.opcao = 'Não') Then '3-Entrega em Grande Teresina'
           When (de.observacoes Is Null) Then '4-Inserir em Romaneio'
           Else de.observacoes

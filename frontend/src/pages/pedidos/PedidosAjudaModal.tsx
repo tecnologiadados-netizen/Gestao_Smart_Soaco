@@ -17,7 +17,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Prioridade quando não há romaneio',
         texto:
-          '1) Retirada (método Só Móveis ou Só Aço) → 2) Requisição (Teresina + requisição loja = Sim) → 3) Entrega Grande Teresina (municípios da região + requisição = Não) → 4) Inserir em Romaneio (demais casos).',
+          '1) Requisição (Requisição de loja do grupo = Sim, em qualquer município e qualquer método de entrega) → 2) Retirada (método Só Móveis ou Só Aço) → 3) Entrega Grande Teresina (municípios da região + requisição = Não) → 4) Inserir em Romaneio (demais casos).',
       },
       {
         titulo: 'Quando já existe rota no ERP',
@@ -30,7 +30,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'retirada',
     titulo: 'Retirada',
     oQueE:
-      'Pedidos com método de entrega “Retirada na Só Aço” ou “Retirada na Só Móveis”, quando ainda não há romaneio preenchido no ERP.',
+      'Pedidos com método de entrega “Retirada na Só Aço” ou “Retirada na Só Móveis”, quando ainda não há romaneio preenchido no ERP e a requisição de loja do grupo não está marcada como Sim.',
     comoLe:
       'A previsão usada no prazo é a data de entrega do item. A linha fica Atrasada se a data de hoje for posterior a essa entrega. Não entra na regra de valor de corte nem na replicação por carrada.',
   },

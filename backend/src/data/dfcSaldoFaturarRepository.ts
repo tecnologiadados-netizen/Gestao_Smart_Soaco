@@ -25,18 +25,18 @@ select
     case 
         when (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
         ) like '%Retirada%'
         or (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
@@ -47,18 +47,18 @@ select
     case 
         when (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
         ) like '%Retirada%'
         or (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
@@ -242,9 +242,9 @@ select
 	            pd.idEmpresa = 2
 	            and (
 	                case 
+	                    when aloreq.opcao = 'Sim' then '5-Requisicao'
 	                    when me.opcao = 'Retirada na Só Móveis' then '2-Retirada na So Moveis'
 	                    when me.opcao = 'Retirada na Só Aço' then '1-Retirada na So Aço'
-	                    when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then '5-Requisicao'
 	                    when ifnull(m.nome, mc.nome) in ('Timon','Teresina','Nazaria','Demerval Lobão','Curralinhos') and aloreq.opcao = 'Não' then '3-Entrega em Grande Teresina'
 	                    else '4-Inserir em Romaneio'
 	                end
@@ -631,18 +631,18 @@ export async function queryDfcSaldoFaturar(
       `(case 
         when (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
         ) like '%Retirada%'
         or (
             case 
+                when aloreq.opcao = 'Sim' then 'Requisicao'
                 when me.opcao = 'Retirada na Só Móveis' then 'Retirada na So Moveis'
                 when me.opcao = 'Retirada na Só Aço' then 'Retirada na So Aço'
-                when ifnull(m.nome, mc.nome) = 'Teresina' and aloreq.opcao = 'Sim' then 'Requisicao'
                 when ifnull(m.nome, mc.nome) in ('Timon', 'Teresina', 'Nazaria', 'Demerval Lobão') and aloreq.opcao = 'Não' then 'Entrega em Grande Teresina'
                 else 'Inserir em Romaneio'
             end
