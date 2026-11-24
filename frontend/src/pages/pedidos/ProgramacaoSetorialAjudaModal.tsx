@@ -34,9 +34,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'tabelas',
     titulo: 'Programação × Atendidos pelo Estoque',
     oQueE:
-      'Duas tabelas: o que precisa produzir versus o que já está coberto por estoque de produto acabado (setor PA no Nomus). O saldo de Intermediários CONT não entra nesse abate — é estoque não controlado e não reduz a quantidade a produzir. No setor Cadeiras, A produzir é o saldo em aberto da carteira do pedido. Produzir e enviar ao estoque não reduz essa coluna; ela só cai quando o pedido daquela linha é atendido, no todo ou em parte. Essas linhas não entram em Atendidos pelo Estoque. Os demais setores continuam abatendo o saldo de PA.',
+      'Duas tabelas: o que precisa produzir versus o que já está coberto por estoque de produto acabado (setor PA no Nomus). O saldo de Intermediários CONT não entra nesse abate — é estoque não controlado e não reduz a quantidade a produzir. No setor Cadeiras, A produzir é o saldo em aberto da carteira do pedido. Produzir e enviar ao estoque não reduz essa coluna; ela só cai quando o pedido daquela linha é atendido, no todo ou em parte. Essas linhas não entram em Atendidos pelo Estoque. Os demais setores continuam abatendo o saldo de PA. Nos demais setores, pedidos do mesmo produto, mesma observação e mesma data base saem numa linha só, com os PDs juntos e a quantidade somada. Em Cadeiras isso não acontece: cada pedido fica na própria linha, com a quantidade dele, mesmo quando a previsão cai no mesmo dia.',
     comoLe:
-      'Priorize a tabela de programação para capacidade. A de atendidos pelo estoque cobre só o que há em PA; Intermediários CONT não “some” da carga de Gôndolas nem de Corte e Dobra. Em Cadeiras, 20 vendidas continuam 20 a produzir mesmo com peças já no estoque; se o pedido de 2 for atendido, A produzir passa a 18.',
+      'Priorize a tabela de programação para capacidade. A de atendidos pelo estoque cobre só o que há em PA; Intermediários CONT não “some” da carga de Gôndolas nem de Corte e Dobra. Em Cadeiras, 20 vendidas continuam 20 a produzir mesmo com peças já no estoque; se o pedido de 2 for atendido, A produzir passa a 18. Três pedidos de cadeira do mesmo código no mesmo dia aparecem em três linhas, cada um com a sua quantidade — não numa linha só com a soma.',
   },
   {
     id: 'carradas-mesma-data',
@@ -58,9 +58,9 @@ const SECOES: SecaoAjuda[] = [
     id: 'pdf',
     titulo: 'PDF do snapshot',
     oQueE:
-      'Exportação com período/setor da visualização, em consolidado ou detalhe.',
+      'Exportação com período/setor da visualização, em consolidado ou detalhe. O detalhe imprime as linhas gravadas no snapshot. Em Cadeiras, cada pedido sai numa linha, com a quantidade daquele pedido. A página de consolidação continua somando por código.',
     comoLe:
-      'Confira o filtro de setor na tela antes de gerar o PDF — o arquivo reflete o que está sendo visualizado naquele momento.',
+      'Confira o filtro de setor na tela antes de gerar o PDF — o arquivo reflete o que está sendo visualizado naquele momento. Um snapshot antigo de Cadeiras que já foi gravado com os PDs juntos continua assim; para fragmentar, gere e salve uma programação nova.',
   },
 ];
 

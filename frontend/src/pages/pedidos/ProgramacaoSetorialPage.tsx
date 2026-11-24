@@ -8,6 +8,7 @@ import {
 import { mensagemBloqueioInconsistenciaQtdePendente } from '../../api/inconsistenciaQtdePendente';
 import MultiSelectWithSearch from '../../components/MultiSelectWithSearch';
 import { isRecursoPcp } from '../../utils/programacaoSetorialRecursoPcp';
+import { aglutinarItensProgramacaoSetorial } from '../../utils/aglutinarProgramacaoSetorial';
 import {
   abaterSaldoEstoquePorDataAsc,
   parseDataBaseProgramacao,
@@ -247,30 +248,10 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
     return items as ProcessedItem[];
   }, [planningData, stockData]);
 
-  const aglutinatedItems = useMemo(() => {
-    const groups: Record<string, ProcessedItem> = {};
-    for (const item of processedItems) {
-      const dataBase = String(item.DataBaseIso ?? item.DataBase ?? item.Previsao ?? '');
-      const key = `${item.Observacoes}|${dataBase}|${item.Cod}`;
-      if (!groups[key]) {
-        groups[key] = { ...item };
-      } else {
-        groups[key].originalQty += item.originalQty;
-        groups[key].qtyToProduce += item.qtyToProduce;
-        groups[key].fulfilledByStock += item.fulfilledByStock;
-        if (item.PD && !String(groups[key].PD || '').includes(item.PD)) {
-          groups[key].PD = groups[key].PD ? `${groups[key].PD}, ${item.PD}` : item.PD;
-        }
-        // Recurso: necessário para o setor "Corte e Dobra" (PCP). Se o primeiro item não tinha PCP, outro da mesma chave pode ter.
-        if (isRecursoPcp(item.Recurso)) {
-          groups[key].Recurso = item.Recurso;
-        } else if (!isRecursoPcp(groups[key].Recurso) && item.Recurso != null && String(item.Recurso).trim() !== '') {
-          groups[key].Recurso = item.Recurso;
-        }
-      }
-    }
-    return Object.values(groups);
-  }, [processedItems]);
+  const aglutinatedItems = useMemo(
+    () => aglutinarItensProgramacaoSetorial(processedItems),
+    [processedItems],
+  );
 
   const aglutinatedItemsFiltrados = useMemo(
     () => aglutinatedItems.filter((item) => !linhaExcluidaProgramacaoSetorial(item)),
@@ -659,7 +640,7 @@ export default function ProgramacaoSetorialPage({ onProgramacaoSalva }: Programa
               className={`mb-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 flex flex-col gap-3 ${loadingData ? 'opacity-60 pointer-events-none' : ''}`}
             >
               <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                O <strong>setor</strong> escolhido filtra só a tabela. Ao salvar, a programação registrada inclui <strong>todos os setores</strong>, respeitando o período de datas (e as observações usadas ao carregar). No setor <strong>Cadeiras</strong>, A produzir é o saldo em aberto do pedido: produzir e enviar ao estoque não reduz a quantidade; ela só cai quando o pedido da linha é atendido, no todo ou em parte.
+                O <strong>setor</strong> escolhido filtra só a tabela. Ao salvar, a programação registrada inclui <strong>todos os setores</strong>, respeitando o período de datas (e as observações usadas ao carregar). No setor <strong>Cadeiras</strong>, A produzir é o saldo em aberto do pedido: produzir e enviar ao estoque não reduz a quantidade; ela só cai quando o pedido da linha é atendido, no todo ou em parte. Cada pedido de cadeira permanece na própria linha, com a quantidade dele, mesmo quando a previsão cai no mesmo dia e o produto é o mesmo. Os demais setores continuam juntando esses pedidos numa linha só.
               </p>
               <div className="flex flex-wrap items-end justify-between gap-4 w-full">
               <div className="flex flex-wrap gap-4 items-end min-w-0 flex-1">
