@@ -5,12 +5,14 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import {
   fetchGestaoEntradasPreEntradas,
+  fetchGestaoEntradasPreEntradasImpressao,
   type ConferenciaDoubleCheckPreEntrada,
   type GradePreEntrada,
   type LinhaPreEntrada,
   type SituacaoPreEntrada,
   type StatusOtimizaPreEntrada,
 } from '../../api/gestaoEntradas';
+import { imprimirRelacaoPreEntradas } from './imprimirPreEntradas';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
 const panelSurface =
@@ -34,7 +36,6 @@ const COLUNAS = [
   { id: 'conferencia', label: 'Double Check' },
   { id: 'conferido', label: 'Conferido por' },
   { id: 'otimiza', label: 'Comunicação Otimiza' },
-  { id: 'chamado', label: 'Chamado no otimiza' },
   { id: 'situacao', label: 'Situação' },
 ];
 
@@ -89,11 +90,6 @@ function textoOtimizaItem(item: LinhaPreEntrada['comunicacoes'][number]): string
   return status ? `${item.numero} · ${status}` : String(item.numero);
 }
 
-function textoChamado(linha: LinhaPreEntrada): string {
-  if (linha.chamadosAbertos == null || linha.chamadosAbertos.length === 0) return '';
-  return linha.chamadosAbertos.join(', ');
-}
-
 function textoBusca(linha: LinhaPreEntrada): string {
   return [
     linha.numeroDocumentoFiscal,
@@ -103,7 +99,6 @@ function textoBusca(linha: LinhaPreEntrada): string {
     linha.usuarioConferencia,
     textoPedidos(linha),
     textoOtimiza(linha),
-    textoChamado(linha),
     labelConferencia(linha.conferencia),
     labelSituacao(linha.situacao),
   ]
@@ -121,7 +116,6 @@ function textoCelula(linha: LinhaPreEntrada, coluna: string): string {
   if (coluna === 'conferencia') return labelConferencia(linha.conferencia);
   if (coluna === 'conferido') return linha.usuarioConferencia || '—';
   if (coluna === 'otimiza') return textoOtimiza(linha) || '—';
-  if (coluna === 'chamado') return textoChamado(linha) || '—';
   return labelSituacao(linha.situacao);
 }
 
@@ -135,11 +129,6 @@ function valoresFiltro(linha: LinhaPreEntrada, coluna: string): string[] | null 
   }
   if (coluna === 'otimiza') {
     return linha.comunicacoes.length > 0 ? linha.comunicacoes.map(textoOtimizaItem) : ['—'];
-  }
-  if (coluna === 'chamado') {
-    return linha.chamadosAbertos != null && linha.chamadosAbertos.length > 0
-      ? linha.chamadosAbertos.map(String)
-      : ['—'];
   }
   return null;
 }
@@ -178,7 +167,9 @@ export default function GestaoEntradasPreEntradaPanel() {
   const [dataFim, setDataFim] = useState('');
   const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(false);
+  const [imprimindo, setImprimindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [avisoImpressao, setAvisoImpressao] = useState<string | null>(null);
   const [dados, setDados] = useState<GradePreEntrada | null>(null);
 
   const carregar = useCallback(async (di: string, df: string) => {
@@ -235,11 +226,9 @@ export default function GestaoEntradasPreEntradaPanel() {
   const resumo = useMemo(() => {
     const todas = dados?.linhas ?? [];
     return {
-      preEntrada: todas.filter((linha) => linha.situacao === 'pre_entrada').length,
-      efetivada: todas.filter((linha) => linha.situacao === 'efetivada').length,
+      preEntrada: todas.length,
       pendente: todas.filter((linha) => linha.conferencia === 'pendente').length,
       comOtimiza: todas.filter((linha) => linha.comunicacoes.length > 0).length,
-      comChamado: todas.filter((linha) => (linha.chamadosAbertos?.length ?? 0) > 0).length,
     };
   }, [dados]);
 
@@ -253,6 +242,30 @@ export default function GestaoEntradasPreEntradaPanel() {
       return;
     }
     void carregar(dataInicio, dataFim);
+  }
+
+  async function imprimir() {
+    if (!dados || dados.linhas.length === 0) return;
+    setImprimindo(true);
+    setAvisoImpressao(null);
+    try {
+      const r = await fetchGestaoEntradasPreEntradasImpressao({
+        dataInicio: dados.dataInicio,
+        dataFim: dados.dataFim,
+      });
+      if (r.erro || !r.data) {
+        setErro(r.erro ?? 'Falha ao montar a relação das pré-entradas.');
+        return;
+      }
+      const resultado = await imprimirRelacaoPreEntradas(r.data);
+      if (resultado === 'baixado') {
+        setAvisoImpressao('O navegador bloqueou a janela. O PDF foi baixado para você imprimir.');
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível imprimir as pré-entradas.');
+    } finally {
+      setImprimindo(false);
+    }
   }
 
   return (
@@ -321,7 +334,7 @@ export default function GestaoEntradasPreEntradaPanel() {
             type="search"
             className={`${inputClass} w-full`}
             value={busca}
-            placeholder="Documento, fornecedor, pedido, Otimiza ou chamado. Use % para refinar"
+            placeholder="Documento, fornecedor, pedido ou Otimiza. Use % para refinar"
             onChange={(e) => setBusca(e.target.value)}
           />
         </div>
@@ -332,36 +345,42 @@ export default function GestaoEntradasPreEntradaPanel() {
           {erro}
         </p>
       ) : null}
-      {!erro && dados && dados.chamadoOtimizaOk === false ? (
+      {avisoImpressao ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100" role="status">
-          A coluna Chamado no otimiza ficou em branco: a consulta ao Otimiza não respondeu nesta leitura.
+          {avisoImpressao}
         </p>
       ) : null}
-
       <div className={`overflow-hidden ${panelSurface}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
           <p>
             {resumo.preEntrada} {resumo.preEntrada === 1 ? 'pré-entrada' : 'pré-entradas'}
             {' · '}
-            {resumo.efetivada} {resumo.efetivada === 1 ? 'efetivada com comunicação' : 'efetivadas com comunicação'}
-            {' · '}
             {resumo.pendente} {resumo.pendente === 1 ? 'conferência pendente' : 'conferências pendentes'}
             {' · '}
-            {resumo.comOtimiza} com Otimiza
-            {' · '}
-            {resumo.comChamado} {resumo.comChamado === 1 ? 'chamado aberto' : 'chamados abertos'}
+            {resumo.comOtimiza}{' '}
+            {resumo.comOtimiza === 1 ? 'comunicação em aberto' : 'comunicações em aberto'}
           </p>
-          <p>
-            {exibidas.length} {exibidas.length === 1 ? 'linha' : 'linhas'}
-            {exibidas.length !== linhas.length ? ' na seleção' : ''}
-          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className={btnSecondary}
+              disabled={loading || imprimindo || !dados || dados.linhas.length === 0}
+              onClick={() => void imprimir()}
+            >
+              {imprimindo ? 'Imprimindo…' : 'Imprimir'}
+            </button>
+            <p>
+              {exibidas.length} {exibidas.length === 1 ? 'linha' : 'linhas'}
+              {exibidas.length !== linhas.length ? ' na seleção' : ''}
+            </p>
+          </div>
         </div>
         {!loading && !erro && linhas.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhuma pré-entrada nesta seleção.</p>
         ) : null}
         {linhas.length > 0 ? (
           <div ref={grade.tableScrollRef} className="overflow-auto">
-            <table className="w-full min-w-[1320px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-white">
                 <tr className="bg-primary-600">
                   {COLUNAS.map((coluna) => {
@@ -438,17 +457,6 @@ export default function GestaoEntradasPreEntradaPanel() {
                                 <li key={item.numero}>{textoOtimizaItem(item)}</li>
                               ))}
                             </ul>
-                          )}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top tabular-nums text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {linha.chamadosAbertos != null && linha.chamadosAbertos.length > 0 ? (
-                            <ul className="space-y-1">
-                              {linha.chamadosAbertos.map((numero) => (
-                                <li key={numero}>{numero}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            '—'
                           )}
                         </td>
                         <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-white/10">

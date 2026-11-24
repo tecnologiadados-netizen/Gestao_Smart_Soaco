@@ -531,7 +531,7 @@ export default function GestaoEntradasPage() {
               {guia === 'fisica'
                 ? 'Eficiência da conferência física por data de destinação'
                 : guia === 'pre-entrada'
-                  ? 'Pré-entradas em aberto, a comunicação gravada e o chamado em andamento no Otimiza'
+                  ? 'Pré-entradas em aberto e a comunicação do Otimiza que ainda está em andamento'
                   : 'Acuracidade das notas de entrada por data de entrada'}
             </p>
             <div className="mt-2 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">

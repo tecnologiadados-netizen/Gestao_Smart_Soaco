@@ -10,7 +10,10 @@ import {
   queryGestaoEntradasPainel,
 } from '../data/gestaoEntradasRepository.js';
 import { queryConferenciaFisicaDetalhe, queryConferenciaFisicaPainel } from '../data/gestaoEntradasConferenciaFisicaRepository.js';
-import { queryGestaoEntradasPreEntradas } from '../data/gestaoEntradasPreEntradaRepository.js';
+import {
+  queryGestaoEntradasPreEntradas,
+  queryImpressaoPreEntradas,
+} from '../data/gestaoEntradasPreEntradaRepository.js';
 import type { RecorteConferenciaFisica } from '../data/gestaoEntradasConferenciaFisica.js';
 import type { MundoCompradorGestao } from '../data/gestaoEntradasComprador.js';
 import { normalizarEscopoDivergencia } from '../data/gestaoEntradasClassificacao.js';
@@ -166,29 +169,55 @@ export async function getConferenciaFisicaDocumento(req: Request, res: Response)
   await responderResumoHistoricoConferencia(res, idDocumento, { incluirVoltaAberta: true });
 }
 
-export async function getGestaoEntradasPreEntradas(req: Request, res: Response): Promise<void> {
+function periodoPreEntrada(
+  req: Request,
+): { ok: true; dataInicio: string | null; dataFim: string | null } | { ok: false; erro: string } {
   const brutoInicio = String(req.query.dataInicio ?? '').trim();
   const brutoFim = String(req.query.dataFim ?? '').trim();
   const dataInicio = parseYmd(req.query.dataInicio);
   const dataFim = parseYmd(req.query.dataFim);
   if ((brutoInicio !== '') !== (brutoFim !== '')) {
-    res.status(400).json({ error: 'Informe dataInicio e dataFim (YYYY-MM-DD), ou deixe os dois em branco.' });
-    return;
+    return { ok: false, erro: 'Informe dataInicio e dataFim (YYYY-MM-DD), ou deixe os dois em branco.' };
   }
   if ((brutoInicio !== '' && !dataInicio) || (brutoFim !== '' && !dataFim)) {
-    res.status(400).json({ error: 'Informe dataInicio e dataFim (YYYY-MM-DD), ou deixe os dois em branco.' });
-    return;
+    return { ok: false, erro: 'Informe dataInicio e dataFim (YYYY-MM-DD), ou deixe os dois em branco.' };
   }
   if (dataInicio && dataFim && dataFim < dataInicio) {
-    res.status(400).json({ error: 'dataFim deve ser >= dataInicio.' });
+    return { ok: false, erro: 'dataFim deve ser >= dataInicio.' };
+  }
+  return { ok: true, dataInicio, dataFim };
+}
+
+export async function getGestaoEntradasPreEntradas(req: Request, res: Response): Promise<void> {
+  const periodo = periodoPreEntrada(req);
+  if (!periodo.ok) {
+    res.status(400).json({ error: periodo.erro });
     return;
   }
+  const { dataInicio, dataFim } = periodo;
   const { data, erro } = await queryGestaoEntradasPreEntradas({
     dataInicio,
     dataFim,
   });
   if (erro || !data) {
     res.status(503).json({ error: erro ?? 'Falha ao listar as pré-entradas.', erro });
+    return;
+  }
+  res.json(data);
+}
+
+export async function getGestaoEntradasPreEntradasImpressao(req: Request, res: Response): Promise<void> {
+  const periodo = periodoPreEntrada(req);
+  if (!periodo.ok) {
+    res.status(400).json({ error: periodo.erro });
+    return;
+  }
+  const { data, erro } = await queryImpressaoPreEntradas({
+    dataInicio: periodo.dataInicio,
+    dataFim: periodo.dataFim,
+  });
+  if (erro || !data) {
+    res.status(503).json({ error: erro ?? 'Falha ao montar a relação das pré-entradas.', erro });
     return;
   }
   res.json(data);
