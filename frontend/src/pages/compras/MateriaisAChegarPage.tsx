@@ -62,7 +62,7 @@ const ETAPAS: {
   {
     id: 'pre_entrada',
     titulo: 'Pré-entrada',
-    apoio: 'Pedido encerrado, documento 173',
+    apoio: 'Pedido encerrado, documento tipo 46',
     campo: 'qtdePreEntrada',
     ativo: 'border-violet-300 bg-violet-50 text-violet-950 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-50',
     anel: 'bg-violet-500',

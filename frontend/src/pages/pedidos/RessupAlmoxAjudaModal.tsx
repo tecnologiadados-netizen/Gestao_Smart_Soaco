@@ -32,11 +32,11 @@ const SECOES: SecaoAjuda[] = [
   },
   {
     id: 'pre-entrada',
-    titulo: 'Pré Entrada',
+    titulo: 'Pré-entrada no saldo projetado',
     oQueE:
-      'Quantidade em documento de pré-entrada (tipo 173) ligada a item de pedido já atendido. Quando o PC Pend zera após a pré-entrada, essa coluna mostra o saldo que ainda está a caminho (ainda não entrou de fato no estoque) e soma no saldo projetado/cobertura como se fosse PC Pend.',
+      'A quantidade em documento IMPORTAÇÃO DE XML - PRÉ ENTRADA (tipo 46), ligada a item de pedido já atendido, continua compondo o saldo projetado e a cobertura como material a caminho. Ela não é exibida em uma coluna própria na grade.',
     comoLe:
-      'Célula com quantidade ganha destaque violeta e abre o modal analítico (solicitação, pedido, documento, NF, fornecedor, emissão e situação). A soma do modal = valor da grade. Clique no pedido ou no documento no modal para ver todos os itens. Sai da coluna quando o documento deixa de ser pré-entrada.',
+      'Quando o documento deixa o tipo 46, a quantidade deixa de compor essa parcela do saldo projetado. Consulte Materiais a chegar para analisar os documentos de pré-entrada.',
   },
   {
     id: 'sug-aprov',

@@ -75,7 +75,7 @@ entradas AS (
   LEFT JOIN tipomovimentacao tm ON tm.id = de.idTipoMovimentacao
   WHERE
     de.idEmpresaEntrada = ?
-    AND tm.id IN (161, 165, 158, 46)
+    AND tm.id IN (161, 165, 158)
 ),
 faturamento_com_custo AS (
   SELECT

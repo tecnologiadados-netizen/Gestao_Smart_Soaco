@@ -76,7 +76,7 @@ const STATUS: Record<StatusItemDocumento, { rotulo: string; dica: string; classe
   },
   pre_entrada: {
     rotulo: 'Pré-entrada',
-    dica: 'Pedido atendido com documento 173. Soma na etapa Pré-entrada da grade.',
+    dica: 'Pedido atendido com documento tipo 46. Soma na etapa Pré-entrada da grade.',
     classe: 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-500/60 dark:bg-violet-500/20 dark:text-violet-100',
     naGrade: true,
   },

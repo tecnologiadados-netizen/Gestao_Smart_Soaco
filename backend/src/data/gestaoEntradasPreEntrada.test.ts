@@ -13,8 +13,8 @@ function doc(partial: Partial<DocPreEntradaBruto> & Pick<DocPreEntradaBruto, 'id
     nomeParceiro: 'Fornecedor',
     dataEmissao: '2026-11-01',
     dataEntrada: '2026-11-02',
-    idTipoMovimentacao: 173,
-    nomeTipo: 'PRÉ ENTRADA',
+    idTipoMovimentacao: 46,
+    nomeTipo: 'IMPORTAÇÃO DE XML - PRÉ ENTRADA',
     usuarioAlteracao: null,
     ...partial,
   };

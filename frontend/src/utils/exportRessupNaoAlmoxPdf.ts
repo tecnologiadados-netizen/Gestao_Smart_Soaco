@@ -9,7 +9,6 @@ export type RessupNaoAlmoxPdfRow = {
   estoqAtual: string;
   pcPend: string;
   agPag: string;
-  preEntrada: string;
   saldoProjetado: string;
 };
 
@@ -57,7 +56,6 @@ export function downloadRessupNaoAlmoxPdf(opts: DownloadRessupNaoAlmoxPdfOpts): 
       'Estoque atual',
       'PC',
       'Pré Compra',
-      'Pré Entrada',
       'Saldo projetado',
     ],
   ];
@@ -70,7 +68,6 @@ export function downloadRessupNaoAlmoxPdf(opts: DownloadRessupNaoAlmoxPdfOpts): 
     r.estoqAtual,
     r.pcPend,
     r.agPag,
-    r.preEntrada,
     r.saldoProjetado,
   ]);
 
@@ -89,8 +86,7 @@ export function downloadRessupNaoAlmoxPdf(opts: DownloadRessupNaoAlmoxPdfOpts): 
       4: { cellWidth: 22, halign: 'right' },
       5: { cellWidth: 14, halign: 'right' },
       6: { cellWidth: 14, halign: 'right' },
-      7: { cellWidth: 16, halign: 'right' },
-      8: { cellWidth: 22, halign: 'right' },
+      7: { cellWidth: 22, halign: 'right' },
     },
     margin: { left: 14, right: 14 },
   });

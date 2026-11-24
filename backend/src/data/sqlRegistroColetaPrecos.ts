@@ -14,7 +14,7 @@ import {
 } from './acompanhamentoSolicitacaoRepository.js';
 
 /**
- * Qtde em pré-entrada (doc 173 + item de pedido atendido).
+ * Qtde em pré-entrada (doc tipo 46 + item de pedido atendido).
  * Mesma regra de SQL_GRADE_PRE_ENTRADA (integridade grade = modal).
  */
 export const SQL_PRE_ENTRADA_QTDE_POR_PRODUTO = `

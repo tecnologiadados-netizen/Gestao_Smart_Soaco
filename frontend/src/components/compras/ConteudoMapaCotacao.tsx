@@ -492,7 +492,7 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                 const pcPend = getRowValue(row, ['PC', 'pc']);
                 /** SQL Nomus: `coalesce(agpag.quantidade,0) as 'Pré Compra'` (legado: 'Ag Pag') */
                 const agPag = getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']);
-                /** SQL Nomus: `Coalesce(preent.quantidade, 0) As 'Pré Entrada'` (doc 173 + pedido atendido). */
+                /** SQL Nomus: `Coalesce(preent.quantidade, 0) As 'Pré Entrada'` (doc tipo 46 + pedido atendido). */
                 const preEntrada = getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']);
                 const qtdSolicit = getRowValue(row, ['Qtd Liberada', 'qtd liberada']);
                 const solicitanteSc = String(getRowValue(row, ['Usuario', 'usuario']) ?? '').trim();

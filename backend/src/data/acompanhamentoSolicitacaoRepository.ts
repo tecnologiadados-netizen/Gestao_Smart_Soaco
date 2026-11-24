@@ -252,7 +252,7 @@ const SQL_SUB_SC_DO_IPC = `
 )
 `.trim();
 
-/** Item do pedido `ipc` com documento de pré-entrada (173) vinculado. */
+/** Item do pedido `ipc` com documento de pré-entrada (tipo 46) vinculado. */
 const SQL_EXISTS_PRE_ENTRADA_DO_IPC = `
 EXISTS (
   SELECT 1
@@ -309,7 +309,7 @@ export const SQL_IPC_ELEGIVEL_DATAS_ENTREGA = `
  * Item cuja data de entrega precisa ser atualizada: Liberado/parcial com saldo,
  * ou atendido totalmente com pré-entrada; e entrega vencida, vazia ou na janela.
  * Marca o item no modal do pedido. A lista por pedido (SQL_DATAS_ENTREGA_PEDIDOS)
- * aplica os mesmos fragmentos em UNION, partindo do documento 173 para não varrer
+ * aplica os mesmos fragmentos em UNION, partindo do documento tipo 46 para não varrer
  * o histórico de itens atendidos.
  */
 export const SQL_IPC_DATA_ENTREGA_A_ATUALIZAR = `
@@ -505,7 +505,7 @@ ORDER BY p.nome, ipc.id
 `.trim();
 }
 
-/** Pré-entradas (tipo 173) ligadas aos itens do pedido. Uma linha por item de documento × item de pedido. */
+/** Pré-entradas (tipo 46) ligadas aos itens do pedido. Uma linha por item de documento × item de pedido. */
 const SQL_DOC_PEDIDO_PRE_ENTRADAS = `
 SELECT DISTINCT
   ipc.id AS idItemPedido,
@@ -538,7 +538,7 @@ WHERE de.id = ?
 
 /**
  * Item do documento: entra na grade como Pré-entrada só com o mesmo recorte de
- * SQL_GRADE_PRE_ENTRADA (documento 173 + item de pedido atendido).
+ * SQL_GRADE_PRE_ENTRADA (documento tipo 46 + item de pedido atendido).
  */
 const SQL_DOC_PRE_ITENS = `
 SELECT
@@ -751,7 +751,7 @@ export type DocumentoAcompanhamento = {
   fornecedor: string | null;
   dataEmissao: string | null;
   numeroNfe: string | null;
-  /** Pré-entrada já efetivada (documento saiu do tipo 173). */
+  /** Pré-entrada já efetivada (documento saiu do tipo 46). */
   efetivado: boolean;
   itens: ItemDocumentoAcompanhamento[];
 };
@@ -1325,7 +1325,7 @@ export type LinhaPreEntradaDoPedido = {
 
 /**
  * Monta os itens do pedido. Na pré-entrada, a quantidade em caminho é a soma dos
- * itens de documento 173 (cada um uma vez), como em SQL_GRADE_PRE_ENTRADA.
+ * itens de documento tipo 46 (cada um uma vez), como em SQL_GRADE_PRE_ENTRADA.
  */
 export function montarItensPedido(
   rows: Record<string, unknown>[],

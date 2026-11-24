@@ -9,8 +9,8 @@ import { PCP_ID_EMPRESA_SO_ACO } from './sql/sqlComprasEstoqueFragments.js';
 /** Nomus `documentoestoque.idEmpresaEntrada` — Só Aço Industrial. */
 export const RECEBIMENTO_ID_EMPRESA_SO_ACO = PCP_ID_EMPRESA_SO_ACO;
 
-/** Nomus `tipomovimentacao.id` — PRÉ ENTRADA. Não inclui importação de XML. */
-export const RECEBIMENTO_ID_TIPO_PRE_ENTRADA = 173;
+/** Nomus `tipomovimentacao.id` — IMPORTAÇÃO DE XML - PRÉ ENTRADA. */
+export const RECEBIMENTO_ID_TIPO_PRE_ENTRADA = 46;
 
 export const RECEBIMENTO_STATUS = {
   AGUARDANDO_DOUBLE_CHECK: 'AGUARDANDO_DOUBLE_CHECK',
@@ -318,7 +318,7 @@ export async function queryDocumentosPreEntradaNomus(): Promise<{
     return {
       documentos: [],
       tipos: [],
-      erro: 'O tipo de movimentação PRÉ ENTRADA (173) não foi encontrado no Nomus.',
+      erro: 'O tipo de movimentação IMPORTAÇÃO DE XML - PRÉ ENTRADA (46) não foi encontrado no Nomus.',
     };
   }
 

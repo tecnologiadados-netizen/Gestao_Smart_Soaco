@@ -1,5 +1,6 @@
 /**
- * Gestão entradas — grade das pré-entradas que ainda estão no Nomus (tipo 173)
+ * Gestão entradas — grade das pré-entradas que ainda estão no Nomus
+ * (tipo 46 — IMPORTAÇÃO DE XML - PRÉ ENTRADA).
  * e da comunicação do Otimiza em andamento gravada nelas.
  */
 
@@ -200,7 +201,7 @@ function linhaDe(
   };
 }
 
-/** Só entra documento que ainda está como pré-entrada (tipo 173). */
+/** Só entra documento que ainda está como pré-entrada (tipo 46). */
 export function montarGradePreEntradas(params: {
   atuais: DocPreEntradaBruto[];
   comunicacoes: ComunicacaoOtimizaPreEntrada[];

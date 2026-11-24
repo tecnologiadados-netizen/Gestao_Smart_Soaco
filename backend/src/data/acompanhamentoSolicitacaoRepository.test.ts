@@ -292,7 +292,7 @@ describe('parseRefsDocumento', () => {
 });
 
 describe('montarItensPedido', () => {
-  it('em caminho: saldo no Comprado e soma única dos itens 173 na Pré-entrada', () => {
+  it('em caminho: saldo no Comprado e soma única dos itens 46 na Pré-entrada', () => {
     const itens = montarItensPedido(
       [
         { idItem: 1, idProduto: 7, codigo: 'MP 1', qtde: 10, qtdeAtendida: 4, saldo: 6, status: 'comprado' },
