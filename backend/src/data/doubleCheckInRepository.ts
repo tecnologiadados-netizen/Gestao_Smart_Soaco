@@ -15,6 +15,8 @@ import {
   unitariosExatosIguais,
 } from './doubleCheckInPeso.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
+import { resolverPagamentoPreEntradaLote } from './doubleCheckInPagamentoXmlRepository.js';
+import type { PagamentoPreEntradaResolvido } from './nfeXmlParcelas.js';
 
 /** Tipos de movimentação do SQL de negócio (entradas a conferir). */
 export const DOUBLE_CHECKIN_TIPOS_MOV = [11, 35, 111, 112, 113, 114, 115, 116] as const;
@@ -715,6 +717,21 @@ export type DoubleCheckInComparativoLinha = {
   totalVinculosNF?: number;
   /** Soma dos totais líquidos dos vínculos PC do documento. */
   totalVinculosPC?: number;
+  /** Valor a pagar da NF (vNF quando os vínculos cobrem a nota; senão líquido + IPI + ST). */
+  totalRealNF?: number;
+  /** Valor a pagar do PC (líquido dos produtos + IPI + ST). */
+  totalRealPC?: number;
+  /** ICMS-ST + FCP-ST do item. */
+  valorStNF?: number;
+  valorStPC?: number;
+  /** Frete, seguro, outras, II e IPI devolvido do cabeçalho da NF. */
+  acrescimosCabecalhoNF?: number;
+  /** ST do cabeçalho da NF (vST + vFCPST). */
+  valorStCabecalhoNF?: number;
+  /** Total oficial da NF (totaltributacao.vNF). */
+  valorNfOficial?: number;
+  /** totaltributacao.vProd. */
+  valorProdutosNf?: number;
   descontoVinculosNF?: number;
   descontoVinculosPC?: number;
   /** Valor unitário líquido (após desconto) — base da comparação. */
@@ -767,6 +784,17 @@ export type DoubleCheckInComparativoLinha = {
   tipoMovimentacao: string | null;
   /** Exibe e compara condição de pagamento (sempre, ou só pré-entrada quando não gera AP). */
   comparaCondicaoPagamento: boolean;
+  /**
+   * Pré-entrada: nomus não é usado. xml = fatura da NF; ja_paga / boleto_externo = conferente;
+   * pendente / sem_xml = ainda não dá para comparar.
+   */
+  origemParcelasNF: 'nomus' | 'xml' | 'ja_paga' | 'boleto_externo' | 'pendente' | 'sem_xml';
+  /** Sem fatura no XML e sem resposta do conferente. A conferência não fecha. */
+  pagamentoXmlPendente: boolean;
+  /** Total da NF no XML, quando a origem é a pré-entrada. */
+  valorNfXml: number | null;
+  /** Forma escolhida no lançamento completo (boleto externo). */
+  formaPagamentoNF?: string | null;
   temDivergencia: boolean;
 };
 
@@ -775,6 +803,9 @@ export type DoubleCheckInParcelaPrazo = {
   dataBase: string | null;
   dataVencimento: string | null;
   dias: number | null;
+  valor?: number | null;
+  /** true = já paga; false = ainda a vencer. Só no lançamento do conferente. */
+  paga?: boolean | null;
 };
 
 /** Arredonda para comparar sem microdivergência de casas decimais. */
@@ -946,6 +977,33 @@ export function divergenciaCondicaoPorPrazos(params: {
   );
 }
 
+/**
+ * Pré-entrada: a NF não usa a condição cadastrada no documento.
+ * Já paga conta como à vista. Fatura ou boleto comparam os dias com o pedido
+ * (parcelas do PC ou, na falta delas, a regra cadastral).
+ */
+export function divergenciaCondicaoPreEntrada(params: {
+  origem: 'xml' | 'ja_paga' | 'boleto_externo';
+  prazosNF: number[];
+  prazosPC: number[];
+  condicaoPC: string | null;
+  regraPC: string | null;
+}): boolean {
+  const aVistaNf =
+    params.origem === 'ja_paga' ||
+    (params.prazosNF.length > 0 && params.prazosNF.every((d) => d === 0));
+  const aVistaPc = ehCondicaoAVista({
+    condicao: params.condicaoPC,
+    regra: params.regraPC,
+    prazos: params.prazosPC,
+  });
+  if (aVistaNf && aVistaPc) return false;
+  const diasPc = params.prazosPC.length > 0 ? params.prazosPC : prazosDaRegra(params.regraPC);
+  const diasNf = aVistaNf ? [0] : params.prazosNF;
+  if (diasNf.length > 0 && diasPc.length > 0) return !prazosDiasIguais(diasNf, diasPc);
+  return true;
+}
+
 const SQL_COMPARATIVO_PC = `
 SELECT
   de.id AS idDocumento,
@@ -971,8 +1029,14 @@ SELECT
   ipc.valorTotalComDesconto AS valorTotalComDescontoPC,
   IFNULL(tt.vDesc, 0) AS descontoNfeNF,
   IFNULL(de.valorDesconto, 0) AS descontoCabecalhoNF,
+  IFNULL(tt.vNF, 0) AS valorNfOficial,
+  IFNULL(tt.vProd, 0) AS valorProdutosNf,
+  IFNULL(tt.vFrete, 0) + IFNULL(tt.vSeg, 0) + IFNULL(tt.vOutro, 0) + IFNULL(tt.vII, 0) + IFNULL(tt.vIPIDevol, 0) AS acrescimosCabecalhoNF,
+  IFNULL(tt.vST, 0) + IFNULL(tt.vFCPST, 0) AS valorStCabecalhoNF,
   IFNULL(tde.valorIPI, 0) AS valorIpiNF,
   IFNULL(tpc.valorIPI, 0) AS valorIpiPC,
+  IFNULL(tde.vICMSST, 0) + IFNULL(tde.vFCPST, 0) AS valorStNF,
+  IFNULL(tpc.vICMSST, 0) + IFNULL(tpc.vFCPST, 0) AS valorStPC,
   IFNULL(tde.aliquotaIPI, 0) AS aliquotaIpiNF,
   IFNULL(tpc.aliquotaIPI, 0) AS aliquotaIpiPC,
   DATE(de.dataEntrada) AS dataEntradaDocumento,
@@ -1079,7 +1143,8 @@ function montarLinhaComparativo(
   parcelasNF: DoubleCheckInParcelaPrazo[],
   parcelasPorPc: Map<number, DoubleCheckInParcelaPrazo[]>,
   dataBasePorPc: Map<number, string | null>,
-  dataBaseNF: string | null
+  dataBaseNF: string | null,
+  preEntrada: PagamentoPreEntradaResolvido | null = null
 ): DoubleCheckInComparativoLinha {
   const qtdeNF = toNum(r.qtdeNF);
   const qtdePC = toNum(r.qtdePC);
@@ -1126,13 +1191,14 @@ function montarLinhaComparativo(
   const aliquotaIpiNF = toNum(r.aliquotaIpiNF);
   const aliquotaIpiPC = toNum(r.aliquotaIpiPC);
   const conferenciaIpi = conferenciaIpiPorDataEntrada(formatSqlDateYmd(r.dataEntradaDocumento));
-  const condicaoPagamentoNF = strOrNull(r.condicaoPagamentoNF);
-  const regraPagamentoNF = strOrNull(r.regraPagamentoNF);
+  const condicaoPagamentoNF = preEntrada ? preEntrada.condicao : strOrNull(r.condicaoPagamentoNF);
+  const regraPagamentoNF = preEntrada ? preEntrada.regra : strOrNull(r.regraPagamentoNF);
   const condicaoPagamentoPC = strOrNull(r.condicaoPagamentoPC);
   const regraPagamentoPC = strOrNull(r.regraPagamentoPC);
   const idPedidoCompra = r.idPedidoCompra != null ? toInt(r.idPedidoCompra) : null;
   const dataBaseParcelasPC =
     idPedidoCompra != null ? (dataBasePorPc.get(idPedidoCompra) ?? null) : null;
+  const dataBaseParcelasNF = preEntrada ? preEntrada.dataBase : dataBaseNF;
   const parcelasPCRaw = idPedidoCompra != null ? (parcelasPorPc.get(idPedidoCompra) ?? []) : [];
   const normalizarParcelasAVista = (
     parcelas: DoubleCheckInParcelaPrazo[],
@@ -1142,7 +1208,12 @@ function montarLinhaComparativo(
     if (!ehCondicaoAVista({ condicao, regra })) return parcelas;
     return parcelas.map((p) => (p.dias == null && p.dataVencimento ? { ...p, dias: 0 } : p));
   };
-  const parcelasNFNorm = normalizarParcelasAVista(parcelasNF, condicaoPagamentoNF, regraPagamentoNF);
+  const parcelasNFFonte = preEntrada ? preEntrada.parcelas : parcelasNF;
+  const parcelasNFNorm = normalizarParcelasAVista(
+    parcelasNFFonte,
+    condicaoPagamentoNF,
+    regraPagamentoNF
+  );
   const parcelasPC = normalizarParcelasAVista(parcelasPCRaw, condicaoPagamentoPC, regraPagamentoPC);
   const prazosDiasNF = parcelasNFNorm.map((p) => p.dias).filter((d): d is number => d != null);
   const prazosDiasPC = parcelasPC.map((p) => p.dias).filter((d): d is number => d != null);
@@ -1163,16 +1234,32 @@ function montarLinhaComparativo(
   // Só a pré-entrada compara condição/parcelas quando a movimentação não gera AP.
   const comparaCondicaoPagamento =
     !naoGeraContasPagar || idTipoMovimentacao === RECEBIMENTO_ID_TIPO_PRE_ENTRADA;
-  const divergCondicaoPagamento = comparaCondicaoPagamento
-    ? divergenciaCondicaoPorPrazos({
+  let divergCondicaoPagamento = false;
+  if (comparaCondicaoPagamento && !preEntrada?.pendente) {
+    if (
+      preEntrada &&
+      (preEntrada.origem === 'xml' ||
+        preEntrada.origem === 'ja_paga' ||
+        preEntrada.origem === 'boleto_externo')
+    ) {
+      divergCondicaoPagamento = divergenciaCondicaoPreEntrada({
+        origem: preEntrada.origem,
+        prazosNF: prazosDiasNF,
+        prazosPC: prazosDiasPC,
+        condicaoPC: condicaoPagamentoPC,
+        regraPC: regraPagamentoPC,
+      });
+    } else {
+      divergCondicaoPagamento = divergenciaCondicaoPorPrazos({
         prazosNF: prazosDiasNF,
         prazosPC: prazosDiasPC,
         condicaoNF: condicaoPagamentoNF,
         regraNF: regraPagamentoNF,
         condicaoPC: condicaoPagamentoPC,
         regraPC: regraPagamentoPC,
-      })
-    : false;
+      });
+    }
+  }
   return {
     idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
     idItemPedidoCompra: toInt(r.idItemPedidoCompra),
@@ -1192,6 +1279,12 @@ function montarLinhaComparativo(
     valorTotalComDescontoNF: arredondarComparativo(totalDescNF, 2),
     valorTotalComDescontoPC: arredondarComparativo(totalDescPC, 2),
     descontoDocumentoNF: arredondarComparativo(descontoDocumentoNF, 2),
+    valorStNF: arredondarComparativo(toNum(r.valorStNF), 2),
+    valorStPC: arredondarComparativo(toNum(r.valorStPC), 2),
+    acrescimosCabecalhoNF: arredondarComparativo(toNum(r.acrescimosCabecalhoNF), 2),
+    valorStCabecalhoNF: arredondarComparativo(toNum(r.valorStCabecalhoNF), 2),
+    valorNfOficial: arredondarComparativo(toNum(r.valorNfOficial), 2),
+    valorProdutosNf: arredondarComparativo(toNum(r.valorProdutosNf), 2),
     valorUnitarioNF: porPeso
       ? normalizarUnitarioExato(valorUnitarioNF)
       : arredondarComparativo(valorUnitarioNF, 2),
@@ -1209,7 +1302,7 @@ function montarLinhaComparativo(
     regraPagamentoNF: comparaCondicaoPagamento ? regraPagamentoNF : null,
     condicaoPagamentoPC: comparaCondicaoPagamento ? condicaoPagamentoPC : null,
     regraPagamentoPC: comparaCondicaoPagamento ? regraPagamentoPC : null,
-    dataBaseParcelasNF: comparaCondicaoPagamento ? dataBaseNF : null,
+    dataBaseParcelasNF: comparaCondicaoPagamento ? dataBaseParcelasNF : null,
     dataBaseParcelasPC: comparaCondicaoPagamento ? dataBaseParcelasPC : null,
     parcelasNF: comparaCondicaoPagamento ? parcelasNFNorm : [],
     parcelasPC: comparaCondicaoPagamento ? parcelasPC : [],
@@ -1225,6 +1318,10 @@ function montarLinhaComparativo(
     idTipoMovimentacao,
     tipoMovimentacao,
     comparaCondicaoPagamento,
+    origemParcelasNF: preEntrada?.origem ?? 'nomus',
+    pagamentoXmlPendente: preEntrada?.pendente === true,
+    valorNfXml: preEntrada?.valorNf ?? null,
+    formaPagamentoNF: preEntrada?.formaPagamento ?? null,
     temDivergencia: divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
   };
 }
@@ -1277,14 +1374,31 @@ async function carregarLinhasComparativoPorDocumentos(
         dataBasePorDocumento,
         dataBasePorPc,
       });
+      const idsPreEntrada = [
+        ...new Set(
+          list
+            .filter((r) => toInt(r.idTipoMovimentacao) === RECEBIMENTO_ID_TIPO_PRE_ENTRADA)
+            .map((r) => toInt(r.idDocumento))
+        ),
+      ];
+      const pagamentoPreEntrada = await resolverPagamentoPreEntradaLote({
+        pool,
+        ids: idsPreEntrada,
+        dataBasePorDocumento,
+      });
       for (const r of list) {
         const idDoc = toInt(r.idDocumento);
+        const preEntrada =
+          toInt(r.idTipoMovimentacao) === RECEBIMENTO_ID_TIPO_PRE_ENTRADA
+            ? (pagamentoPreEntrada.get(idDoc) ?? null)
+            : null;
         const linha = montarLinhaComparativo(
           r,
-          parcelasPorDocumento.get(idDoc) ?? [],
+          preEntrada ? [] : (parcelasPorDocumento.get(idDoc) ?? []),
           parcelasPorPc,
           dataBasePorPc,
-          dataBasePorDocumento.get(idDoc) ?? null
+          dataBasePorDocumento.get(idDoc) ?? null,
+          preEntrada
         );
         const arr = linhasPorDocumento.get(idDoc) ?? [];
         arr.push(linha);

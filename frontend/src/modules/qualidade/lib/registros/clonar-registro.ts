@@ -93,6 +93,8 @@ function prepararRccParaClone(
     usuarioCriacao,
     // Novo documento: reabre o fluxo sem herdar fechamento do original.
     rccFinalizada: "Não",
+    cancelada: false,
+    justificativaCancelamento: "",
     dataFechamento: "",
     problemaSolucionado: "",
     clienteCorrecaoAlertada: null,

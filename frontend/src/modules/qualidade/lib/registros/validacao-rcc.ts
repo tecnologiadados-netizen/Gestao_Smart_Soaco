@@ -97,7 +97,11 @@ export function validarRcc(
     erros.reclamacao1 = "Categorize a reclamação.";
   }
 
-  const encerrando = rcc.rccFinalizada === "Sim";
+  if (rcc.cancelada && !rcc.justificativaCancelamento.trim()) {
+    erros.justificativaCancelamento = "Informe a justificativa do cancelamento.";
+  }
+
+  const encerrando = rcc.rccFinalizada === "Sim" && !rcc.cancelada;
   if (encerrando && !rcc.dataFechamento.trim()) {
     erros.dataFechamento = "Informe a data de fechamento da reclamação.";
   }
@@ -177,7 +181,9 @@ export function validarRcc(
 export function inferirStatusRcc(
   rcc: RccDados
 ): "aberto" | "em_tratamento" | "encerrado" {
-  if (rcc.dataFechamento.trim()) return "encerrado";
+  if (rcc.cancelada || rcc.rccFinalizada === "Sim" || rcc.dataFechamento.trim()) {
+    return "encerrado";
+  }
   if (
     rcc.servicoRealizado.trim() ||
     rcc.servicoRealizado1.trim() ||

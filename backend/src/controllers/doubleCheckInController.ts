@@ -17,6 +17,7 @@ import {
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInNota,
 } from '../data/doubleCheckInRepository.js';
+import { salvarRespostaPagamentoPreEntrada } from '../data/doubleCheckInPagamentoXmlRepository.js';
 import {
   DOUBLE_CHECKIN_CAMPOS,
   DOUBLE_CHECKIN_NF_PC_WA_CODE,
@@ -93,6 +94,15 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseYmd(v: unknown): string | null {
   const s = String(v ?? '').trim().slice(0, 10);
   return DATE_RE.test(s) ? s : null;
+}
+
+function parseValorBoleto(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const normalizado = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s;
+  const n = Number(normalizado);
+  return Number.isFinite(n) ? n : null;
 }
 
 function fmtBrl(n: number): string {
@@ -606,6 +616,114 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[getDoubleCheckInComparativoPc]', msg);
+    res.status(503).json({ error: msg });
+  }
+}
+
+/**
+ * PUT /api/compras/double-checkin/pagamento-xml
+ * body: { idDocumento, situacao: 'ja_paga' | 'boleto_externo',
+ *   condicaoPagamento?, formaPagamento?, regra?,
+ *   parcelas?: [{ dataVencimento, valor, paga }] }
+ * Há boleto: condição, regra, forma e todas as parcelas, cada uma já paga ou a vencer.
+ */
+export async function putDoubleCheckInPagamentoXml(req: Request, res: Response): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const situacao = String(req.body?.situacao ?? '').trim();
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (situacao !== 'ja_paga' && situacao !== 'boleto_externo') {
+    res.status(400).json({ error: 'Informe se a nota já foi paga ou se há boleto a vencer.' });
+    return;
+  }
+  const parcelasBrutas = Array.isArray(req.body?.parcelas) ? req.body.parcelas : [];
+  const condicaoPagamento =
+    typeof req.body?.condicaoPagamento === 'string' ? req.body.condicaoPagamento.trim() : '';
+  const formaPagamento =
+    typeof req.body?.formaPagamento === 'string' ? req.body.formaPagamento.trim() : '';
+  const regra = typeof req.body?.regra === 'string' ? req.body.regra.trim() : '';
+  const dataBase = parseYmd(req.body?.dataBase) ?? '';
+  const parcelas: { numero: number; dataVencimento: string; valor: number; paga?: boolean }[] = [];
+  if (situacao === 'boleto_externo') {
+    if (!condicaoPagamento) {
+      res.status(400).json({ error: 'Informe a condição de pagamento.' });
+      return;
+    }
+    if (!formaPagamento) {
+      res.status(400).json({ error: 'Informe a forma de pagamento.' });
+      return;
+    }
+    if (!regra) {
+      res.status(400).json({ error: 'Informe a regra para gerar parcelas.' });
+      return;
+    }
+    if (!dataBase) {
+      res.status(400).json({ error: 'Informe a data base para gerar as parcelas.' });
+      return;
+    }
+    for (const item of parcelasBrutas) {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const dataVencimento = parseYmd(row.dataVencimento);
+      const valorFinal = parseValorBoleto(row.valor);
+      if (!dataVencimento) {
+        res.status(400).json({ error: 'Informe o vencimento de cada parcela.' });
+        return;
+      }
+      if (valorFinal == null || valorFinal <= 0) {
+        res.status(400).json({ error: 'Informe o valor de cada parcela.' });
+        return;
+      }
+      if (row.paga !== true && row.paga !== false) {
+        res.status(400).json({ error: 'Classifique cada parcela como já paga ou ainda a vencer.' });
+        return;
+      }
+      parcelas.push({
+        numero: parcelas.length + 1,
+        dataVencimento,
+        valor: valorFinal,
+        paga: row.paga === true,
+      });
+    }
+    if (!parcelas.some((p) => p.paga === false)) {
+      res.status(400).json({ error: 'Se todas as parcelas já foram pagas, marque Já foi paga.' });
+      return;
+    }
+  }
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { login },
+      select: { id: true, login: true },
+    });
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    const salvo = await salvarRespostaPagamentoPreEntrada({
+      idDocumento,
+      situacao,
+      parcelas,
+      condicaoPagamento,
+      formaPagamento,
+      regra: situacao === 'boleto_externo' ? regra : null,
+      dataBase: situacao === 'boleto_externo' ? dataBase : null,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    if (!salvo.ok) {
+      res.status(400).json({ error: salvo.erro });
+      return;
+    }
+    res.json({ ok: true, idDocumento });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[putDoubleCheckInPagamentoXml]', msg);
     res.status(503).json({ error: msg });
   }
 }
@@ -1330,6 +1448,14 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         temDivergenciaRealHistorica: ja.temDivergenciaRealHistorica,
         totalDivergenciasReaisHistorica: ja.totalDivergenciasReaisHistorica,
         idDocumento,
+      });
+      return;
+    }
+
+    if (linhas.some((l) => l.pagamentoXmlPendente)) {
+      res.status(400).json({
+        error:
+          'A pré-entrada não tem fatura na NF. Informe se já foi paga ou lance a condição completa antes de conferir.',
       });
       return;
     }

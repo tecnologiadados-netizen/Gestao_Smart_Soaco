@@ -6,12 +6,13 @@ import { prisma } from '../config/prisma.js';
 import { getNomusPool, isNomusEnabled, nomusQueryWithRetry } from '../config/nomusDb.js';
 import { formatSqlDateYmd } from './dfcDateUtils.js';
 import { listarDocumentosConferidos } from './doubleCheckInLocalRepository.js';
-import { consultarChamadosAbertosOtimiza } from './otimizaLookupChamado.js';
 import {
-  aplicarChamadosAbertosOtimiza,
   montarGradePreEntradas,
-  palavrasChaveChamadoOtimiza,
+  montarImpressaoPreEntradas,
+  preEntradaNoPeriodo,
   type ApontamentoPedidoPreEntrada,
+  type ImpressaoPreEntrada,
+  type ItemImpressaoPreEntradaBruto,
   type ComunicacaoOtimizaPreEntrada,
   type DocPreEntradaBruto,
   type GradePreEntrada,
@@ -20,7 +21,6 @@ import {
   type VinculoPedidoPreEntrada,
 } from './gestaoEntradasPreEntrada.js';
 import {
-  queryCabecalhosDocumentosNomus,
   RECEBIMENTO_ID_EMPRESA_SO_ACO,
   RECEBIMENTO_ID_TIPO_PRE_ENTRADA,
 } from './recebimentoNomusRepository.js';
@@ -69,16 +69,6 @@ SELECT
 FROM itempedidocompra ipc
 INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
 WHERE ipc.id IN (__IDS__)
-`.trim();
-
-const SQL_USUARIO_ALTERACAO = `
-SELECT
-  de.id AS idDocumento,
-  NULLIF(TRIM(u.nome), '') AS nomeUsuarioAlteracao
-FROM documentoestoque de
-LEFT JOIN usuario u ON u.id = de.idUsuario
-WHERE de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
-  AND de.id IN (__IDS__)
 `.trim();
 
 function toInt(v: unknown): number {
@@ -285,56 +275,6 @@ async function conferenciasDe(ids: number[]): Promise<{
   return { ids: new Set(infos.keys()), usuarios };
 }
 
-async function usuariosAlteracaoDe(ids: number[]): Promise<{ nomes: Map<number, string | null>; erro?: string }> {
-  const nomes = new Map<number, string | null>();
-  const partes = chunk([...new Set(ids.filter((id) => id > 0))], 400);
-  if (partes.length === 0) return { nomes };
-  if (!isNomusEnabled()) return { nomes, erro: 'NOMUS_DB_URL não configurado' };
-  const pool = getNomusPool();
-  if (!pool) return { nomes, erro: 'NOMUS_DB_URL não configurado' };
-  try {
-    for (const parte of partes) {
-      const sql = SQL_USUARIO_ALTERACAO.replace('__IDS__', idsSql(parte));
-      const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql);
-      const list = Array.isArray(rows) ? rows : [];
-      for (const row of list) {
-        const idDocumento = toInt(row.idDocumento);
-        if (idDocumento <= 0) continue;
-        nomes.set(idDocumento, strOrNull(row.nomeUsuarioAlteracao));
-      }
-    }
-    return { nomes };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { nomes, erro: msg };
-  }
-}
-
-async function cabecalhosDe(ids: number[]): Promise<{ docs: DocPreEntradaBruto[]; erro?: string }> {
-  const docs: DocPreEntradaBruto[] = [];
-  const vistos = new Set<number>();
-  for (const parte of chunk(ids, 300)) {
-    const { documentos, erro } = await queryCabecalhosDocumentosNomus(parte);
-    if (erro) return { docs: [], erro };
-    for (const documento of documentos) {
-      if (vistos.has(documento.idDocumento)) continue;
-      vistos.add(documento.idDocumento);
-      docs.push({
-        idDocumento: documento.idDocumento,
-        numeroDocumentoFiscal: documento.numeroDocumentoFiscal,
-        numeroNfe: documento.numeroNfe,
-        nomeParceiro: documento.nomeParceiro,
-        dataEmissao: documento.dataEmissao,
-        dataEntrada: documento.dataEntrada,
-        idTipoMovimentacao: documento.idTipoMovimentacao,
-        nomeTipo: documento.tipoMovimentacao,
-        usuarioAlteracao: null,
-      });
-    }
-  }
-  return { docs };
-}
-
 export async function queryGestaoEntradasPreEntradas(params: {
   dataInicio: string | null;
   dataFim: string | null;
@@ -343,37 +283,11 @@ export async function queryGestaoEntradasPreEntradas(params: {
     const atuais = await queryAtuais();
     if (atuais.erro) return { erro: atuais.erro };
 
-    const mesa = await prisma.recebimentoConferencia.findMany({
-      select: { idDocumentoEstoque: true },
-    });
-    const idsMesa = new Set(mesa.map((row) => row.idDocumentoEstoque).filter((id) => id > 0));
-    const atuaisIds = new Set(atuais.docs.map((doc) => doc.idDocumento));
-    const idsCandidatos = [
-      ...atuaisIds,
-      ...[...idsMesa].filter((id) => !atuaisIds.has(id)),
-    ];
-    const comunicacoes = await comunicacoesDe(idsCandidatos);
-    const idsComComunicacao = new Set(comunicacoes.map((item) => item.idDocumentoEstoque));
-    const idsEfetivar = [...idsMesa].filter((id) => !atuaisIds.has(id) && idsComComunicacao.has(id));
-    const demais = await cabecalhosDe(idsEfetivar);
-    if (demais.erro) return { erro: demais.erro };
-    const alteracaoDemais = await usuariosAlteracaoDe(demais.docs.map((doc) => doc.idDocumento));
-    if (alteracaoDemais.erro) return { erro: alteracaoDemais.erro };
-    for (const doc of demais.docs) {
-      doc.usuarioAlteracao = alteracaoDemais.nomes.get(doc.idDocumento) ?? null;
-    }
-
-    const idsGrade = new Set<number>([
-      ...atuaisIds,
-      ...demais.docs
-        .filter((doc) => doc.idTipoMovimentacao !== RECEBIMENTO_ID_TIPO_PRE_ENTRADA)
-        .map((doc) => doc.idDocumento),
-    ]);
-    const idsLista = [...idsGrade];
-    const comunicacoesGrade = comunicacoes.filter((item) => idsGrade.has(item.idDocumentoEstoque));
+    const idsLista = [...new Set(atuais.docs.map((doc) => doc.idDocumento).filter((id) => id > 0))];
+    const comunicacoes = await comunicacoesDe(idsLista);
     const [vinculos, pedidosItem, apontamentos, conferencias] = await Promise.all([
       queryVinculos(idsLista),
-      queryPedidosPorItem(comunicacoesGrade.map((item) => item.idItemPedidoCompra)),
+      queryPedidosPorItem(comunicacoes.map((item) => item.idItemPedidoCompra)),
       apontamentosDe(idsLista),
       conferenciasDe(idsLista),
     ]);
@@ -382,9 +296,7 @@ export async function queryGestaoEntradasPreEntradas(params: {
 
     const grade = montarGradePreEntradas({
       atuais: atuais.docs,
-      demais: demais.docs,
-      idsMesa,
-      comunicacoes: comunicacoesGrade,
+      comunicacoes,
       vinculos: vinculos.vinculos,
       pedidosPorItem: pedidosItem.pedidos,
       apontamentos,
@@ -393,15 +305,106 @@ export async function queryGestaoEntradasPreEntradas(params: {
       dataInicio: params.dataInicio,
       dataFim: params.dataFim,
     });
-    let chamados: Map<string, number[]> | null = null;
-    try {
-      chamados = await consultarChamadosAbertosOtimiza(
-        grade.linhas.flatMap((linha) => palavrasChaveChamadoOtimiza(linha)),
-      );
-    } catch (err) {
-      console.error('[otimiza] chamados da pré-entrada', err instanceof Error ? err.message : 'erro');
+    return { data: grade };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { erro: msg };
+  }
+}
+
+const SQL_ITENS_IMPRESSAO = `
+SELECT
+  ide.idDocumentoEstoque AS idDocumento,
+  ide.id AS idItem,
+  NULLIF(TRIM(p.nome), '') AS codigoProduto,
+  NULLIF(TRIM(p.descricao), '') AS descricaoProduto,
+  NULLIF(TRIM(um.nome), '') AS unidadeMedida,
+  ide.qtde AS qtde,
+  pc.id AS idPedido,
+  NULLIF(TRIM(pc.nome), '') AS nomePedido,
+  CASE
+    WHEN ipc.dataEntrega IS NULL THEN NULL
+    ELSE DATE_FORMAT(CAST(ipc.dataEntrega AS DATE), '%Y-%m-%d')
+  END AS dataEntrega
+FROM itemdocumentoestoque ide
+INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN produto p ON p.id = ide.idProduto
+LEFT JOIN unidademedida um ON um.id = COALESCE(ide.idUnidadeMedida, p.idUnidadeMedida)
+LEFT JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+LEFT JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+LEFT JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+WHERE de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
+  AND ide.discriminador = 'ItemDocumentoEntrada'
+  AND ide.idDocumentoEstoque IN (__IDS__)
+`.trim();
+
+function qtdeItem(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function queryItensImpressao(ids: number[]): Promise<{ itens: ItemImpressaoPreEntradaBruto[]; erro?: string }> {
+  const partes = chunk([...new Set(ids.filter((id) => id > 0))], 300);
+  if (partes.length === 0) return { itens: [] };
+  if (!isNomusEnabled()) return { itens: [], erro: 'NOMUS_DB_URL não configurado' };
+  const pool = getNomusPool();
+  if (!pool) return { itens: [], erro: 'NOMUS_DB_URL não configurado' };
+  const itens: ItemImpressaoPreEntradaBruto[] = [];
+  try {
+    for (const parte of partes) {
+      const sql = SQL_ITENS_IMPRESSAO.replace('__IDS__', idsSql(parte));
+      const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql);
+      const list = Array.isArray(rows) ? rows : [];
+      for (const row of list) {
+        const idDocumento = toInt(row.idDocumento);
+        const idItem = toInt(row.idItem);
+        if (idDocumento <= 0 || idItem <= 0) continue;
+        const idPedido = toInt(row.idPedido);
+        itens.push({
+          idDocumento,
+          idItem,
+          codigo: strOrNull(row.codigoProduto),
+          descricao: strOrNull(row.descricaoProduto),
+          unidade: strOrNull(row.unidadeMedida),
+          qtde: qtdeItem(row.qtde),
+          idPedido: idPedido > 0 ? idPedido : 0,
+          nomePedido: strOrNull(row.nomePedido),
+          dataEntrega: idPedido > 0 ? formatSqlDateYmd(row.dataEntrega) : null,
+        });
+      }
     }
-    return { data: aplicarChamadosAbertosOtimiza(grade, chamados) };
+    return { itens };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { itens: [], erro: msg };
+  }
+}
+
+export async function queryImpressaoPreEntradas(params: {
+  dataInicio: string | null;
+  dataFim: string | null;
+}): Promise<{ data?: ImpressaoPreEntrada; erro?: string }> {
+  try {
+    const atuais = await queryAtuais();
+    if (atuais.erro) return { erro: atuais.erro };
+    const ids = atuais.docs
+      .filter(
+        (doc) =>
+          doc.idDocumento > 0 &&
+          doc.idTipoMovimentacao === RECEBIMENTO_ID_TIPO_PRE_ENTRADA &&
+          preEntradaNoPeriodo(doc.dataEntrada, params.dataInicio, params.dataFim),
+      )
+      .map((doc) => doc.idDocumento);
+    const itens = await queryItensImpressao(ids);
+    if (itens.erro) return { erro: itens.erro };
+    return {
+      data: montarImpressaoPreEntradas({
+        documentos: atuais.docs,
+        itens: itens.itens,
+        dataInicio: params.dataInicio,
+        dataFim: params.dataFim,
+      }),
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { erro: msg };

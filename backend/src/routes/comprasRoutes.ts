@@ -15,6 +15,7 @@ import {
   getGestaoEntradasDia,
   getGestaoEntradasPainel,
   getGestaoEntradasPreEntradas,
+  getGestaoEntradasPreEntradasImpressao,
 } from '../controllers/gestaoEntradasController.js';
 import { PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS } from '../utils/kpisPermissoes.js';
 import {
@@ -38,6 +39,7 @@ import {
   postDoubleCheckInSincronizar,
   postDoubleCheckInStatus,
   putDoubleCheckInComparativoDecisao,
+  putDoubleCheckInPagamentoXml,
   putDoubleCheckInCriterios,
   putDoubleCheckInSolicitacaoOtimiza,
   postDoubleCheckInComparativoObservacao,
@@ -579,6 +581,11 @@ router.put(
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(putDoubleCheckInComparativoDecisao)
 );
+router.put(
+  '/double-checkin/pagamento-xml',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(putDoubleCheckInPagamentoXml)
+);
 router.post(
   '/double-checkin/comparativo-observacao',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
@@ -630,6 +637,11 @@ router.get(
   '/double-checkin/dashboard',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
+);
+router.get(
+  '/gestao-entradas/pre-entradas/impressao',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getGestaoEntradasPreEntradasImpressao)
 );
 router.get(
   '/gestao-entradas/pre-entradas',

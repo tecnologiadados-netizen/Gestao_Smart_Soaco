@@ -1,6 +1,6 @@
 /**
- * Gestão entradas — grade das pré-entradas (tipo 173) e da comunicação Otimiza
- * que permanece depois que o documento sai da pré-entrada.
+ * Gestão entradas — grade das pré-entradas que ainda estão no Nomus (tipo 173)
+ * e da comunicação do Otimiza em andamento gravada nelas.
  */
 
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
@@ -66,19 +66,13 @@ export type LinhaPreEntrada = {
   conferencia: ConferenciaDoubleCheckPreEntrada;
   /** Nome de quem confirmou a conferência vigente no Double Check. */
   usuarioConferencia: string | null;
+  /** Só comunicação gravada que ainda está em andamento. Concluída e cancelada ficam de fora. */
   comunicacoes: ComunicacaoPreEntrada[];
-  /**
-   * Chamados em andamento no Otimiza para o documento.
-   * null = a consulta não respondeu; [] = consultou e não há chamado aberto.
-   */
-  chamadosAbertos: number[] | null;
 };
 
 export type GradePreEntrada = {
   dataInicio: string | null;
   dataFim: string | null;
-  /** false quando a consulta em lote ao Otimiza não respondeu. A grade segue sem o número. */
-  chamadoOtimizaOk: boolean;
   linhas: LinhaPreEntrada[];
 };
 
@@ -94,7 +88,7 @@ function rankStatus(status: StatusOtimizaPreEntrada): number {
   return 0;
 }
 
-function noPeriodo(
+export function preEntradaNoPeriodo(
   dataEntrada: string | null,
   dataInicio: string | null,
   dataFim: string | null,
@@ -162,7 +156,8 @@ function comunicacoesDaLinha(comunicacoes: ComunicacaoOtimizaPreEntrada[]): Comu
   }
   return [...porNumero.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([numero, status]) => ({ numero, status }));
+    .map(([numero, status]) => ({ numero, status }))
+    .filter((item) => item.status === 'in_progress');
 }
 
 function linhaDe(
@@ -202,57 +197,12 @@ function linhaDe(
         ? (params.usuariosConferencia.get(doc.idDocumento) ?? null)
         : null,
     comunicacoes: comunicacoesDaLinha(comunicacoes),
-    chamadosAbertos: null,
   };
 }
 
-/** Documento fiscal e NF-e, quando longos o bastante para não casar texto solto. */
-export function palavrasChaveChamadoOtimiza(
-  linha: Pick<LinhaPreEntrada, 'numeroDocumentoFiscal' | 'numeroNfe'>,
-): string[] {
-  const chaves: string[] = [];
-  const vistos = new Set<string>();
-  for (const bruto of [linha.numeroDocumentoFiscal, linha.numeroNfe]) {
-    const texto = String(bruto ?? '').trim();
-    if (texto.length < 4 || texto.length > 80) continue;
-    const chave = texto.toUpperCase();
-    if (vistos.has(chave)) continue;
-    vistos.add(chave);
-    chaves.push(texto);
-  }
-  return chaves;
-}
-
-/**
- * Preenche o chamado aberto com a resposta do Otimiza.
- * mapa null marca a consulta como indisponível e deixa a coluna em branco.
- */
-export function aplicarChamadosAbertosOtimiza(
-  grade: GradePreEntrada,
-  porPalavra: ReadonlyMap<string, number[]> | null,
-): GradePreEntrada {
-  return {
-    ...grade,
-    chamadoOtimizaOk: porPalavra != null,
-    linhas: grade.linhas.map((linha) => {
-      if (porPalavra == null) return { ...linha, chamadosAbertos: null };
-      const numeros = new Set<number>();
-      for (const palavra of palavrasChaveChamadoOtimiza(linha)) {
-        for (const numero of porPalavra.get(palavra.toUpperCase()) ?? []) numeros.add(numero);
-      }
-      return { ...linha, chamadosAbertos: [...numeros].sort((a, b) => a - b) };
-    }),
-  };
-}
-
-/**
- * Pré-entrada atual entra sempre. Documento que já saiu do tipo 173 permanece
- * quando passou pela Gestão Mesa e tem comunicação do Otimiza gravada.
- */
+/** Só entra documento que ainda está como pré-entrada (tipo 173). */
 export function montarGradePreEntradas(params: {
   atuais: DocPreEntradaBruto[];
-  demais: DocPreEntradaBruto[];
-  idsMesa: ReadonlySet<number>;
   comunicacoes: ComunicacaoOtimizaPreEntrada[];
   vinculos: VinculoPedidoPreEntrada[];
   pedidosPorItem: ReadonlyMap<number, PedidoPreEntrada>;
@@ -297,28 +247,223 @@ export function montarGradePreEntradas(params: {
   for (const doc of params.atuais) {
     if (doc.idTipoMovimentacao !== RECEBIMENTO_ID_TIPO_PRE_ENTRADA) continue;
     if (atuaisIds.has(doc.idDocumento)) continue;
-    if (!noPeriodo(doc.dataEntrada, dataInicio, dataFim)) continue;
+    if (!preEntradaNoPeriodo(doc.dataEntrada, dataInicio, dataFim)) continue;
     atuaisIds.add(doc.idDocumento);
     linhas.push(linhaDe(doc, 'pre_entrada', contexto));
   }
-  const demaisVistos = new Set<number>();
-  for (const doc of params.demais) {
-    if (atuaisIds.has(doc.idDocumento) || demaisVistos.has(doc.idDocumento)) continue;
-    if (doc.idTipoMovimentacao === RECEBIMENTO_ID_TIPO_PRE_ENTRADA) continue;
-    if (!params.idsMesa.has(doc.idDocumento)) continue;
-    if ((comunicacoesPorDoc.get(doc.idDocumento) ?? []).length === 0) continue;
-    if (!noPeriodo(doc.dataEntrada, dataInicio, dataFim)) continue;
-    demaisVistos.add(doc.idDocumento);
-    linhas.push(linhaDe(doc, 'efetivada', contexto));
-  }
 
   linhas.sort((a, b) => {
-    if (a.situacao !== b.situacao) return a.situacao === 'pre_entrada' ? -1 : 1;
     const dataA = a.dataEntrada ?? '';
     const dataB = b.dataEntrada ?? '';
     if (dataA !== dataB) return dataB.localeCompare(dataA);
     return b.idDocumento - a.idDocumento;
   });
 
-  return { dataInicio, dataFim, chamadoOtimizaOk: false, linhas };
+  return { dataInicio, dataFim, linhas };
+}
+
+export const NOME_SEM_PEDIDO_PRE_ENTRADA = 'Sem pedido vinculado';
+export const NOME_SEM_FORNECEDOR_PRE_ENTRADA = 'Sem fornecedor';
+
+export type ItemImpressaoPreEntradaBruto = {
+  idDocumento: number;
+  idItem: number;
+  codigo: string | null;
+  descricao: string | null;
+  unidade: string | null;
+  qtde: number;
+  idPedido: number;
+  nomePedido: string | null;
+  /** Data de entrega do item do pedido de compra. Null sem pedido. */
+  dataEntrega: string | null;
+};
+
+export type MaterialImpressaoPreEntrada = {
+  idDocumento: number;
+  idItem: number;
+  codigo: string | null;
+  descricao: string | null;
+  unidade: string | null;
+  /** null quando o documento não tem item. */
+  qtde: number | null;
+  /** Data de entrega do item no pedido. Null quando não há pedido. */
+  dataEntrega: string | null;
+  numeroDocumento: string;
+  numeroNfe: string | null;
+  dataEntrada: string | null;
+};
+
+export type PedidoImpressaoPreEntrada = {
+  idPedido: number;
+  nome: string;
+  materiais: MaterialImpressaoPreEntrada[];
+};
+
+export type FornecedorImpressaoPreEntrada = {
+  nome: string;
+  pedidos: PedidoImpressaoPreEntrada[];
+};
+
+export type ImpressaoPreEntrada = {
+  dataInicio: string | null;
+  dataFim: string | null;
+  fornecedores: FornecedorImpressaoPreEntrada[];
+};
+
+function rotuloDocumento(doc: Pick<DocPreEntradaBruto, 'idDocumento' | 'numeroDocumentoFiscal' | 'numeroNfe'>): string {
+  return doc.numeroDocumentoFiscal?.trim() || doc.numeroNfe?.trim() || `Documento ${doc.idDocumento}`;
+}
+
+function nomeFornecedorImpressao(nome: string | null): string {
+  const texto = String(nome ?? '').replace(/\s+/g, ' ').trim();
+  return texto || NOME_SEM_FORNECEDOR_PRE_ENTRADA;
+}
+
+/** Mesmo fornecedor com diferença só de maiúscula, acento ou espaço entra no mesmo grupo. */
+function chaveFornecedorImpressao(nome: string): string {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function nomePedidoImpressao(idPedido: number, nome: string | null): string {
+  if (idPedido <= 0) return NOME_SEM_PEDIDO_PRE_ENTRADA;
+  const texto = String(nome ?? '').trim();
+  return texto || `Pedido ${idPedido}`;
+}
+
+function dataEntregaMaisCedo(atual: string | null, nova: string | null): string | null {
+  if (!atual) return nova;
+  if (!nova) return atual;
+  return atual <= nova ? atual : nova;
+}
+
+function compararComUltimo(a: string, b: string, ultimo: string): number {
+  if (a === ultimo && b !== ultimo) return 1;
+  if (b === ultimo && a !== ultimo) return -1;
+  return a.localeCompare(b, 'pt-BR');
+}
+
+/**
+ * Relação para impressão: fornecedor, depois pedido, depois material,
+ * sempre com o documento de entrada da pré-entrada.
+ */
+export function montarImpressaoPreEntradas(params: {
+  documentos: DocPreEntradaBruto[];
+  itens: ItemImpressaoPreEntradaBruto[];
+  dataInicio?: string | null;
+  dataFim?: string | null;
+}): ImpressaoPreEntrada {
+  const dataInicio = params.dataInicio ?? null;
+  const dataFim = params.dataFim ?? null;
+  const itensPorDoc = new Map<number, ItemImpressaoPreEntradaBruto[]>();
+  for (const item of params.itens) {
+    if (item.idDocumento <= 0 || item.idItem <= 0) continue;
+    const lista = itensPorDoc.get(item.idDocumento) ?? [];
+    lista.push(item);
+    itensPorDoc.set(item.idDocumento, lista);
+  }
+
+  const porFornecedor = new Map<
+    string,
+    { nome: string; pedidos: Map<number, { nome: string; materiais: Map<number, MaterialImpressaoPreEntrada> }> }
+  >();
+  const garantirPedido = (fornecedor: string, idPedido: number, nome: string) => {
+    const chave = chaveFornecedorImpressao(fornecedor);
+    let grupo = porFornecedor.get(chave);
+    if (!grupo) {
+      grupo = { nome: fornecedor, pedidos: new Map() };
+      porFornecedor.set(chave, grupo);
+    }
+    let pedido = grupo.pedidos.get(idPedido);
+    if (!pedido) {
+      pedido = { nome, materiais: new Map() };
+      grupo.pedidos.set(idPedido, pedido);
+    } else if (idPedido > 0 && pedido.nome.startsWith('Pedido ') && !nome.startsWith('Pedido ')) {
+      pedido.nome = nome;
+    }
+    return pedido;
+  };
+
+  const vistos = new Set<number>();
+  for (const doc of params.documentos) {
+    if (doc.idTipoMovimentacao !== RECEBIMENTO_ID_TIPO_PRE_ENTRADA) continue;
+    if (doc.idDocumento <= 0 || vistos.has(doc.idDocumento)) continue;
+    if (!preEntradaNoPeriodo(doc.dataEntrada, dataInicio, dataFim)) continue;
+    vistos.add(doc.idDocumento);
+    const fornecedor = nomeFornecedorImpressao(doc.nomeParceiro);
+    const materialBase = {
+      idDocumento: doc.idDocumento,
+      numeroDocumento: rotuloDocumento(doc),
+      numeroNfe: doc.numeroNfe,
+      dataEntrada: doc.dataEntrada,
+    };
+    const itens = itensPorDoc.get(doc.idDocumento) ?? [];
+    if (itens.length === 0) {
+      garantirPedido(fornecedor, 0, NOME_SEM_PEDIDO_PRE_ENTRADA).materiais.set(-doc.idDocumento, {
+        idItem: 0,
+        codigo: null,
+        descricao: null,
+        unidade: null,
+        qtde: null,
+        dataEntrega: null,
+        ...materialBase,
+      });
+      continue;
+    }
+    const porItem = new Map<number, ItemImpressaoPreEntradaBruto[]>();
+    for (const item of itens) {
+      const lista = porItem.get(item.idItem) ?? [];
+      lista.push(item);
+      porItem.set(item.idItem, lista);
+    }
+    for (const lista of porItem.values()) {
+      const comPedido = lista.filter((item) => item.idPedido > 0);
+      const usar = comPedido.length > 0 ? comPedido : lista;
+      const pedidosDoItem = new Set<number>();
+      for (const item of usar) {
+        const idPedido = item.idPedido > 0 ? item.idPedido : 0;
+        const dataEntrega = idPedido > 0 ? (item.dataEntrega ?? null) : null;
+        const pedido = garantirPedido(fornecedor, idPedido, nomePedidoImpressao(idPedido, item.nomePedido));
+        if (pedidosDoItem.has(idPedido)) {
+          const gravado = pedido.materiais.get(item.idItem);
+          if (gravado) gravado.dataEntrega = dataEntregaMaisCedo(gravado.dataEntrega, dataEntrega);
+          continue;
+        }
+        pedidosDoItem.add(idPedido);
+        pedido.materiais.set(item.idItem, {
+          idItem: item.idItem,
+          codigo: item.codigo,
+          descricao: item.descricao,
+          unidade: item.unidade,
+          qtde: item.qtde,
+          dataEntrega,
+          ...materialBase,
+        });
+      }
+    }
+  }
+
+  const fornecedores = [...porFornecedor.values()]
+    .sort((a, b) => compararComUltimo(a.nome, b.nome, NOME_SEM_FORNECEDOR_PRE_ENTRADA))
+    .map((grupo) => ({
+      nome: grupo.nome,
+      pedidos: [...grupo.pedidos.entries()]
+        .sort((a, b) => compararComUltimo(a[1].nome, b[1].nome, NOME_SEM_PEDIDO_PRE_ENTRADA))
+        .map(([idPedido, pedido]) => ({
+          idPedido,
+          nome: pedido.nome,
+          materiais: [...pedido.materiais.values()].sort(
+            (a, b) =>
+              a.numeroDocumento.localeCompare(b.numeroDocumento, 'pt-BR') ||
+              (a.codigo ?? '').localeCompare(b.codigo ?? '', 'pt-BR') ||
+              a.idItem - b.idItem,
+          ),
+        })),
+    }));
+
+  return { dataInicio, dataFim, fornecedores };
 }

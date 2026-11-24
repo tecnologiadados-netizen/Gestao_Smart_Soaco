@@ -289,20 +289,30 @@ function RegistrosPageContent() {
           ) : null}
 
           {isRegistroRncRcc ? (
-            <div className="sgq-form-footer">
-              <Button
-                type="button"
-                size="lg"
-                className="min-w-28"
-                onClick={() => void handleSalvar()}
-                disabled={salvando}
-              >
-                {salvando
-                  ? "Salvando..."
-                  : tipoSelecionado === "rnc"
-                    ? "Salvar RNC"
-                    : "Salvar RCC"}
-              </Button>
+            <div className="sgq-form-footer justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleDialogOpenChange(false)}
+                  disabled={salvando}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  size="lg"
+                  className="min-w-28"
+                  onClick={() => void handleSalvar()}
+                  disabled={salvando}
+                >
+                  {salvando
+                    ? "Salvando..."
+                    : tipoSelecionado === "rnc"
+                      ? "Salvar RNC"
+                      : "Salvar RCC"}
+                </Button>
+              </div>
             </div>
           ) : null}
         </DialogContent>

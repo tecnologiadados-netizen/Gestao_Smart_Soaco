@@ -4,6 +4,7 @@
  */
 
 import { getNomusPool } from '../config/nomusDb.js';
+import { diasPermitidosNomus } from './regraParcelasNomus.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 import {
   buildSqlRegistroColetaComEmpenho,
@@ -874,6 +875,11 @@ Order By
 export interface OpcaoNomusRow {
   id: number;
   nome: string;
+  regra?: string;
+  /** 0=domingo … 6=sábado. Null quando a condição não restringe o dia do vencimento. */
+  diasPermitidos?: number[] | null;
+  /** Null quando a condição não restringe a forma. Lista vazia não oferece nenhuma. */
+  idsFormaPagamento?: number[] | null;
 }
 
 /**
@@ -883,12 +889,46 @@ export async function listarCondicoesPagamentoNomus(): Promise<{ data: OpcaoNomu
   const pool = getNomusPool();
   if (!pool) return { data: [], erro: 'NOMUS_DB_URL não configurado' };
   try {
-    const sql = `SELECT id, nome FROM condicaopagamento c WHERE ativo = 1 ORDER BY nome`;
-    const [rows] = await pool.query<Record<string, unknown>[]>(sql);
-    const data = (Array.isArray(rows) ? rows : []).map((r) => ({
-      id: Number(r.id ?? 0),
-      nome: String(r.nome ?? '').trim(),
-    })) as OpcaoNomusRow[];
+    const sql = `SELECT id, nome, regra, restringirDataVencimentoDiaDaSemana, diasRestritos,
+        restringirFormaPagamento, idFormaPagamento
+      FROM condicaopagamento c WHERE ativo = 1 ORDER BY nome`;
+    const sqlFormas = `SELECT j.idCondicaoPagamento, j.idFormaPagamento
+      FROM condicaopagamento_formapagamento j
+      INNER JOIN condicaopagamento c ON c.id = j.idCondicaoPagamento AND c.ativo = 1
+      INNER JOIN formapagamento f ON f.id = j.idFormaPagamento AND f.ativo = 1`;
+    const [[rows], [ligacoes]] = await Promise.all([
+      pool.query<Record<string, unknown>[]>(sql),
+      pool.query<Record<string, unknown>[]>(sqlFormas),
+    ]);
+    const formasPorCondicao = new Map<number, number[]>();
+    for (const ligacao of Array.isArray(ligacoes) ? ligacoes : []) {
+      const idCondicao = Number(ligacao.idCondicaoPagamento ?? 0);
+      const idForma = Number(ligacao.idFormaPagamento ?? 0);
+      if (!idCondicao || !idForma) continue;
+      const lista = formasPorCondicao.get(idCondicao) ?? [];
+      if (!lista.includes(idForma)) lista.push(idForma);
+      formasPorCondicao.set(idCondicao, lista);
+    }
+    const data = (Array.isArray(rows) ? rows : []).map((r) => {
+      const id = Number(r.id ?? 0);
+      const restringe = Number(r.restringirFormaPagamento) === 1;
+      const ligadas = formasPorCondicao.get(id) ?? [];
+      const idPadrao = Number(r.idFormaPagamento ?? 0);
+      const idsFormaPagamento = !restringe
+        ? null
+        : ligadas.length > 0
+          ? ligadas
+          : idPadrao > 0
+            ? [idPadrao]
+            : [];
+      return {
+        id,
+        nome: String(r.nome ?? '').trim(),
+        regra: String(r.regra ?? '').trim(),
+        diasPermitidos: diasPermitidosNomus(r.restringirDataVencimentoDiaDaSemana, r.diasRestritos),
+        idsFormaPagamento,
+      };
+    }) as OpcaoNomusRow[];
     return { data };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
