@@ -23,6 +23,19 @@ export function rotasDoItem(detalhes: MapaMunicipioItem['detalhes']): Set<string
   return s;
 }
 
+/** Rotas do município: lista completa da API, com fallback no tooltip (que pode estar cortado). */
+export function rotasDoMunicipio(item: MapaMunicipioItem): Set<string> {
+  const fromDetalhes = rotasDoItem(item.detalhes);
+  if (!item.rotas || item.rotas.length === 0) return fromDetalhes;
+  const s = new Set<string>();
+  for (const r of item.rotas) {
+    const t = (r ?? '').trim();
+    s.add(t || ROTULO_SEM_ROTA);
+  }
+  if (fromDetalhes.has(ROTULO_SEM_ROTA)) s.add(ROTULO_SEM_ROTA);
+  return s;
+}
+
 export function indexarItensMapaRoteiro(
   itens: { item: MapaMunicipioItem; chave: string }[]
 ): ItemMapaRoteiro[] {
@@ -30,7 +43,7 @@ export function indexarItensMapaRoteiro(
     chave,
     municipio: (item.municipio ?? '').trim(),
     uf: (item.uf ?? '').trim().toUpperCase(),
-    rotas: rotasDoItem(item.detalhes),
+    rotas: rotasDoMunicipio(item),
   }));
 }
 

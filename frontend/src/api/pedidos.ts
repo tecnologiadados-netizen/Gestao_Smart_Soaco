@@ -476,6 +476,8 @@ export interface MapaMunicipioItem {
   lat: number;
   lng: number;
   detalhes: TooltipDetalheRow[];
+  /** Todas as rotas distintas do município. O tooltip pode trazer só parte das linhas. */
+  rotas?: string[];
   cor: CorBolhaMapa;
 }
 

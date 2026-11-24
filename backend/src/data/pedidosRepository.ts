@@ -2409,6 +2409,8 @@ export interface MunicipioAgregadoMapa {
   uf: string;
   valorPendente: number;
   detalhes: TooltipDetalheRow[];
+  /** Todas as rotas distintas do município (o tooltip corta a lista de linhas). */
+  rotas: string[];
   cor: CorBolhaMapa;
 }
 
@@ -2466,6 +2468,7 @@ async function obterAgregacaoPorMunicipioComDetalhes(filtros: FiltrosPedidos = {
     uf,
     valorPendente: valor,
     detalhes,
+    rotas: [...rotasDistintas].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
     cor: definirCorBolha(totalItens, countSemRota, rotasDistintas.size),
   }));
 }
@@ -2479,6 +2482,8 @@ export interface MapaMunicipioItem {
   lat: number;
   lng: number;
   detalhes: TooltipDetalheRow[];
+  /** Todas as rotas distintas do município (o tooltip corta a lista de linhas). */
+  rotas: string[];
   cor: CorBolhaMapa;
 }
 

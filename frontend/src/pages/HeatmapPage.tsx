@@ -42,6 +42,15 @@ import {
   type RoteiroResultado,
 } from '../utils/heatmapRoteirizador';
 import { filtrarDetalhesPorRotas } from '../utils/heatmapRoteiroFiltrosMapa';
+import {
+  agruparCidadesPorCarrada,
+  analisarIntersecaoRotas,
+  assinaturaGruposCarrada,
+  calcularRotasIndividuaisCarradas,
+  textoCarradas,
+  type AnaliseIntersecaoRotas,
+  type RotaCarradaMapa,
+} from '../utils/heatmapRotasTodasCarradas';
 
 const HEATMAP_MAP_HEIGHT_STORAGE_KEY = 'heatmap_map_pane_height_px';
 const HEATMAP_MAP_HEIGHT_MIN = 220;
@@ -93,7 +102,17 @@ export default function HeatmapPage() {
   const [roteiroModo, setRoteiroModo] = useState<'ctrl' | 'filtros' | 'carrada' | null>(null);
   /** Carradas escolhidas no modo Carrada — persiste após roteirizar para filtrar itens no painel/PDF. */
   const [roteiroCarradasAtivas, setRoteiroCarradasAtivas] = useState<Set<string> | null>(null);
+  /** Rotas individuais de todas as carradas (null = painel oculto). */
+  const [rotasTodas, setRotasTodas] = useState<RotaCarradaMapa[] | null>(null);
+  const [analiseRotas, setAnaliseRotas] = useState<AnaliseIntersecaoRotas | null>(null);
+  const [rotasTodasLoading, setRotasTodasLoading] = useState(false);
   const roteiroAbortRef = useRef<AbortController | null>(null);
+  const abortRotasTodasRef = useRef<AbortController | null>(null);
+  const cacheRotasTodasRef = useRef<{
+    assinatura: string;
+    rotas: RotaCarradaMapa[];
+    analise: AnaliseIntersecaoRotas;
+  } | null>(null);
   const [pdfExportando, setPdfExportando] = useState(false);
   const [exclusoesSimulacao, setExclusoesSimulacao] = useState<Set<string>>(() => new Set());
   const [ajustesQtdeSimulacao, setAjustesQtdeSimulacao] = useState<Map<string, number>>(() => new Map());
@@ -239,6 +258,15 @@ export default function HeatmapPage() {
   const onMapaItensCarregados = useCallback((itens: MapaMunicipioItem[]) => {
     setMapaItens(itens);
   }, []);
+
+  useEffect(() => {
+    cacheRotasTodasRef.current = null;
+    abortRotasTodasRef.current?.abort();
+    abortRotasTodasRef.current = null;
+    setRotasTodas(null);
+    setAnaliseRotas(null);
+    setRotasTodasLoading(false);
+  }, [mapaItens]);
 
   const alternarTelaCheia = useCallback(async () => {
     const el = rootRef.current;
@@ -513,6 +541,103 @@ export default function HeatmapPage() {
     return out;
   }, [mapaItens]);
 
+  const referenciasRotas = useMemo(
+    () =>
+      mapaItens
+        .filter((it) => Number.isFinite(it.lat) && Number.isFinite(it.lng))
+        .map((it) => ({
+          lat: it.lat,
+          lng: it.lng,
+          label: it.uf ? `${it.municipio}/${it.uf}` : it.municipio,
+        })),
+    [mapaItens]
+  );
+
+  const executarTodasRotas = useCallback(async () => {
+    const grupos = agruparCidadesPorCarrada(itensMapaRoteiro);
+    const assinatura = assinaturaGruposCarrada(grupos);
+    const cache = cacheRotasTodasRef.current;
+    if (cache && cache.assinatura === assinatura) {
+      setRotasTodas(cache.rotas);
+      setAnaliseRotas(cache.analise);
+      return;
+    }
+
+    abortRotasTodasRef.current?.abort();
+    const ac = new AbortController();
+    abortRotasTodasRef.current = ac;
+    setRotasTodasLoading(true);
+    setAnaliseRotas(null);
+    setRoteiroPopoverAberto(false);
+    try {
+      const rotas = await calcularRotasIndividuaisCarradas(grupos, {
+        signal: ac.signal,
+        onRotas: (lista) => {
+          if (!ac.signal.aborted) setRotasTodas(lista);
+        },
+        onProgresso: () => {},
+      });
+      if (!rotas || ac.signal.aborted) return;
+      const analise = analisarIntersecaoRotas(rotas, referenciasRotas);
+      cacheRotasTodasRef.current = { assinatura, rotas, analise };
+      setAnaliseRotas(analise);
+      setRotasTodas(rotas);
+    } catch {
+      if (!ac.signal.aborted) setRotasTodas([]);
+    } finally {
+      if (abortRotasTodasRef.current === ac) {
+        abortRotasTodasRef.current = null;
+        setRotasTodasLoading(false);
+      }
+    }
+  }, [itensMapaRoteiro, referenciasRotas]);
+
+  const alternarTodasRotas = useCallback(() => {
+    if (rotasTodasLoading) {
+      abortRotasTodasRef.current?.abort();
+      setRotasTodas(null);
+      setAnaliseRotas(null);
+      setRotasTodasLoading(false);
+      return;
+    }
+    if (rotasTodas) {
+      setRotasTodas(null);
+      setAnaliseRotas(null);
+      return;
+    }
+    void executarTodasRotas();
+  }, [rotasTodasLoading, rotasTodas, executarTodasRotas]);
+
+  const rotasNoMapa = useMemo(() => {
+    if (!rotasTodas) return undefined;
+    return rotasTodas.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      cor: r.cor,
+      dashArray: r.dashArray,
+      polyline: r.polyline,
+    }));
+  }, [rotasTodas]);
+
+  const trechosNoMapa = useMemo(() => {
+    if (!analiseRotas) return undefined;
+    return analiseRotas.trechos.map((t) => ({
+      id: t.id,
+      polyline: t.polyline,
+      carradas: t.carradas,
+    }));
+  }, [analiseRotas]);
+
+  const cruzamentosNoMapa = useMemo(() => {
+    if (!analiseRotas) return undefined;
+    return analiseRotas.cruzamentos.map((c) => ({
+      id: c.id,
+      lat: c.lat,
+      lng: c.lng,
+      rotulo: `${textoCarradas(c.carradas)} — cruzamento${c.pertoDe ? ` · perto de ${c.pertoDe}` : ''}`,
+    }));
+  }, [analiseRotas]);
+
   const cancelarRoteirizacao = useCallback(() => {
     roteiroAbortRef.current?.abort();
     roteiroAbortRef.current = null;
@@ -543,6 +668,9 @@ export default function HeatmapPage() {
   }, []);
 
   const executarRoteirizacao = useCallback(async () => {
+    abortRotasTodasRef.current?.abort();
+    setRotasTodas(null);
+    setAnaliseRotas(null);
     roteiroAbortRef.current?.abort();
     const ac = new AbortController();
     roteiroAbortRef.current = ac;
@@ -609,7 +737,7 @@ export default function HeatmapPage() {
     setDetalhesCompletos(new Map());
   }, []);
 
-  const layoutToken = `${mostrarFiltros}-${mostrarCards}-${telaCheia}|mapH:${mapPaneHeightPx ?? 'auto'}|rot:${roteirizadorChaves.size}:${roteiroResultado?.totalKm ?? 0}|rotPop:${roteiroPopoverAberto ? 1 : 0}|poly:${roteiroResultado?.mapaPolyline?.length ?? 0}`;
+  const layoutToken = `${mostrarFiltros}-${mostrarCards}-${telaCheia}|mapH:${mapPaneHeightPx ?? 'auto'}|rot:${roteirizadorChaves.size}:${roteiroResultado?.totalKm ?? 0}|rotPop:${roteiroPopoverAberto ? 1 : 0}|poly:${roteiroResultado?.mapaPolyline?.length ?? 0}|todas:${rotasTodas?.length ?? 0}`;
   const rootClass = telaCheia
     ? 'h-screen box-border overflow-hidden bg-slate-50 dark:bg-slate-900 p-4 flex flex-col gap-4'
     : 'flex min-h-0 w-full flex-1 flex-col gap-6';
@@ -825,9 +953,12 @@ export default function HeatmapPage() {
               roteirizadorChaves={roteirizadorChaves}
               roteirizadorChaveBaseFixa={chaveTeresinaMapa}
               onRoteirizadorToggleChave={toggleRoteirizadorChave}
-              rotaPolyline={rotaPolyline}
-              paradaSequenciaPorChave={paradaSequenciaPorChave}
-              paradasRoteiro={paradasRoteiroMapa.length > 0 ? paradasRoteiroMapa : undefined}
+              rotaPolyline={rotasTodas ? undefined : rotaPolyline}
+              paradaSequenciaPorChave={rotasTodas ? undefined : paradaSequenciaPorChave}
+              paradasRoteiro={rotasTodas || paradasRoteiroMapa.length === 0 ? undefined : paradasRoteiroMapa}
+              rotasCarradas={rotasNoMapa}
+              trechosComuns={trechosNoMapa}
+              cruzamentosRotas={cruzamentosNoMapa}
               mapaOverlaySuperiorEsquerdo={
                 <div className="pointer-events-none absolute inset-0 z-[1100]">
                   <div className="pointer-events-auto absolute bottom-3 left-3 top-[5.25rem] flex max-h-[calc(100%-5.25rem-0.75rem)] max-w-[min(34rem,calc(100%-1.5rem))] flex-col items-stretch gap-2 overflow-hidden">
@@ -840,6 +971,19 @@ export default function HeatmapPage() {
                         title="Calcular rota (Teresina → cidade → Teresina). Com cidades já selecionadas (Ctrl+clique, ⌘+clique no Mac, ou filtros), calcula a rota; sem seleção, abre opções de escolha."
                       >
                         {roteiroLoading ? 'Calculando…' : 'Roteirizar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={alternarTodasRotas}
+                        disabled={roteiroLoading}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-md disabled:opacity-50 ${
+                          rotasTodas || rotasTodasLoading
+                            ? 'border-sky-700 bg-white text-sky-900 hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-800 dark:text-sky-100 dark:hover:bg-slate-700'
+                            : 'border-sky-700 bg-sky-700 text-white hover:bg-sky-800 dark:border-sky-500 dark:bg-sky-600 dark:hover:bg-sky-500'
+                        }`}
+                        title="Desenha a rota de cada carrada em separado (Teresina → cidades da carrada → Teresina) para ver onde os percursos se cruzam ou seguem juntos."
+                      >
+                        {rotasTodasLoading ? 'Cancelar cálculo' : rotasTodas ? 'Ocultar rotas' : 'Exibir todas as rotas'}
                       </button>
                       {(roteiroModo != null || roteiroWizard != null) && !roteiroLoading && (
                         <button
@@ -856,7 +1000,7 @@ export default function HeatmapPage() {
                         Ctrl+clique (⌘+clique no Mac) nas cidades e clique em Roteirizar.
                       </p>
                     )}
-                    {roteiroCarradasAtivas && roteiroCarradasAtivas.size > 0 && selecionadosComChave.length > 0 && (
+                    {roteiroCarradasAtivas && roteiroCarradasAtivas.size > 0 && selecionadosComChave.length > 0 && !rotasTodas && (
                       <p className="max-w-[16rem] shrink-0 rounded-md bg-white/95 px-2 py-1 text-[10px] leading-snug text-slate-600 shadow-sm dark:bg-slate-800/95 dark:text-slate-300">
                         Modo carrada: {roteiroCarradasAtivas.size} carrada
                         {roteiroCarradasAtivas.size !== 1 ? 's' : ''} — itens de outras carradas não entram na rota.

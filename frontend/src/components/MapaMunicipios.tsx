@@ -10,6 +10,7 @@ import { iconeBandeiraFiltro, iconeParadaRota, iconeParadaSelecao } from '../uti
 import { criarMatcherTextoLivre } from '../utils/textoLivreBusca';
 import { aplicarZoomRoteiroNoMapa, type PontoMapaRoteiro } from '../utils/heatmapMapaBoundsRoteiro';
 import { MAPA_TILE_ATTRIBUTION, MAPA_TILE_URL } from '../config/mapaTiles';
+import { estilosTrechosIntersecao, recortarPolylineForaDaIntersecao } from '../utils/heatmapRotasTodasCarradas';
 import HeatmapDetalhesPedidosTable from './HeatmapDetalhesPedidosTable';
 
 const CENTRO_BRASIL: [number, number] = [-14.235, -51.9253];
@@ -141,6 +142,49 @@ function AjustarBounds({ items }: { items: MapaMunicipioItem[] }) {
   return null;
 }
 
+/** Enquadra todas as rotas individuais quando o conjunto de carradas muda. */
+function AjustarBoundsVariasRotas({
+  polylines,
+  token,
+}: {
+  polylines: [number, number][][];
+  token: string;
+}) {
+  const map = useMap();
+  const linhasRef = useRef(polylines);
+  linhasRef.current = polylines;
+  useEffect(() => {
+    const linhas = linhasRef.current;
+    const pts: [number, number][] = [[PONTO_RETORNO_TERESINA.lat, PONTO_RETORNO_TERESINA.lng]];
+    for (const linha of linhas) {
+      if (linha.length === 0) continue;
+      const step = Math.max(1, Math.floor(linha.length / 30));
+      for (let i = 0; i < linha.length; i += step) pts.push(linha[i]!);
+      pts.push(linha[linha.length - 1]!);
+    }
+    if (pts.length < 2) return;
+    const t = window.setTimeout(() => {
+      const bounds = L.latLngBounds(pts);
+      if (!bounds.isValid()) return;
+      map.invalidateSize({ animate: false });
+      map.fitBounds(bounds.pad(0.12), { animate: false, maxZoom: 9 });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [map, token]);
+  return null;
+}
+
+function amostrarLinha(pts: [number, number][], max = 700): [number, number][] {
+  if (pts.length <= max) return pts;
+  const out: [number, number][] = [];
+  const step = Math.ceil(pts.length / max);
+  for (let i = 0; i < pts.length; i += step) out.push(pts[i]!);
+  const last = pts[pts.length - 1]!;
+  const tail = out[out.length - 1];
+  if (!tail || tail[0] !== last[0] || tail[1] !== last[1]) out.push(last);
+  return out;
+}
+
 /** Mesmo enquadramento usado no PDF: Teresina + paradas da rota. */
 function AjustarBoundsRota({
   polyline,
@@ -187,6 +231,19 @@ interface MapaMunicipiosProps {
   paradasRoteiro?: PontoMapaRoteiro[];
   /** Conteúdo flutuante no canto superior esquerdo do mapa (ex.: botão Roteirizar). */
   mapaOverlaySuperiorEsquerdo?: ReactNode;
+  /** Uma polyline por carrada. Cada cor é um percurso próprio, não uma rota compartilhada. */
+  rotasCarradas?: {
+    id: string;
+    nome: string;
+    cor: string;
+    dashArray?: string;
+    polyline: [number, number][];
+    apagada?: boolean;
+  }[];
+  /** Trechos em que duas ou mais carradas seguem juntas. */
+  trechosComuns?: { id: string; polyline: [number, number][]; carradas: string[] }[];
+  /** Cruzamentos pontuais entre carradas. */
+  cruzamentosRotas?: { id: string; lat: number; lng: number; rotulo: string }[];
 }
 
 function BotaoLegendaMapa({
@@ -342,6 +399,9 @@ export default function MapaMunicipios({
   paradaSequenciaPorChave,
   paradasRoteiro,
   mapaOverlaySuperiorEsquerdo,
+  rotasCarradas,
+  trechosComuns,
+  cruzamentosRotas,
 }: MapaMunicipiosProps) {
   const filtros = filtrosProp ?? FILTROS_VAZIOS;
   const [legendaAberta, setLegendaAberta] = useState(true);
@@ -396,6 +456,19 @@ export default function MapaMunicipios({
     return { raioPorItem };
   }, [dados]);
 
+  const rotasSemIntersecao = useMemo(() => {
+    const trechos = (trechosComuns ?? []).map((t) => t.polyline);
+    return (rotasCarradas ?? []).map((rota) => ({
+      ...rota,
+      partes: recortarPolylineForaDaIntersecao(amostrarLinha(rota.polyline), trechos),
+    }));
+  }, [rotasCarradas, trechosComuns]);
+
+  const estiloTrechos = useMemo(
+    () => estilosTrechosIntersecao(trechosComuns ?? []),
+    [trechosComuns]
+  );
+
   if (loading) {
     return (
       <div className="h-full min-h-[320px] bg-slate-200/60 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700/50 rounded-xl overflow-hidden flex items-center justify-center">
@@ -436,7 +509,7 @@ export default function MapaMunicipios({
             <BotaoLegendaMapa aberta onClick={() => setLegendaAberta(false)} />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 px-4 pb-1">
-            Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> (<strong>⌘+clique</strong> no Mac) em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para o percurso Teresina → cidade → Teresina.
+            Tamanho da bolha = valor pendente. <strong>Teresina/PI</strong> é a base (sempre ativa). <strong>Ctrl+clique</strong> (<strong>⌘+clique</strong> no Mac) em outra bolha para incluir a cidade; clique normal abre detalhes. Use <strong>Roteirizar</strong> para um percurso. <strong>Exibir todas as rotas</strong> desenha cada carrada sozinha (Teresina → cidades dela → Teresina); onde os percursos se encontram fica uma linha tracejada por grupo de carradas — o ritmo muda quando o grupo muda; passe o cursor para ver os nomes.
             {municipiosFiltroDestaque.length > 0 && (
               <>
                 {' '}
@@ -496,7 +569,12 @@ export default function MapaMunicipios({
         >
           <TileLayer attribution={MAPA_TILE_ATTRIBUTION} url={MAPA_TILE_URL} />
           <RecalcularMapa token={tokenMapa} />
-          {rotaPolyline && paradasRoteiro && paradasRoteiro.length > 0 ? (
+          {rotasCarradas && rotasCarradas.length > 0 ? (
+            <AjustarBoundsVariasRotas
+              polylines={rotasCarradas.map((r) => r.polyline)}
+              token={rotasCarradas.map((r) => r.id).join('|')}
+            />
+          ) : rotaPolyline && paradasRoteiro && paradasRoteiro.length > 0 ? (
             <AjustarBoundsRota
               polyline={rotaPolyline}
               paradas={paradasRoteiro}
@@ -534,7 +612,7 @@ export default function MapaMunicipios({
             );
           })}
           <Pane name="heatmap-rota-viaria" style={{ zIndex: 360 }}>
-            {rotaPolyline && rotaPolyline.length >= 2 && (
+            {!(rotasCarradas && rotasCarradas.length > 0) && rotaPolyline && rotaPolyline.length >= 2 && (
               <Polyline
                 key={`rota-${rotaPolyline.length}-${rotaPolyline[0]![0].toFixed(4)}`}
                 positions={rotaPolyline}
@@ -547,8 +625,80 @@ export default function MapaMunicipios({
                 }}
               />
             )}
+            {rotasSemIntersecao.map((rota) =>
+              rota.partes.map((parte, indice) => (
+                <Polyline
+                  key={`${rota.id}-${indice}-${parte.length}`}
+                  positions={parte}
+                  pathOptions={{
+                    color: rota.cor,
+                    weight: rota.apagada ? 2 : 4,
+                    opacity: rota.apagada ? 0.22 : 0.9,
+                    dashArray: rota.dashArray,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                >
+                  <Tooltip sticky>{rota.nome}</Tooltip>
+                </Polyline>
+              ))
+            )}
           </Pane>
-          {(roteirizadorChaveBaseFixa || (roteirizadorChaves && roteirizadorChaves.size > 0)) && (
+          <Pane name="heatmap-rotas-intersecao" style={{ zIndex: 430 }}>
+            {trechosComuns?.map((trecho) => {
+              const linha = amostrarLinha(trecho.polyline, 400);
+              const traco = {
+                dashArray: estiloTrechos.dashPorId[trecho.id] ?? '18 8',
+                lineCap: 'round' as const,
+                lineJoin: 'round' as const,
+              };
+              return (
+                <Fragment key={trecho.id}>
+                  <Polyline
+                    positions={linha}
+                    pathOptions={{ color: '#ffffff', weight: 6, opacity: 0.9, ...traco }}
+                    interactive={false}
+                  />
+                  <Polyline
+                    positions={linha}
+                    pathOptions={{ color: '#1e293b', weight: 3, opacity: 0.95, ...traco }}
+                  >
+                    <Tooltip sticky direction="top" opacity={1}>
+                      <div className="flex flex-col items-start gap-0.5 py-0.5 text-left">
+                        {trecho.carradas.map((nome) => (
+                          <span key={nome} className="block whitespace-nowrap text-xs font-medium leading-snug text-slate-800">
+                            {nome}
+                          </span>
+                        ))}
+                      </div>
+                    </Tooltip>
+                  </Polyline>
+                </Fragment>
+              );
+            })}
+            {estiloTrechos.emendas.map((emenda) => (
+              <CircleMarker
+                key={emenda.id}
+                center={[emenda.lat, emenda.lng]}
+                radius={5}
+                interactive={false}
+                pathOptions={{ color: '#0f172a', weight: 2, fillColor: '#ffffff', fillOpacity: 1 }}
+              />
+            ))}
+            {cruzamentosRotas?.map((cruz) => (
+              <CircleMarker
+                key={cruz.id}
+                center={[cruz.lat, cruz.lng]}
+                radius={7}
+                pathOptions={{ color: '#9a3412', weight: 2, fillColor: '#fbbf24', fillOpacity: 0.95 }}
+              >
+                <Tooltip>{cruz.rotulo}</Tooltip>
+              </CircleMarker>
+            ))}
+          </Pane>
+          {(roteirizadorChaveBaseFixa ||
+            (roteirizadorChaves && roteirizadorChaves.size > 0) ||
+            (rotasCarradas && rotasCarradas.length > 0)) && (
             <CircleMarker
               center={[PONTO_RETORNO_TERESINA.lat, PONTO_RETORNO_TERESINA.lng]}
               radius={9}
