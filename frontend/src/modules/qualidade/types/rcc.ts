@@ -203,6 +203,9 @@ export interface RccDados {
   dataFechamento: string;
   /** Sim mostra data de fechamento e problema solucionado. Não mantém a RCC em aberto. */
   rccFinalizada: string;
+  /** Cancelamento encerra a RCC como finalizada e exige justificativa. */
+  cancelada: boolean;
+  justificativaCancelamento: string;
   causaProblema: string;
   estado: string;
   usuarioCriacao: string;
@@ -285,6 +288,8 @@ export function criarRccDadosVazio(codigoDocumento = ""): RccDados {
     problemaSolucionado: "",
     dataFechamento: "",
     rccFinalizada: "",
+    cancelada: false,
+    justificativaCancelamento: "",
     causaProblema: "",
     estado: "",
     usuarioCriacao: "",
@@ -730,8 +735,14 @@ export function normalizarRccDados(
     linhasServico,
     ...legadoDasLinhasServico(linhasServico),
   };
-  const rccFinalizada =
-    rcc.rccFinalizada === "Sim" || rcc.rccFinalizada === "Não"
+  const cancelada = rcc.cancelada === true;
+  const justificativaCancelamento =
+    typeof rcc.justificativaCancelamento === "string"
+      ? rcc.justificativaCancelamento
+      : "";
+  const rccFinalizada = cancelada
+    ? "Sim"
+    : rcc.rccFinalizada === "Sim" || rcc.rccFinalizada === "Não"
       ? rcc.rccFinalizada
       : comLinhasBase.dataFechamento.trim() ||
           comLinhasBase.problemaSolucionado === "Sim" ||
@@ -747,9 +758,16 @@ export function normalizarRccDados(
     feedbackClienteEnviado: origemReclamacao,
     clienteDoRevendedor: origemReclamacao === RCC_ORIGEM_CLIENTE_REVENDEDOR,
     rccFinalizada,
-    ...(rccFinalizada === "Não"
-      ? { dataFechamento: "", problemaSolucionado: "" }
-      : {}),
+    cancelada,
+    justificativaCancelamento: cancelada ? justificativaCancelamento.trim() : "",
+    ...(cancelada
+      ? {
+          dataFechamento:
+            comLinhasBase.dataFechamento.trim() || dataLocalHojeIso(),
+        }
+      : rccFinalizada === "Não"
+        ? { dataFechamento: "", problemaSolucionado: "" }
+        : {}),
   };
 
   if (opcoes?.origemNomus) {

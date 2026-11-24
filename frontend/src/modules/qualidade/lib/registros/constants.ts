@@ -52,7 +52,11 @@ export const registroStatusLabels: Record<RegistroStatus, string> = {
 export function rotuloStatusRegistro(registro: {
   tipo: string;
   status: RegistroStatus;
+  rcc?: { cancelada?: boolean } | null;
 }): string {
+  if (registro.tipo === "rcc" && registro.rcc?.cancelada) {
+    return "Cancelada";
+  }
   if (registro.tipo === "rnc" && registro.status === "encerrado") {
     return "Finalizada";
   }
@@ -291,6 +295,7 @@ export const rccFieldLabels = {
   problemaSolucionado: "Problema solucionado?",
   dataFechamento: "Data de fechamento da reclamação",
   rccFinalizada: "RCC finalizada?",
+  justificativaCancelamento: "Justificativa do cancelamento",
   causaProblema: "Causa do problema",
   estado: "Estado (UF)",
   usuarioCriacao: "Usuário responsável pela criação",

@@ -14,8 +14,10 @@ import {
   TableHeader,
   TableRow,
 } from "@qualidade/components/ui/table";
-import { TableRowActions } from "@qualidade/components/ui/table-row-actions";
+import { Pencil } from "lucide-react";
 import { ConfirmacaoDialog } from "@qualidade/components/ui/confirmacao-dialog";
+import { CancelarRccDialog } from "@qualidade/components/registros/cancelar-rcc-dialog";
+import { RegistroAcoesMenu } from "@qualidade/components/registros/registro-acoes-menu";
 import { RegistroDetalheDialog } from "@qualidade/components/registros/registro-detalhe-dialog";
 import {
   SgqGradeFiltroCabecalho,
@@ -36,6 +38,8 @@ import {
   excluirQualidadeRegistro,
   persistQualidadeRegistro,
 } from "@qualidade/lib/qualidadePersistence";
+import { normalizarRccDados } from "@qualidade/types/rcc";
+import { dataLocalHojeIso } from "@qualidade/types/rnc";
 import { formatarData } from "@qualidade/lib/utils/dates";
 import { cn } from "@qualidade/lib/utils";
 import {
@@ -99,6 +103,7 @@ export function RegistrosConsultaContent() {
   const registros = useRegistrosStore((s) => s.registros);
   const avaliacoes = useAvaliacaoFornecedorStore((s) => s.avaliacoes);
   const criarRegistro = useRegistrosStore((s) => s.criarRegistro);
+  const atualizarRegistroRcc = useRegistrosStore((s) => s.atualizarRegistroRcc);
   const getRegistroById = useRegistrosStore((s) => s.getRegistroById);
   const excluirRegistroStore = useRegistrosStore((s) => s.excluirRegistro);
   const currentUserId = useConfigStore((s) => s.currentUserId);
@@ -120,6 +125,10 @@ export function RegistrosConsultaContent() {
   const [erroExclusao, setErroExclusao] = useState("");
   const [clonandoId, setClonandoId] = useState<string | null>(null);
   const [erroClone, setErroClone] = useState("");
+  const [registroParaCancelar, setRegistroParaCancelar] =
+    useState<Registro | null>(null);
+  const [cancelando, setCancelando] = useState(false);
+  const [erroCancelamento, setErroCancelamento] = useState("");
   const [contagemAvaliacoes, setContagemAvaliacoes] = useState<number | null>(
     null
   );
@@ -225,6 +234,83 @@ export function RegistrosConsultaContent() {
     setRegistroSelecionadoId(registro.id);
   }
 
+  function podeExcluir(registro: Registro) {
+    return (
+      isModuloRegistroTipo(registro.tipo) &&
+      temExcluirRegistroQualidade(hasPermission, registro.tipo)
+    );
+  }
+
+  function pedirExclusao(registro: Registro) {
+    setErroExclusao("");
+    setErroClone("");
+    setRegistroParaExcluir(registro);
+  }
+
+  function podeCancelar(registro: Registro) {
+    return registro.tipo === "rcc" && registro.rcc != null && !registro.rcc.cancelada;
+  }
+
+  function pedirCancelamento(registro: Registro) {
+    if (!podeCancelar(registro)) return;
+    setErroCancelamento("");
+    setErroExclusao("");
+    setErroClone("");
+    setRegistroParaCancelar(registro);
+  }
+
+  async function confirmarCancelamento(justificativa: string) {
+    const alvo = registroParaCancelar;
+    if (!alvo?.rcc) return;
+    const texto = justificativa.trim();
+    if (!texto) return;
+
+    const anterior = alvo.rcc;
+    const statusAnterior = alvo.status;
+    const rcc = normalizarRccDados({
+      ...anterior,
+      cancelada: true,
+      justificativaCancelamento: texto,
+      rccFinalizada: "Sim",
+      dataFechamento: anterior.dataFechamento.trim() || dataLocalHojeIso(),
+    });
+
+    setCancelando(true);
+    setErroCancelamento("");
+    const ok = atualizarRegistroRcc({ id: alvo.id, rcc, status: "encerrado" });
+    if (!ok) {
+      setErroCancelamento("Não foi possível cancelar esta RCC.");
+      setCancelando(false);
+      return;
+    }
+
+    const atualizado = getRegistroById(alvo.id);
+    if (!atualizado) {
+      setErroCancelamento("Não foi possível localizar a RCC cancelada.");
+      setCancelando(false);
+      return;
+    }
+
+    try {
+      await persistQualidadeRegistro(atualizado);
+      if (registroSelecionadoId === alvo.id) setAbrirEmEdicao(false);
+      setRegistroParaCancelar(null);
+    } catch (err) {
+      atualizarRegistroRcc({
+        id: alvo.id,
+        rcc: anterior,
+        status: statusAnterior,
+      });
+      setErroCancelamento(
+        err instanceof Error
+          ? err.message
+          : "Falha ao cancelar a RCC no servidor. Tente novamente."
+      );
+    } finally {
+      setCancelando(false);
+    }
+  }
+
   async function confirmarExclusao() {
     if (!registroParaExcluir) return;
     const alvo = registroParaExcluir;
@@ -233,6 +319,10 @@ export function RegistrosConsultaContent() {
     try {
       await excluirQualidadeRegistro(alvo.id);
       excluirRegistroStore(alvo.id);
+      if (registroSelecionadoId === alvo.id) {
+        setRegistroSelecionadoId(null);
+        setAbrirEmEdicao(false);
+      }
       setRegistroParaExcluir(null);
     } catch (err) {
       setErroExclusao(
@@ -305,12 +395,12 @@ export function RegistrosConsultaContent() {
         </Link>
       </div>
 
-      {erroExclusao || erroClone ? (
+      {erroExclusao || erroClone || erroCancelamento ? (
         <p
           className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
           role="alert"
         >
-          {erroExclusao || erroClone}
+          {erroExclusao || erroClone || erroCancelamento}
         </p>
       ) : null}
 
@@ -423,7 +513,15 @@ export function RegistrosConsultaContent() {
                         </TableCell>
                         <TableCell>{responsavelNome}</TableCell>
                         <TableCell>
-                          <Badge>{rotuloStatusRegistro(registro)}</Badge>
+                          <Badge
+                            variant={
+                              registro.tipo === "rcc" && registro.rcc?.cancelada
+                                ? "secondary"
+                                : "default"
+                            }
+                          >
+                            {rotuloStatusRegistro(registro)}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           {formatarData(getRegistroDataFechamento(registro))}
@@ -432,29 +530,35 @@ export function RegistrosConsultaContent() {
                           className="text-right"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <TableRowActions
-                            onEdit={() => abrirEdicao(registro)}
-                            onClone={() => {
-                              void clonarRegistro(registro);
-                            }}
-                            cloneDisabled={Boolean(clonandoId)}
-                            cloneLabel={
-                              clonandoId === registro.id
-                                ? "Clonando..."
-                                : "Clonar"
-                            }
-                            onDelete={
-                              isModuloRegistroTipo(registro.tipo) &&
-                              temExcluirRegistroQualidade(hasPermission, registro.tipo)
-                                ? () => {
-                                    setErroExclusao("");
-                                    setErroClone("");
-                                    setRegistroParaExcluir(registro);
-                                  }
-                                : undefined
-                            }
-                            editLabel="Editar"
-                          />
+                          <div className="flex justify-end gap-1 opacity-35 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Editar"
+                              onClick={() => abrirEdicao(registro)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <RegistroAcoesMenu
+                              variante="icone"
+                              onClonar={() => {
+                                void clonarRegistro(registro);
+                              }}
+                              clonando={clonandoId === registro.id}
+                              cloneDisabled={Boolean(clonandoId)}
+                              onCancelar={
+                                podeCancelar(registro)
+                                  ? () => pedirCancelamento(registro)
+                                  : undefined
+                              }
+                              onExcluir={
+                                podeExcluir(registro)
+                                  ? () => pedirExclusao(registro)
+                                  : undefined
+                              }
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -501,6 +605,18 @@ export function RegistrosConsultaContent() {
                 }
               : undefined
           }
+          onCancelar={(() => {
+            if (!registroSelecionadoId) return undefined;
+            const origem = getRegistroById(registroSelecionadoId);
+            if (!origem || !podeCancelar(origem)) return undefined;
+            return () => pedirCancelamento(origem);
+          })()}
+          onExcluir={(() => {
+            if (!registroSelecionadoId) return undefined;
+            const origem = getRegistroById(registroSelecionadoId);
+            if (!origem || !podeExcluir(origem)) return undefined;
+            return () => pedirExclusao(origem);
+          })()}
           onOpenChange={(open) => {
             if (!open) {
               setRegistroSelecionadoId(null);
@@ -509,6 +625,26 @@ export function RegistrosConsultaContent() {
           }}
         />
       ) : null}
+
+      <CancelarRccDialog
+        open={registroParaCancelar !== null}
+        codigo={
+          registroParaCancelar
+            ? getRegistroCodigoDocumento(registroParaCancelar)
+            : ""
+        }
+        salvando={cancelando}
+        erro={erroCancelamento}
+        onOpenChange={(open) => {
+          if (!open && !cancelando) {
+            setRegistroParaCancelar(null);
+            setErroCancelamento("");
+          }
+        }}
+        onConfirmar={(justificativa) => {
+          void confirmarCancelamento(justificativa);
+        }}
+      />
 
       <ConfirmacaoDialog
         open={registroParaExcluir !== null}

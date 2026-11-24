@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Copy, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { FormModalHeader } from "@qualidade/components/ui/form-modal";
+import { RegistroAcoesMenu } from "@qualidade/components/registros/registro-acoes-menu";
 import { Badge } from "@qualidade/components/ui/badge";
 import { Button } from "@qualidade/components/ui/button";
 import { Dialog, DialogContent } from "@qualidade/components/ui/dialog";
@@ -42,6 +43,8 @@ interface RegistroDetalheDialogProps {
   /** Abre o diálogo já em modo de edição. */
   editarAoAbrir?: boolean;
   onClonar?: () => void;
+  onCancelar?: () => void;
+  onExcluir?: () => void;
   clonando?: boolean;
 }
 
@@ -51,6 +54,8 @@ export function RegistroDetalheDialog({
   onOpenChange,
   editarAoAbrir = false,
   onClonar,
+  onCancelar,
+  onExcluir,
   clonando = false,
 }: RegistroDetalheDialogProps) {
   const getRegistroById = useRegistrosStore((s) => s.getRegistroById);
@@ -244,7 +249,15 @@ export function RegistroDetalheDialog({
                     </div>
                   </td>
                   <td className="border border-border px-3 py-2">
-                    <Badge>{rotuloStatusRegistro(registro)}</Badge>
+                    <Badge
+                      variant={
+                        registro.tipo === "rcc" && registro.rcc?.cancelada
+                          ? "secondary"
+                          : "default"
+                      }
+                    >
+                      {rotuloStatusRegistro(registro)}
+                    </Badge>
                   </td>
                   <td className="border border-border px-3 py-2 font-medium">
                     {formatarData(getRegistroDataOcorrencia(registro))}
@@ -343,17 +356,12 @@ export function RegistroDetalheDialog({
                 <span />
               )}
               <div className="flex flex-wrap gap-2">
-                {onClonar ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onClonar}
-                    disabled={clonando}
-                  >
-                    <Copy className="mr-2 size-4" />
-                    {clonando ? "Clonando..." : "Clonar"}
-                  </Button>
-                ) : null}
+                <RegistroAcoesMenu
+                  onClonar={onClonar}
+                  onCancelar={onCancelar}
+                  onExcluir={onExcluir}
+                  clonando={clonando}
+                />
                 {podeEditar ? (
                   <Button type="button" onClick={iniciarEdicao}>
                     <Pencil className="mr-2 size-4" />

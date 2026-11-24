@@ -256,7 +256,7 @@ export function RccForm({
           dados.problemaSolucionado === "Não"
         ? "Sim"
         : "";
-  const encerrando = rccFinalizada === "Sim";
+  const encerrando = rccFinalizada === "Sim" && !dados.cancelada;
   const servicoInformado = (dados.linhasServico ?? []).some(
     (linha) => linha.texto.trim() || linha.lista1.trim() || linha.lista2.trim()
   );
@@ -1051,9 +1051,15 @@ export function RccForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>{rccFieldLabels.rccFinalizada}</Label>
+            {dados.cancelada ? (
+              <p className="text-sm text-muted-foreground">
+                Esta RCC foi cancelada e já está finalizada.
+              </p>
+            ) : null}
             <Select
-              value={rccFinalizada || undefined}
+              value={dados.cancelada ? "Sim" : rccFinalizada || undefined}
               onValueChange={(valor) => {
+                if (dados.cancelada) return;
                 const resposta = valorDaLista(valor);
                 if (resposta === "Sim") {
                   patch({
@@ -1070,7 +1076,7 @@ export function RccForm({
                   problemaSolucionado: "",
                 });
               }}
-              disabled={somenteLeitura}
+              disabled={somenteLeitura || dados.cancelada}
             >
               <SelectTrigger className="w-full max-w-md" id="rcc-finalizada">
                 <SelectValue placeholder="Selecione..." />
@@ -1116,6 +1122,33 @@ export function RccForm({
                 <CampoErro mensagem={erros.problemaSolucionado} />
               </div>
             </>
+          ) : null}
+          {dados.cancelada ? (
+            <div className="space-y-2 sm:col-span-2">
+              <div className="space-y-2">
+                <Label htmlFor="rcc-data-fechamento-cancelada">
+                  {rccFieldLabels.dataFechamento}
+                </Label>
+                <Input
+                  id="rcc-data-fechamento-cancelada"
+                  type="date"
+                  value={isoParaInputDate(dados.dataFechamento)}
+                  readOnly
+                  disabled
+                />
+              </div>
+              <Label htmlFor="rcc-justificativa-cancelamento">
+                {rccFieldLabels.justificativaCancelamento} *
+              </Label>
+              <Textarea
+                id="rcc-justificativa-cancelamento"
+                value={dados.justificativaCancelamento}
+                rows={3}
+                readOnly
+                disabled
+              />
+              <CampoErro mensagem={erros.justificativaCancelamento} />
+            </div>
           ) : null}
         </div>
       </fieldset>
