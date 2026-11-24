@@ -9,7 +9,6 @@ import {
   type KpiPainelDef,
 } from '../../config/kpisCatalog';
 import { useKpisFavoritos } from '../../hooks/useKpisFavoritos';
-import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 import KpisAjudaModal from './KpisAjudaModal';
 
 function primeiroNome(nome: string | null): string {
@@ -20,7 +19,6 @@ function primeiroNome(nome: string | null): string {
 
 export default function KpisHubPage() {
   const { nome, login, hasPermission } = useAuth();
-  const [busca, setBusca] = useState('');
   const [ajudaAberta, setAjudaAberta] = useState(false);
   const { favoritos, isFavorito, toggleFavorito } = useKpisFavoritos(login);
 
@@ -35,18 +33,6 @@ export default function KpisHubPage() {
     return list;
   }, [favoritos, hasPermission]);
 
-  const match = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
-
-  const pastasFiltradas = useMemo(
-    () => pastas.filter((p) => match(p.label) || (p.descricao ? match(p.descricao) : false)),
-    [pastas, match]
-  );
-
-  const favoritosFiltrados = useMemo(
-    () => paineisFavoritos.filter((p) => match(p.label) || match(p.capaTitulo)),
-    [paineisFavoritos, match]
-  );
-
   return (
     <div className="px-4 py-5 md:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -60,21 +46,7 @@ export default function KpisHubPage() {
           <ComoLerBtn onClick={() => setAjudaAberta(true)} title="Como ler o hub KPIs" />
         </header>
 
-        <div className="max-w-md">
-          <label className="sr-only" htmlFor="kpis-busca">
-            Buscar pastas e painéis
-          </label>
-          <input
-            id="kpis-busca"
-            type="search"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar pasta ou painel (use % como curinga)"
-            className="input-app"
-          />
-        </div>
-
-        {favoritosFiltrados.length > 0 && (
+        {paineisFavoritos.length > 0 && (
           <section>
             <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-soaco-gray">
               <svg className="h-3.5 w-3.5 text-accent-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -83,7 +55,7 @@ export default function KpisHubPage() {
               Favoritos
             </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {favoritosFiltrados.map((painel) => (
+              {paineisFavoritos.map((painel) => (
                 <KpiCard
                   key={painel.id}
                   to={painel.to}
@@ -100,22 +72,18 @@ export default function KpisHubPage() {
 
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-soaco-gray">Pastas</h2>
-          {pastasFiltradas.length === 0 ? (
+          {pastas.length === 0 ? (
             <div className="card-panel border-dashed px-6 py-10 text-center">
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                {pastas.length === 0
-                  ? 'Nenhum painel liberado para o seu grupo. Peça ao administrador a permissão KPIs correspondente.'
-                  : 'Nenhuma pasta corresponde à busca.'}
+                Nenhum painel liberado para o seu grupo. Peça ao administrador a permissão KPIs correspondente.
               </p>
-              {pastas.length === 0 && (
-                <p className="mt-2 text-xs text-slate-500">
-                  Em Usuários → Grupos, marque <span className="font-medium">KPIs</span> e o painel desejado.
-                </p>
-              )}
+              <p className="mt-2 text-xs text-slate-500">
+                Em Usuários → Grupos, marque <span className="font-medium">KPIs</span> e o painel desejado.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {pastasFiltradas.map((pasta) => (
+              {pastas.map((pasta) => (
                 <KpiCard
                   key={pasta.id}
                   to={pastaHubPath(pasta.id)}

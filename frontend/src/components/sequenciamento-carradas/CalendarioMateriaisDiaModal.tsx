@@ -43,7 +43,6 @@ function entradaPcDaLinha(row: MaterialDiaCalendario): EntradaPcExibicaoCalendar
 const COLS = [
   'codigo',
   'descricao',
-  'metodoRessuprimento',
   'saldoInicio',
   'consumoDia',
   'entradaDia',
@@ -55,7 +54,6 @@ type ColId = (typeof COLS)[number];
 const COL_LABELS: Record<ColId, string> = {
   codigo: 'Código',
   descricao: 'Descrição',
-  metodoRessuprimento: 'Ressuprimento',
   saldoInicio: 'Saldo',
   consumoDia: 'Consumo',
   entradaDia: 'Entrada PC',
@@ -65,7 +63,6 @@ const COL_LABELS: Record<ColId, string> = {
 const DEFAULT_COL_WIDTHS: Record<ColId, number> = {
   codigo: 140,
   descricao: 240,
-  metodoRessuprimento: 130,
   saldoInicio: 90,
   consumoDia: 100,
   entradaDia: 160,
@@ -77,7 +74,8 @@ const COL_WIDTH_MAX = 480;
 
 const NUMERIC_COLS = new Set<ColId>(['saldoInicio', 'consumoDia', 'falta']);
 
-const TH = 'relative px-2 py-2 font-semibold text-slate-700 dark:text-slate-200';
+const TH =
+  'sticky top-0 z-20 bg-slate-50 px-2 py-2 font-semibold text-slate-700 shadow-[0_1px_0_0_#e2e8f0] dark:bg-slate-800 dark:text-slate-200 dark:shadow-[0_1px_0_0_#475569]';
 const TD = 'px-2 py-1.5 border-b border-slate-100 dark:border-slate-700 align-top';
 
 function clampColWidth(w: number): number {
@@ -93,7 +91,6 @@ function classStatus(status: MaterialDiaCalendario['status']): string {
 function textoCelula(row: MaterialDiaCalendario, colId: string): string {
   if (colId === 'codigo') return row.codigo;
   if (colId === 'descricao') return row.descricao || '';
-  if (colId === 'metodoRessuprimento') return row.metodoRessuprimento || 'Não informado';
   if (colId === 'saldoInicio') return fmtNum(row.saldoInicio);
   if (colId === 'consumoDia') return fmtNum(row.consumoDia);
   if (colId === 'entradaDia') return entradaPcDaLinha(row).texto;
@@ -361,8 +358,7 @@ export default function CalendarioMateriaisDiaModal({
                 ? 'Materiais em falta com consumo deste setor no dia. '
                 : 'Somente consumo e falta > 0 no dia. '}
               Clique em <strong>Consumo</strong> para ver a origem; em <strong>Entrada PC</strong> para
-              PC / Pré Compra / Solicitação. Método de ressuprimento vem da aba Geral do componente
-              no Nomus. Arraste a borda das colunas para ajustar a largura.
+              PC / Pré Compra / Solicitação. Arraste a borda das colunas para ajustar a largura.
             </p>
           </div>
           <button
@@ -386,13 +382,13 @@ export default function CalendarioMateriaisDiaModal({
           </div>
         )}
 
-        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto p-4">
+        <div ref={grade.tableScrollRef} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
           {carregando && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Carregando materiais…</p>
+            <p className="pt-4 text-sm text-slate-500 dark:text-slate-400">Carregando materiais…</p>
           )}
-          {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
+          {erro && <p className="pt-4 text-sm text-red-600 dark:text-red-400">{erro}</p>}
           {!carregando && !erro && linhas.length === 0 && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="pt-4 text-sm text-slate-500 dark:text-slate-400">
               Nenhum material com consumo e falta neste dia (almox secundário, inclusive Matéria Prima).
             </p>
           )}
@@ -410,7 +406,7 @@ export default function CalendarioMateriaisDiaModal({
                 ))}
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/50">
+                <tr className="border-b border-slate-200 dark:border-slate-600">
                   {COLS.map((colId) => {
                     const numeric = NUMERIC_COLS.has(colId) || colId === 'entradaDia';
                     return (
@@ -465,9 +461,6 @@ export default function CalendarioMateriaisDiaModal({
                       </td>
                       <td className={`${TD} whitespace-normal break-words`}>
                         {r.descricao || '—'}
-                      </td>
-                      <td className={`${TD} whitespace-normal break-words`}>
-                        {r.metodoRessuprimento || 'Não informado'}
                       </td>
                       <td className={`${TD} text-right tabular-nums`}>{fmtNum(r.saldoInicio)}</td>
                       <td className={`${TD} text-right tabular-nums`}>

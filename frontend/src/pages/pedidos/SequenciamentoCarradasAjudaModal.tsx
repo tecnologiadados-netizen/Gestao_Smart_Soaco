@@ -59,7 +59,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Recorta os componentes exibidos e calculados nas bolinhas AS e PP pelo Método de ressuprimento da aba Geral do próprio componente no Nomus.',
     comoLe:
-      'Ao selecionar Comprado, Fabricado, Como padrão fabricado, Como padrão comprado ou Não informado, os semáforos e os modais AS/PP usam exatamente esse mesmo recorte. As duas tabelas exibem a coluna Método de ressuprimento para auditoria. Se uma data ou célula não tiver nenhum componente no recorte, sua bolinha AS/PP não aparece. Sem filtro de Ressuprimento, a bolinha AS volta ao padrão da produção: aparece em toda célula com quantidade assim que o motor de materiais carrega (verde = ok; vermelho = falta). PP verde = ok; PP vermelho = falta.',
+      'Ao selecionar Comprado, Fabricado, Como padrão fabricado, Como padrão comprado ou Não informado, os semáforos e os modais AS/PP usam exatamente esse mesmo recorte. O modal Materiais do dia aplica o recorte sem mostrar a coluna. O modal PP continua exibindo Método de ressuprimento. Se uma data ou célula não tiver nenhum componente no recorte, sua bolinha AS/PP não aparece. Sem filtro de Ressuprimento, a bolinha AS volta ao padrão da produção: aparece em toda célula com quantidade assim que o motor de materiais carrega (verde = ok; vermelho = falta). PP verde = ok; PP vermelho = falta.',
   },
   {
     id: 'horizonte-pc',
