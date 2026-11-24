@@ -1,3 +1,6 @@
+-- Nota em tonelada com quantidade já em kg: o unitário fica em R$/t.
+-- Mesma regra do double check (unidade da NF = tonelada, produto/PC = kg e
+-- preço ainda ~1000× o do pedido): divide por 1000 antes de tirar impostos.
 Select Distinct cunit.idProduto,
   round(Case When cunit.bobina <> '' Then bobin.valorUnitarioTotal
     Else cunit.valorUnitarioTotal End, 2) As valorUnitario,
@@ -44,10 +47,28 @@ From (Select ud.idProduto,
       d.valorTotalFrete,
       p.nome,
       ide.qtde,
-      ide.valorUnitario
+      Case
+        When Lower(umi.nome) In ('t', 'ton', 'tonelada', 'toneladas')
+          And Lower(ump.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+            'quilogramas', 'kilograma', 'kilogramas')
+          And (pcKg.precoUnitario Is Null Or pcKg.precoUnitario <= 0
+            Or ide.valorUnitario / NullIf(pcKg.precoUnitario, 0) >= 100)
+        Then ide.valorUnitario / 1000
+        Else ide.valorUnitario
+      End As valorUnitario
     From itemdocumentoestoque ide
       Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
+      Left Join unidademedida umi On umi.id = ide.idUnidadeMedida
+      Left Join unidademedida ump On ump.id = p.idUnidadeMedida
+      Left Join (Select ideipc.idItemDocumentoEstoque As idItem,
+          Min(ipc.precoUnitario) As precoUnitario
+        From itemdocumentoestoque_itempedidocompra ideipc
+          Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+          Join unidademedida umpc On umpc.id = ipc.idUnidadeMedida
+        Where Lower(umpc.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+          'quilogramas', 'kilograma', 'kilogramas')
+        Group By ideipc.idItemDocumentoEstoque) pcKg On pcKg.idItem = ide.id
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))) m
       On (m.idProduto = ud.idProduto) And (ud.dataEntrada = m.dataEntrada)
@@ -62,10 +83,28 @@ From (Select ud.idProduto,
     Group By ide.idDocumentoEstoque) q On q.idDocumentoEntrada =
       m.idDocumentoEntrada
     Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
-      Sum((ide.qtde * ide.valorUnitario)) As totalnota
+      Sum((ide.qtde * (Case
+        When Lower(umi.nome) In ('t', 'ton', 'tonelada', 'toneladas')
+          And Lower(ump.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+            'quilogramas', 'kilograma', 'kilogramas')
+          And (pcKg.precoUnitario Is Null Or pcKg.precoUnitario <= 0
+            Or ide.valorUnitario / NullIf(pcKg.precoUnitario, 0) >= 100)
+        Then ide.valorUnitario / 1000
+        Else ide.valorUnitario
+      End))) As totalnota
     From itemdocumentoestoque ide
       Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
+      Left Join unidademedida umi On umi.id = ide.idUnidadeMedida
+      Left Join unidademedida ump On ump.id = p.idUnidadeMedida
+      Left Join (Select ideipc.idItemDocumentoEstoque As idItem,
+          Min(ipc.precoUnitario) As precoUnitario
+        From itemdocumentoestoque_itempedidocompra ideipc
+          Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+          Join unidademedida umpc On umpc.id = ipc.idUnidadeMedida
+        Where Lower(umpc.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+          'quilogramas', 'kilograma', 'kilogramas')
+        Group By ideipc.idItemDocumentoEstoque) pcKg On pcKg.idItem = ide.id
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))
     Group By ide.idDocumentoEstoque) tn On tn.idDocumentoEntrada =
@@ -164,10 +203,28 @@ From (Select ud.idProduto,
         End) Else Upper(p.descricao)
       End, 'BOBINA INTEIRA', 'BOBINA SLITADA') As bobina,
       ide.qtde,
-      ide.valorUnitario
+      Case
+        When Lower(umi.nome) In ('t', 'ton', 'tonelada', 'toneladas')
+          And Lower(ump.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+            'quilogramas', 'kilograma', 'kilogramas')
+          And (pcKg.precoUnitario Is Null Or pcKg.precoUnitario <= 0
+            Or ide.valorUnitario / NullIf(pcKg.precoUnitario, 0) >= 100)
+        Then ide.valorUnitario / 1000
+        Else ide.valorUnitario
+      End As valorUnitario
     From itemdocumentoestoque ide
       Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
+      Left Join unidademedida umi On umi.id = ide.idUnidadeMedida
+      Left Join unidademedida ump On ump.id = p.idUnidadeMedida
+      Left Join (Select ideipc.idItemDocumentoEstoque As idItem,
+          Min(ipc.precoUnitario) As precoUnitario
+        From itemdocumentoestoque_itempedidocompra ideipc
+          Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+          Join unidademedida umpc On umpc.id = ipc.idUnidadeMedida
+        Where Lower(umpc.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+          'quilogramas', 'kilograma', 'kilogramas')
+        Group By ideipc.idItemDocumentoEstoque) pcKg On pcKg.idItem = ide.id
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))) m
       On (m.bobina = ud.bobina) And (ud.dataEntrada = m.dataEntrada)
@@ -182,10 +239,28 @@ From (Select ud.idProduto,
     Group By ide.idDocumentoEstoque) q On q.idDocumentoEntrada =
       m.idDocumentoEntrada
     Left Join (Select ide.idDocumentoEstoque As idDocumentoEntrada,
-      Sum((ide.qtde * ide.valorUnitario)) As totalnota
+      Sum((ide.qtde * (Case
+        When Lower(umi.nome) In ('t', 'ton', 'tonelada', 'toneladas')
+          And Lower(ump.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+            'quilogramas', 'kilograma', 'kilogramas')
+          And (pcKg.precoUnitario Is Null Or pcKg.precoUnitario <= 0
+            Or ide.valorUnitario / NullIf(pcKg.precoUnitario, 0) >= 100)
+        Then ide.valorUnitario / 1000
+        Else ide.valorUnitario
+      End))) As totalnota
     From itemdocumentoestoque ide
       Left Join documentoestoque d On d.id = ide.idDocumentoEstoque
       Left Join produto p On p.id = ide.idProduto
+      Left Join unidademedida umi On umi.id = ide.idUnidadeMedida
+      Left Join unidademedida ump On ump.id = p.idUnidadeMedida
+      Left Join (Select ideipc.idItemDocumentoEstoque As idItem,
+          Min(ipc.precoUnitario) As precoUnitario
+        From itemdocumentoestoque_itempedidocompra ideipc
+          Join itempedidocompra ipc On ipc.id = ideipc.idItemPedidoCompra
+          Join unidademedida umpc On umpc.id = ipc.idUnidadeMedida
+        Where Lower(umpc.nome) In ('kg', 'kgs', 'quilo', 'quilos', 'quilograma',
+          'quilogramas', 'kilograma', 'kilogramas')
+        Group By ideipc.idItemDocumentoEstoque) pcKg On pcKg.idItem = ide.id
     Where (ide.idTipoMovimentacao In (11, 71, 116, 115, 114, 113, 112, 111,
       142)) And (ide.idSetorEntrada In (2, 19, 20, 32))
     Group By ide.idDocumentoEstoque) tn On tn.idDocumentoEntrada =
