@@ -46,6 +46,9 @@ function linha(p: Partial<DoubleCheckInComparativoLinha> & Pick<DoubleCheckInCom
     divergQtde: false,
     divergIpi: false,
     divergCondicaoPagamento: true,
+    origemParcelasNF: 'nomus',
+    pagamentoXmlPendente: false,
+    valorNfXml: null,
     temDivergencia: true,
     ...p,
   };

@@ -785,6 +785,12 @@ export async function listarFornecedores(): Promise<{ data: FornecedorOpcao[]; e
 export interface OpcaoNomus {
   id: number;
   nome: string;
+  /** Regra do Nomus para gerar parcelas, como 30,60,90. Só vem na condição de pagamento. */
+  regra?: string;
+  /** 0=domingo … 6=sábado. Ausente quando o vencimento não é restrito. */
+  diasPermitidos?: number[] | null;
+  /** Null quando a condição aceita qualquer forma. */
+  idsFormaPagamento?: number[] | null;
 }
 
 /**
@@ -1780,6 +1786,10 @@ export type DoubleCheckInComparativoLinha = {
   descontoDocumentoNF?: number;
   totalVinculosNF?: number;
   totalVinculosPC?: number;
+  /** Valor a pagar da NF (oficial quando os vínculos cobrem a nota). */
+  totalRealNF?: number;
+  /** Valor a pagar do PC (produtos com desconto + IPI + ST). */
+  totalRealPC?: number;
   descontoVinculosNF?: number;
   descontoVinculosPC?: number;
   /** Unitário líquido (após desconto) — base da comparação. */
@@ -1824,6 +1834,14 @@ export type DoubleCheckInComparativoLinha = {
   tipoMovimentacao?: string | null;
   /** Só pré-entrada compara condição quando não gera AP; demais tipos omitem o campo. */
   comparaCondicaoPagamento?: boolean;
+  /** Pré-entrada: origem das parcelas da nota. Ausente = financeiro do documento. */
+  origemParcelasNF?: 'nomus' | 'xml' | 'ja_paga' | 'boleto_externo' | 'pendente' | 'sem_xml';
+  /** Sem fatura no XML e sem resposta. A conferência não fecha. */
+  pagamentoXmlPendente?: boolean;
+  /** Total da NF no XML. */
+  valorNfXml?: number | null;
+  /** Forma de pagamento lançada quando há boleto a vencer. */
+  formaPagamentoNF?: string | null;
   temDivergencia: boolean;
 };
 
@@ -1832,6 +1850,9 @@ export type DoubleCheckInParcelaPrazo = {
   dataBase: string | null;
   dataVencimento: string | null;
   dias: number | null;
+  valor?: number | null;
+  /** true = já paga; false = ainda a vencer. */
+  paga?: boolean | null;
 };
 
 export type DoubleCheckInJustificativaOpcao = {
@@ -1948,6 +1969,24 @@ export async function criarLinkEvidenciaDoubleCheck(nota: {
   const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
   if (!res.ok || !body.url) return { url: '', erro: body.error ?? 'Não foi possível gerar o link.' };
   return { url: body.url };
+}
+
+export async function salvarPagamentoXmlPreEntrada(params: {
+  idDocumento: number;
+  situacao: 'ja_paga' | 'boleto_externo';
+  condicaoPagamento?: string;
+  formaPagamento?: string;
+  regra?: string;
+  dataBase?: string;
+  parcelas?: { dataVencimento: string; valor: number; paga?: boolean }[];
+}): Promise<{ ok: boolean; erro?: string }> {
+  const res = await apiFetch('/api/compras/double-checkin/pagamento-xml', {
+    method: 'PUT',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return { ok: true };
 }
 
 export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Promise<{

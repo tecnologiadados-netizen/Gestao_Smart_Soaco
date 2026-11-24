@@ -859,6 +859,13 @@ export default function DoubleCheckInPage() {
       return;
     }
 
+    if (regimeConferencia === 'completa' && linhas.some((l) => l.pagamentoXmlPendente)) {
+      setCompBloqueioMsg(
+        'A pré-entrada não tem fatura na NF. Informe se já foi paga ou lance a condição completa antes de conferir.'
+      );
+      return;
+    }
+
     const pendentes =
       regimeConferencia === 'completa'
         ? contarPendentesComparativo(linhas, decisoes)
@@ -1527,6 +1534,17 @@ export default function DoubleCheckInPage() {
                           });
                         }
                       }}
+                      onLinhasChange={(next) => {
+                        setCompLinhas(next);
+                        setCompBloqueioMsg(null);
+                        const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                        if (prev) {
+                          comparativoCacheRef.current.set(modalNota.idDocumento, {
+                            ...prev,
+                            linhas: next,
+                          });
+                        }
+                      }}
                     />
                 </div>
               </div>
@@ -1593,6 +1611,7 @@ export default function DoubleCheckInPage() {
                       Boolean(modalNota.conferido) ||
                       regimeDaNota(modalNota) === 'nao_aplicada' ||
                       compLoading ||
+                      compLinhas.some((l) => l.pagamentoXmlPendente) ||
                       (regimeDaNota(modalNota) === 'completa' &&
                         (compSemVinculo ||
                           comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0))

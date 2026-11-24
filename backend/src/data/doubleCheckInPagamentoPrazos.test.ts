@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   divergenciaCondicaoPorPrazos,
+  divergenciaCondicaoPreEntrada,
   ehCondicaoAVista,
 } from '../data/doubleCheckInRepository.js';
 
@@ -125,6 +126,44 @@ describe('divergenciaCondicaoPorPrazos — à vista', () => {
         regraNF: '1',
         condicaoPC: 'Não Existente',
         regraPC: '1',
+      })
+    ).toBe(false);
+  });
+});
+
+describe('divergenciaCondicaoPreEntrada', () => {
+  it('já paga contra pedido à vista não diverge', () => {
+    expect(
+      divergenciaCondicaoPreEntrada({
+        origem: 'ja_paga',
+        prazosNF: [0],
+        prazosPC: [],
+        condicaoPC: 'À Vista.',
+        regraPC: '0',
+      })
+    ).toBe(false);
+  });
+
+  it('boleto de 30 dias contra pedido de 21 diverge', () => {
+    expect(
+      divergenciaCondicaoPreEntrada({
+        origem: 'boleto_externo',
+        prazosNF: [30],
+        prazosPC: [21],
+        condicaoPC: '21 dias',
+        regraPC: '21',
+      })
+    ).toBe(true);
+  });
+
+  it('fatura de 30 dias usa a regra do pedido quando ele não tem parcela', () => {
+    expect(
+      divergenciaCondicaoPreEntrada({
+        origem: 'xml',
+        prazosNF: [30],
+        prazosPC: [],
+        condicaoPC: '30 dias',
+        regraPC: '30',
       })
     ).toBe(false);
   });

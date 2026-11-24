@@ -13,6 +13,7 @@ import {
   type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
 import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
+import PagamentoXmlPreEntradaPanel from './PagamentoXmlPreEntradaPanel';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const nfBrl4 = new Intl.NumberFormat('pt-BR', {
@@ -327,6 +328,35 @@ function pedidoDaAcao(natureza: 'real' | 'benigna' | undefined, ajuste: string):
   return `Ajustar ${ajuste}.`;
 }
 
+/** "12/15" → "2 parcelas para 12 e 15 dias". "0" → "1 parcela para 0 dias". */
+function textoParcelasPrazos(prazosLabel: string | null | undefined): string | null {
+  const dias = (prazosLabel ?? '')
+    .split('/')
+    .map((parte) => parte.trim())
+    .filter((parte) => /^\d+$/.test(parte));
+  if (dias.length === 0) return null;
+  const parcelas = dias.length === 1 ? '1 parcela' : `${dias.length} parcelas`;
+  const lista =
+    dias.length === 1
+      ? dias[0] === '1'
+        ? '1 dia'
+        : `${dias[0]} dias`
+      : dias.length === 2
+        ? `${dias[0]} e ${dias[1]} dias`
+        : `${dias.slice(0, -1).join(', ')} e ${dias[dias.length - 1]} dias`;
+  return `${parcelas} para ${lista}`;
+}
+
+function ladoCondicao(
+  prazosLabel: string | null | undefined,
+  condicao: string | null | undefined
+): string {
+  const prazos = textoParcelasPrazos(prazosLabel);
+  if (prazos) return prazos;
+  const nome = (condicao ?? '').trim();
+  return nome || 'sem prazo informado';
+}
+
 /** Frase curta de uma divergência (corpo), sem o cabeçalho padrão do Otimiza. */
 function fraseDivergencia(
   linha: DoubleCheckInComparativoLinha,
@@ -346,7 +376,9 @@ function fraseDivergencia(
   if (campo === 'valor_unitario') {
     return `Valor unitário do item ${item}: ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'o valor unitário do item do pedido')}`;
   }
-  return `Condição de pagamento (${nomePedidoLinha(linha)}): ${vals.nf} na NF e ${vals.pc} no PC. ${pedidoDaAcao(natureza, 'a condição de pagamento do pedido')}`;
+  const pc = ladoCondicao(linha.prazosLabelPC, linha.condicaoPagamentoPC);
+  const nf = ladoCondicao(linha.prazosLabelNF, linha.condicaoPagamentoNF);
+  return `Condição de pagamento (${nomePedidoLinha(linha)}): o PC tem ${pc} e a NF tem ${nf}. ${pedidoDaAcao(natureza, 'a condição de pagamento do pedido')}`;
 }
 
 const CABECALHO_SUGESTAO_OTIMIZA =
@@ -425,6 +457,7 @@ type Props = {
   erro: string | null;
   onDecisoesChange: (next: DoubleCheckInComparativoDecisao[]) => void;
   onSolicitacoesChange: (next: DoubleCheckInSolicitacaoOtimiza[]) => void;
+  onLinhasChange?: (next: DoubleCheckInComparativoLinha[]) => void;
 };
 
 export function contarPendentesComparativo(
@@ -452,6 +485,7 @@ export default function DoubleCheckInComparativoPcTab({
   erro,
   onDecisoesChange,
   onSolicitacoesChange,
+  onLinhasChange,
 }: Props) {
   const campoVisivel = (campo: DoubleCheckInCampoComparativo) =>
     criterios?.[campo] !== false || camposLancados.includes(campo);
@@ -481,13 +515,14 @@ export default function DoubleCheckInComparativoPcTab({
   const [obsErro, setObsErro] = useState<string | null>(null);
   const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
   const [ajudaTotaisAberta, setAjudaTotaisAberta] = useState(false);
+  const [pagamentoAberto, setPagamentoAberto] = useState(false);
 
   const totaisVinculos = useMemo(() => {
     const base = linhas[0];
     if (!base) return null;
     if (base.totalVinculosNF == null || base.totalVinculosPC == null) return null;
-    const totalNF = Number(base.totalVinculosNF);
-    const totalPC = Number(base.totalVinculosPC);
+    const totalNF = Number(base.totalRealNF ?? base.totalVinculosNF);
+    const totalPC = Number(base.totalRealPC ?? base.totalVinculosPC);
     const descontoNF = Number(base.descontoVinculosNF ?? 0);
     const descontoPC = Number(base.descontoVinculosPC ?? 0);
     if (![totalNF, totalPC, descontoNF, descontoPC].every((n) => Number.isFinite(n))) return null;
@@ -524,6 +559,10 @@ export default function DoubleCheckInComparativoPcTab({
 
   const qtdeDiverg = useMemo(
     () => linhas.reduce((s, l) => s + (l.temDivergencia ? 1 : 0), 0),
+    [linhas]
+  );
+  const pagamentoXmlPendente = useMemo(
+    () => linhas.some((l) => l.pagamentoXmlPendente),
     [linhas]
   );
   const pendentes = useMemo(
@@ -563,6 +602,17 @@ export default function DoubleCheckInComparativoPcTab({
     }
     return grupos;
   }, [linhas, decisoes, evidencia]);
+
+  const linhaPagamentoEditavel = useMemo(
+    () =>
+      linhas.find(
+        (l) =>
+          l.origemParcelasNF != null &&
+          l.origemParcelasNF !== 'nomus' &&
+          l.origemParcelasNF !== 'xml'
+      ) ?? null,
+    [linhas]
+  );
 
   const frasesDivergencia = useMemo(() => {
     const frases: string[] = [];
@@ -1107,11 +1157,16 @@ export default function DoubleCheckInComparativoPcTab({
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
           {linhas.length} vínculo(s)
         </span>
+        {pagamentoXmlPendente ? (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+            Fatura da NF pendente
+          </span>
+        ) : null}
         {qtdeDiverg > 0 ? (
           <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
             {qtdeDiverg} com divergência
           </span>
-        ) : (
+        ) : pagamentoXmlPendente ? null : (
           <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
             Sem divergências
           </span>
@@ -1142,7 +1197,7 @@ export default function DoubleCheckInComparativoPcTab({
             className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
             title={
               compara
-                ? 'Pré-entrada: não gera contas, mas a condição e as parcelas entram na comparação.'
+                ? 'Pré-entrada: a condição informada aqui é a da nota na divergência com o pedido. Não gera financeiro.'
                 : 'Essa movimentação não gera contas e a condição de pagamento não entra na comparação.'
             }
           >
@@ -1198,7 +1253,10 @@ export default function DoubleCheckInComparativoPcTab({
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                  title="Valor a pagar: produtos com desconto, mais IPI, ST, frete e demais acréscimos. Se os vínculos cobrem a nota inteira, é o total oficial da NF."
+                >
                   Total NF
                 </p>
                 <p
@@ -1212,7 +1270,10 @@ export default function DoubleCheckInComparativoPcTab({
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                  title="Valor a pagar do pedido: produtos com desconto, mais IPI e ST."
+                >
                   Total PC
                 </p>
                 <p
@@ -1245,20 +1306,23 @@ export default function DoubleCheckInComparativoPcTab({
                 Por que o unitário diverge, mas pode ser benigno?
               </p>
               <p className="mt-1.5">
-                Neste documento comparamos o{' '}
-                <strong className="font-semibold text-slate-700 dark:text-slate-200">total líquido</strong> da
-                NF com o do pedido (e o desconto de cada lado).
+                Total NF e Total PC são o{' '}
+                <strong className="font-semibold text-slate-700 dark:text-slate-200">valor a pagar</strong>:
+                produtos com desconto, mais IPI, substituição tributária, frete e demais acréscimos.
+                Quando os vínculos cobrem a nota inteira, o Total NF é o valor oficial da NF.
               </p>
               <ul className="mt-1.5 list-disc space-y-1 pl-4">
                 <li>
                   Se o <strong className="font-semibold text-slate-700 dark:text-slate-200">preço unitário da NF for maior</strong>,
-                  mas o <strong className="font-semibold text-slate-700 dark:text-slate-200">total da NF e do pedido forem iguais</strong>,
-                  a diferença é só a <strong className="font-semibold text-slate-700 dark:text-slate-200">forma do desconto</strong>{' '}
+                  mas o <strong className="font-semibold text-slate-700 dark:text-slate-200">líquido dos produtos</strong> da
+                  NF e do pedido forem iguais, a diferença é só a{' '}
+                  <strong className="font-semibold text-slate-700 dark:text-slate-200">forma do desconto</strong>{' '}
                   (ex.: % no pedido e valor cheio na nota) → <strong className="font-semibold text-emerald-700 dark:text-emerald-300">benigna</strong>.
+                  IPI e ST entram no total a pagar e o IPI segue no card próprio.
                 </li>
                 <li>
-                  Se o unitário da NF for maior e os{' '}
-                  <strong className="font-semibold text-slate-700 dark:text-slate-200">totais não fecharem</strong> →{' '}
+                  Se o unitário da NF for maior e o{' '}
+                  <strong className="font-semibold text-slate-700 dark:text-slate-200">líquido dos produtos não fechar</strong> →{' '}
                   <strong className="font-semibold text-rose-700 dark:text-rose-300">real</strong>.
                 </li>
               </ul>
@@ -1272,7 +1336,7 @@ export default function DoubleCheckInComparativoPcTab({
           <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Divergência do documento
           </h4>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             {gruposPagamento.map((grupo) => (
               <div key={grupo.key} className="w-full max-w-xs">
                 {gruposPagamento.length > 1 ? (
@@ -1283,9 +1347,43 @@ export default function DoubleCheckInComparativoPcTab({
                 {renderCampoCard(grupo.linha, CAMPO_PAGAMENTO)}
               </div>
             ))}
+            {!somenteLeitura && !evidencia && linhaPagamentoEditavel ? (
+              <button
+                type="button"
+                className={`${btnSecondary} shrink-0`}
+                onClick={() => setPagamentoAberto(true)}
+              >
+                Editar
+              </button>
+            ) : null}
           </div>
         </section>
       )}
+
+      {pagamentoAberto && linhaPagamentoEditavel && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[10070] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Editar condição de pagamento"
+              onClick={() => setPagamentoAberto(false)}
+            >
+              <div className="my-auto w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+                <PagamentoXmlPreEntradaPanel
+                  idDocumento={idDocumento}
+                  linhas={linhas}
+                  somenteLeitura={somenteLeitura}
+                  evidencia={evidencia}
+                  editarAoAbrir
+                  onFechar={() => setPagamentoAberto(false)}
+                  onLinhasChange={onLinhasChange}
+                />
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       <div className="space-y-3">
         {linhas.map((linha) => {
@@ -1730,6 +1828,12 @@ export default function DoubleCheckInComparativoPcTab({
                             </td>
                             <td className="px-2 py-2 tabular-nums">
                               {fmtYmdBr(a?.dataVencimento)}
+                              {a?.valor != null ? (
+                                <span className="block text-[10px] font-normal text-slate-500">
+                                  {nfBrl.format(a.valor)}
+                                  {a.paga === true ? ' · já paga' : a.paga === false ? ' · a vencer' : ''}
+                                </span>
+                              ) : null}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums font-semibold">
                               {diasNf != null ? `${diasNf}d` : '—'}
@@ -1764,7 +1868,7 @@ export default function DoubleCheckInComparativoPcTab({
               </div>
 
               <p className="mt-3 text-xs text-slate-500">
-                Condição cadastral: NF{' '}
+                Condição: NF{' '}
                 <strong>
                   {prazosModalLinha.condicaoPagamentoNF ?? '—'}
                   {prazosModalLinha.regraPagamentoNF
@@ -1778,8 +1882,14 @@ export default function DoubleCheckInComparativoPcTab({
                     ? ` · ${prazosModalLinha.regraPagamentoPC}`
                     : ''}
                 </strong>
-                . O critério de divergência usa os dias (vencimento − data base).
-                Se ambos forem à vista, data base ausente no PC ou no DE não conta como divergência.
+                {prazosModalLinha.formaPagamentoNF
+                  ? ` · Forma: ${prazosModalLinha.formaPagamentoNF}`
+                  : ''}
+                . O critério de divergência usa os dias de todas as parcelas (vencimento − data base).
+                {prazosModalLinha.origemParcelasNF &&
+                prazosModalLinha.origemParcelasNF !== 'nomus'
+                  ? ' Na pré-entrada, a data base da NF é a emissão da nota.'
+                  : ' Se ambos forem à vista, data base ausente no PC ou no DE não conta como divergência.'}
               </p>
             </div>
           </div>,

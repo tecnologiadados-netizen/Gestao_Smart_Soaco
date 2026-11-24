@@ -402,6 +402,22 @@ model DoubleCheckInComparativoObsHist {
   @@map("double_checkin_comparativo_obs_hist")
 }
 
+/// Resposta do conferente quando a pré-entrada não tem fatura no XML da NF.
+model DoubleCheckInPagamentoXml {
+  id                 Int      @id @default(autoincrement())
+  idDocumentoEstoque Int      @unique
+  chaveNfe           String?
+  /// ja_paga | boleto_externo
+  situacao           String
+  /// JSON { condicaoPagamento, formaPagamento, parcelas: [{ numero, dataVencimento, valor, paga }] }
+  parcelasJson       String   @default("[]")
+  usuarioId          Int
+  usuarioLogin       String
+  atualizadoEm       DateTime @default(now()) @updatedAt
+
+  @@map("double_checkin_pagamento_xml")
+}
+
 /// Conferência às cegas (Recebimento): andamento local do DE de pré-entrada.
 model RecebimentoConferencia {
   id                    Int      @id @default(autoincrement())
