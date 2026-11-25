@@ -179,7 +179,7 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
   /** Pesos relativos das colunas fixas; fornecedores recebem peso 8 cada. */
   const COL_PESOS_FIXOS = [
     4, 11, 4, 9, // código, descrição, und, observações
-    4, 3, 5, 5, 4, 5, 4, 4, 4, 5, 4, 6, 4, 3, 3, 3, // demais (até Pré Entrada)
+    4, 3, 5, 5, 4, 5, 4, 4, 4, 5, 4, 6, 4, 3, 3, // demais (até Pré Compra)
   ] as const;
   const COL_PESO_FORNECEDOR = 8;
 
@@ -466,13 +466,12 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Preço Ant</th>
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>PC Pend</th>
                 <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Pré Compra</th>
-                <th className="border border-slate-300 px-0.5 py-0.5 text-center font-semibold align-middle" style={{ fontSize: '0.95em' }}>Pré Entrada</th>
               </tr>
             </thead>
             <tbody>
               {produtos.length === 0 && (
                 <tr>
-                  <td colSpan={20 + fornecedores.length} className="border border-slate-300 px-0.5 py-2 text-center text-black">
+                  <td colSpan={19 + fornecedores.length} className="border border-slate-300 px-0.5 py-2 text-center text-black">
                     Nenhum produto na coleta ou nenhum preço cadastrado.
                   </td>
                 </tr>
@@ -492,8 +491,6 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                 const pcPend = getRowValue(row, ['PC', 'pc']);
                 /** SQL Nomus: `coalesce(agpag.quantidade,0) as 'Pré Compra'` (legado: 'Ag Pag') */
                 const agPag = getRowValue(row, ['Pré Compra', 'pré compra', 'Ag Pag', 'ag pag']);
-                /** SQL Nomus: `Coalesce(preent.quantidade, 0) As 'Pré Entrada'` (doc tipo 46 + pedido atendido). */
-                const preEntrada = getRowValue(row, ['Pré Entrada', 'pré entrada', 'Pre Entrada', 'pre entrada']);
                 const qtdSolicit = getRowValue(row, ['Qtd Liberada', 'qtd liberada']);
                 const solicitanteSc = String(getRowValue(row, ['Usuario', 'usuario']) ?? '').trim();
                 const dataNecess = getRowValue(row, ['Data Necessidade', 'data necessidade']);
@@ -542,7 +539,6 @@ export default function ConteudoMapaCotacao({ coleta, onClose }: ConteudoMapaCot
                     <td className="border border-slate-300 px-0.5 py-0.5 text-right whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{precoAntStr}</td>
                     <td className="border border-slate-300 px-0.5 py-0.5 text-center whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{fmtNum(pcPend)}</td>
                     <td className="border border-slate-300 px-0.5 py-0.5 text-center whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{fmtNum(agPag)}</td>
-                    <td className="border border-slate-300 px-0.5 py-0.5 text-center whitespace-nowrap align-top text-black" style={{ fontSize: '0.95em' }}>{fmtNum(preEntrada)}</td>
                   </tr>
                 );
               })}
