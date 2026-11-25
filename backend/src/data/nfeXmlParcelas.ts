@@ -45,7 +45,16 @@ export type NfeXmlPagamento = {
   vNF: number | null;
   temFatura: boolean;
   dups: ParcelaXml[];
+  /** Códigos tPag do XML. 17 e 20 são PIX. */
+  tPags: string[];
 };
+
+/** PIX dinâmico (17) e PIX estático (20). Sem duplicata, a nota já está paga. */
+const TPAG_PIX = new Set(['17', '20']);
+
+export function notaPagaPorPix(tPags: string[]): boolean {
+  return tPags.length > 0 && tPags.every((codigo) => TPAG_PIX.has(codigo));
+}
 
 export type PagamentoPreEntradaResolvido = {
   origem: OrigemParcelasNf;
@@ -100,7 +109,7 @@ export function diasEntreYmdXml(base: string | null, venc: string | null): numbe
 }
 
 export function extrairPagamentoXmlNfe(xml: string | null | undefined): NfeXmlPagamento {
-  const vazio: NfeXmlPagamento = { dhEmi: null, vNF: null, temFatura: false, dups: [] };
+  const vazio: NfeXmlPagamento = { dhEmi: null, vNF: null, temFatura: false, dups: [], tPags: [] };
   if (!xml || !xml.trim()) return vazio;
   const texto = xmlLegivel(xml);
   const dhEmi = ymdDeDataXml(tagValor(texto, 'dhEmi') ?? tagValor(texto, 'dEmi'));
@@ -122,7 +131,10 @@ export function extrairPagamentoXmlNfe(xml: string | null | undefined): NfeXmlPa
   dups.forEach((d, i) => {
     d.numero = i + 1;
   });
-  return { dhEmi, vNF, temFatura: dups.length > 0, dups };
+  const tPags = [...texto.matchAll(/<tPag>([^<]*)<\/tPag>/g)]
+    .map((m) => (m[1] ?? '').trim())
+    .filter(Boolean);
+  return { dhEmi, vNF, temFatura: dups.length > 0, dups, tPags };
 }
 
 function parcelaPrazo(
@@ -202,6 +214,19 @@ export function resolverParcelasPreEntrada(params: {
       regra: null,
       formaPagamento: null,
       parcelas,
+      valorNf: extraido.vNF,
+    };
+  }
+
+  if (notaPagaPorPix(extraido.tPags)) {
+    return {
+      origem: 'ja_paga',
+      pendente: false,
+      dataBase,
+      condicao: 'À vista',
+      regra: '0',
+      formaPagamento: 'PIX',
+      parcelas: [parcelaPrazo(1, dataBase, dataBase, extraido.vNF, 0, true)],
       valorNf: extraido.vNF,
     };
   }

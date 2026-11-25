@@ -53,6 +53,19 @@ describe('resolverParcelasPreEntrada', () => {
     expect(r.condicao).toBe('Fatura da NF');
   });
 
+  it('PIX sem duplicata não fica com fatura pendente', () => {
+    const xml = XML_A_VISTA.replace('<tPag>01</tPag>', '<tPag>17</tPag>');
+    const r = resolverParcelasPreEntrada({
+      xml,
+      resposta: null,
+      dataBaseDocumento: null,
+    });
+    expect(r.origem).toBe('ja_paga');
+    expect(r.pendente).toBe(false);
+    expect(r.formaPagamento).toBe('PIX');
+    expect(r.parcelas[0]).toMatchObject({ dias: 0, valor: 110 });
+  });
+
   it('sem fatura fica pendente até o usuário responder', () => {
     const r = resolverParcelasPreEntrada({
       xml: XML_A_VISTA,
