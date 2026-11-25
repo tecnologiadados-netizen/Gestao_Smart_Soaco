@@ -3,6 +3,7 @@
  */
 
 import type { Request, Response } from 'express';
+import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/prisma.js';
 import {
@@ -37,6 +38,10 @@ import {
   listarSolicitacoesOtimizaPorDocumentos,
   atualizarStatusSolicitacoesOtimizaPorNumero,
   gravarSolicitacaoOtimiza,
+  gravarFormularioDivergencia,
+  listarFormulariosDivergencia,
+  obterFormularioDivergenciaPorChave,
+  obterFormularioDivergenciaPorId,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
   listarIdsComAtencaoDetectada,
@@ -78,6 +83,10 @@ import {
   type NaturezaDivergencia,
 } from '../services/doubleCheckInNatureza.js';
 import { documentoConferidoComDivergencia } from '../services/doubleCheckInStatusConferencia.js';
+import {
+  resolveDoubleCheckInFormularioAbsPath,
+  saveDoubleCheckInFormulario,
+} from '../utils/doubleCheckInFormularioUpload.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import { pagamentoXmlPendenteEfetivo } from '../utils/doubleCheckInFaturaConferencia.js';
@@ -655,11 +664,13 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
   }
   try {
     await ensureDoubleCheckInJustificativaOpcoes();
-    const [{ linhas, erro }, decisoes, justificativas, solicitacoesOtimiza, dataDocumento] = await Promise.all([
+    const [{ linhas, erro }, decisoes, justificativas, solicitacoesOtimiza, formularios, dataDocumento] =
+      await Promise.all([
       queryDoubleCheckInComparativoPc({ idDocumento }),
       listarDecisoesComparativo(idDocumento),
       listarJustificativaOpcoes(true),
       listarSolicitacoesOtimiza(idDocumento),
+      listarFormulariosDivergencia(idDocumento),
       queryDoubleCheckInDataEntrada(idDocumento),
     ]);
     if (erro) {
@@ -684,6 +695,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
         decisoes,
         justificativas,
         solicitacoesOtimiza: solicitacoesAtuais,
+        formulariosDivergencia: formularios,
         pendentes: 0,
         criterios: {
           valor_unitario: true,
@@ -704,6 +716,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
       decisoes,
       justificativas,
       solicitacoesOtimiza: solicitacoesAtuais,
+      formulariosDivergencia: formularios,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
       criterios: aplicado.criterios,
       camposLancados: aplicado.camposLancados,
@@ -985,6 +998,214 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });
   }
+}
+
+/**
+ * PUT /api/compras/double-checkin/formulario-divergencia
+ * body: { idDocumento, idItemDocumentoEstoque, idItemPedidoCompra, campo,
+ *   aplicarNasDemais?, arquivo?: { fileName, mimeType, contentBase64 } }
+ * O formulário é opcional no aceite. O mesmo arquivo pode ser copiado para as demais divergências em aberto.
+ */
+export async function putDoubleCheckInFormularioDivergencia(req: Request, res: Response): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const idItemDocumentoEstoque = Math.trunc(Number(req.body?.idItemDocumentoEstoque));
+  const idItemPedidoCompra = Math.trunc(Number(req.body?.idItemPedidoCompra));
+  const campo = String(req.body?.campo ?? '').trim() as DoubleCheckInCampoComparativo;
+  const aplicarNasDemais = req.body?.aplicarNasDemais === true;
+  const arquivoBody = req.body?.arquivo;
+
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemDocumentoEstoque) || idItemDocumentoEstoque <= 0) {
+    res.status(400).json({ error: 'idItemDocumentoEstoque inválido.' });
+    return;
+  }
+  if (!Number.isFinite(idItemPedidoCompra) || idItemPedidoCompra <= 0) {
+    res.status(400).json({ error: 'idItemPedidoCompra inválido.' });
+    return;
+  }
+  if (!(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(campo)) {
+    res.status(400).json({ error: 'campo inválido.' });
+    return;
+  }
+
+  try {
+    const dataDocumento = await queryDoubleCheckInDataEntrada(idDocumento);
+    if (dataDocumento.erro) {
+      res.status(503).json({ error: dataDocumento.erro });
+      return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) !== 'completa') {
+      res.status(400).json({
+        error: 'Para entradas anteriores a 21/09/2026, o comparativo NF × PC é somente leitura.',
+      });
+      return;
+    }
+    const usuario = await prisma.usuario.findUnique({
+      where: { login },
+      select: { id: true, login: true },
+    });
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    const ja = await getDocumentoConferido(idDocumento);
+    if (ja) {
+      const decisoesAntes = await listarDecisoesComparativo(idDocumento);
+      const decisaoExistente = decisoesAntes.find(
+        (item) =>
+          item.vigente !== false &&
+          item.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+          item.idItemPedidoCompra === idItemPedidoCompra &&
+          item.campo === campo
+      );
+      if (decisaoExistente) {
+        res.status(400).json({
+          error: 'Esta divergência já possui decisão. Reabra a conferência para alterar o formulário.',
+        });
+        return;
+      }
+    }
+
+    let arquivo: {
+      nomeArquivo: string;
+      caminhoArquivo: string;
+      mimeType: string;
+      tamanhoBytes: number;
+    } | null = null;
+    if (arquivoBody && typeof arquivoBody === 'object') {
+      const salvo = saveDoubleCheckInFormulario({
+        fileName: String(arquivoBody.fileName ?? ''),
+        mimeType: typeof arquivoBody.mimeType === 'string' ? arquivoBody.mimeType : undefined,
+        contentBase64: String(arquivoBody.contentBase64 ?? ''),
+      });
+      arquivo = {
+        nomeArquivo: salvo.originalName,
+        caminhoArquivo: salvo.storagePath,
+        mimeType: salvo.mimeType,
+        tamanhoBytes: salvo.sizeBytes,
+      };
+    } else if (aplicarNasDemais) {
+      const existente = await obterFormularioDivergenciaPorChave({
+        idDocumentoEstoque: idDocumento,
+        idItemDocumentoEstoque,
+        idItemPedidoCompra,
+        campo,
+      });
+      if (!existente) {
+        res.status(400).json({ error: 'Anexe o formulário nesta divergência antes de adicioná-lo às demais.' });
+        return;
+      }
+      arquivo = {
+        nomeArquivo: existente.nomeArquivo,
+        caminhoArquivo: existente.caminhoArquivo,
+        mimeType: existente.mimeType,
+        tamanhoBytes: existente.tamanhoBytes,
+      };
+    }
+    if (!arquivo) {
+      res.status(400).json({ error: 'Selecione o arquivo do formulário de divergência.' });
+      return;
+    }
+
+    const base = {
+      idDocumentoEstoque: idDocumento,
+      nomeArquivo: arquivo.nomeArquivo,
+      caminhoArquivo: arquivo.caminhoArquivo,
+      mimeType: arquivo.mimeType,
+      tamanhoBytes: arquivo.tamanhoBytes,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    };
+    const formulario = await gravarFormularioDivergencia({
+      ...base,
+      idItemDocumentoEstoque,
+      idItemPedidoCompra,
+      campo,
+    });
+    const replicadas = [];
+    if (aplicarNasDemais) {
+      const { linhas } = await queryDoubleCheckInComparativoPc({ idDocumento });
+      const decisoesVigentes = await listarDecisoesComparativo(idDocumento);
+      const jaDecidido = (idItemDoc: number, idItemPc: number, campoAlvo: string) =>
+        decisoesVigentes.some(
+          (item) =>
+            item.vigente !== false &&
+            item.idItemDocumentoEstoque === idItemDoc &&
+            item.idItemPedidoCompra === idItemPc &&
+            item.campo === campoAlvo
+        );
+      for (const linha of linhas) {
+        const alvos: { campo: DoubleCheckInCampoComparativo; divergente: boolean }[] = [
+          { campo: 'valor_unitario', divergente: linha.divergValorUnitario },
+          { campo: 'qtde', divergente: linha.divergQtde },
+          { campo: 'ipi', divergente: linha.divergIpi },
+          { campo: 'condicao_pagamento', divergente: linha.divergCondicaoPagamento },
+        ];
+        for (const alvo of alvos) {
+          if (!alvo.divergente) continue;
+          if (
+            linha.idItemDocumentoEstoque === idItemDocumentoEstoque &&
+            linha.idItemPedidoCompra === idItemPedidoCompra &&
+            alvo.campo === campo
+          ) {
+            continue;
+          }
+          if (jaDecidido(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, alvo.campo)) continue;
+          replicadas.push(
+            await gravarFormularioDivergencia({
+              ...base,
+              campo: alvo.campo,
+              idItemDocumentoEstoque: linha.idItemDocumentoEstoque,
+              idItemPedidoCompra: linha.idItemPedidoCompra,
+            })
+          );
+        }
+      }
+    }
+    res.json({ ok: true, formulario, replicadas });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/**
+ * GET /api/compras/double-checkin/formulario-divergencia/:id/arquivo
+ */
+export async function getDoubleCheckInFormularioDivergenciaArquivo(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const id = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Formulário inválido.' });
+    return;
+  }
+  const formulario = await obterFormularioDivergenciaPorId(id);
+  if (!formulario) {
+    res.status(404).json({ error: 'Formulário de divergência não encontrado.' });
+    return;
+  }
+  const abs = resolveDoubleCheckInFormularioAbsPath(formulario.caminhoArquivo);
+  if (!abs) {
+    res.status(404).json({ error: 'O arquivo do formulário de divergência não está mais disponível.' });
+    return;
+  }
+  const nome = formulario.nomeArquivo.replace(/[\r\n"]/g, '') || 'formulario-divergencia';
+  res.setHeader('Content-Type', formulario.mimeType || 'application/octet-stream');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${nome}"; filename*=UTF-8''${encodeURIComponent(formulario.nomeArquivo)}`
+  );
+  fs.createReadStream(abs).pipe(res);
 }
 
 /**

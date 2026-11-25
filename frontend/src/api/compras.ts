@@ -1965,6 +1965,20 @@ export type DoubleCheckInSolicitacaoOtimiza = {
   status?: 'in_progress' | 'completed' | 'cancelled' | null;
 };
 
+export type DoubleCheckInFormularioDivergencia = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  nomeArquivo: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  usuarioId: number;
+  usuarioLogin: string;
+  atualizadoEm: string;
+};
+
 export async function criarLinkEvidenciaDoubleCheck(nota: {
   idDocumento: number;
   numeroDocumentoFiscal?: string | null;
@@ -2011,6 +2025,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
+  formulariosDivergencia: DoubleCheckInFormularioDivergencia[];
   pendentes: number;
   criterios: CriteriosDivergenciaDoubleCheck;
   camposLancados: DoubleCheckInCampoComparativo[];
@@ -2023,6 +2038,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     decisoes?: DoubleCheckInComparativoDecisao[];
     justificativas?: DoubleCheckInJustificativaOpcao[];
     solicitacoesOtimiza?: DoubleCheckInSolicitacaoOtimiza[];
+    formulariosDivergencia?: DoubleCheckInFormularioDivergencia[];
     pendentes?: number;
     criterios?: Partial<CriteriosDivergenciaDoubleCheck>;
     camposLancados?: string[];
@@ -2046,6 +2062,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
       decisoes: [],
       justificativas: [],
       solicitacoesOtimiza: [],
+      formulariosDivergencia: [],
       pendentes: 0,
       criterios,
       camposLancados: [],
@@ -2058,6 +2075,7 @@ export async function fetchDoubleCheckInComparativoPc(idDocumento: number): Prom
     decisoes: Array.isArray(body.decisoes) ? body.decisoes : [],
     justificativas: Array.isArray(body.justificativas) ? body.justificativas : [],
     solicitacoesOtimiza: Array.isArray(body.solicitacoesOtimiza) ? body.solicitacoesOtimiza : [],
+    formulariosDivergencia: Array.isArray(body.formulariosDivergencia) ? body.formulariosDivergencia : [],
     pendentes: typeof body.pendentes === 'number' ? body.pendentes : 0,
     criterios,
     camposLancados,
@@ -2125,6 +2143,91 @@ export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
     concluida: body.concluida === true,
     mensagem: body.mensagem ?? null,
   };
+}
+
+function lerArquivoComoBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? '');
+      const contentBase64 = dataUrl.includes(',') ? (dataUrl.split(',')[1] ?? '') : '';
+      resolve(contentBase64);
+    };
+    reader.onerror = () => reject(new Error('Não foi possível ler o formulário de divergência.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function saveDoubleCheckInFormularioDivergencia(params: {
+  idDocumento: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  aplicarNasDemais?: boolean;
+  arquivo?: File | null;
+}): Promise<{
+  ok: boolean;
+  formulario?: DoubleCheckInFormularioDivergencia;
+  replicadas?: DoubleCheckInFormularioDivergencia[];
+  erro?: string;
+}> {
+  let arquivo: { fileName: string; mimeType: string; contentBase64: string } | undefined;
+  if (params.arquivo) {
+    if (params.arquivo.size > 15 * 1024 * 1024) {
+      return { ok: false, erro: 'O formulário pode ter no máximo 15 MB.' };
+    }
+    const contentBase64 = await lerArquivoComoBase64(params.arquivo);
+    arquivo = {
+      fileName: params.arquivo.name,
+      mimeType: params.arquivo.type || 'application/octet-stream',
+      contentBase64,
+    };
+  }
+  const res = await apiFetch('/api/compras/double-checkin/formulario-divergencia', {
+    method: 'PUT',
+    body: {
+      idDocumento: params.idDocumento,
+      idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.idItemPedidoCompra,
+      campo: params.campo,
+      aplicarNasDemais: params.aplicarNasDemais === true,
+      ...(arquivo ? { arquivo } : {}),
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    formulario?: DoubleCheckInFormularioDivergencia;
+    replicadas?: DoubleCheckInFormularioDivergencia[];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return {
+    ok: true,
+    formulario: body.formulario,
+    replicadas: Array.isArray(body.replicadas) ? body.replicadas : [],
+  };
+}
+
+export async function abrirDoubleCheckInFormularioDivergencia(
+  formulario: Pick<DoubleCheckInFormularioDivergencia, 'id' | 'nomeArquivo'>
+): Promise<{ erro?: string }> {
+  const res = await apiFetch(`/api/compras/double-checkin/formulario-divergencia/${formulario.id}/arquivo`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { erro: body.error ?? 'Não foi possível abrir o formulário de divergência.' };
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.download = formulario.nomeArquivo || 'formulario-divergencia';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return {};
 }
 
 export async function saveDoubleCheckInSolicitacaoOtimizaSemVinculo(params: {

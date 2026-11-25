@@ -650,6 +650,128 @@ export async function gravarSolicitacaoOtimiza(params: {
   };
 }
 
+export type DoubleCheckInFormularioDivergenciaRow = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  nomeArquivo: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  usuarioId: number;
+  usuarioLogin: string;
+  atualizadoEm: string;
+};
+
+type FormularioDivergenciaDb = {
+  id: number;
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: string;
+  nomeArquivo: string;
+  caminhoArquivo: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  usuarioId: number;
+  usuarioLogin: string;
+  atualizadoEm: Date;
+};
+
+function mapFormularioDivergencia(
+  row: FormularioDivergenciaDb
+): DoubleCheckInFormularioDivergenciaRow {
+  return {
+    id: row.id,
+    idDocumentoEstoque: row.idDocumentoEstoque,
+    idItemDocumentoEstoque: row.idItemDocumentoEstoque,
+    idItemPedidoCompra: row.idItemPedidoCompra,
+    campo: row.campo as DoubleCheckInCampoComparativo,
+    nomeArquivo: row.nomeArquivo,
+    mimeType: row.mimeType,
+    tamanhoBytes: row.tamanhoBytes,
+    usuarioId: row.usuarioId,
+    usuarioLogin: row.usuarioLogin,
+    atualizadoEm: row.atualizadoEm.toISOString(),
+  };
+}
+
+export async function listarFormulariosDivergencia(
+  idDocumentoEstoque: number
+): Promise<DoubleCheckInFormularioDivergenciaRow[]> {
+  const rows = await prisma.doubleCheckInFormularioDivergencia.findMany({
+    where: { idDocumentoEstoque },
+    orderBy: { id: 'asc' },
+  });
+  return rows.map(mapFormularioDivergencia);
+}
+
+export async function obterFormularioDivergenciaPorId(
+  id: number
+): Promise<(DoubleCheckInFormularioDivergenciaRow & { caminhoArquivo: string }) | null> {
+  const row = await prisma.doubleCheckInFormularioDivergencia.findUnique({ where: { id } });
+  if (!row) return null;
+  return { ...mapFormularioDivergencia(row), caminhoArquivo: row.caminhoArquivo };
+}
+
+export async function obterFormularioDivergenciaPorChave(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: string;
+}): Promise<(DoubleCheckInFormularioDivergenciaRow & { caminhoArquivo: string }) | null> {
+  const row = await prisma.doubleCheckInFormularioDivergencia.findUnique({
+    where: {
+      idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+        idItemPedidoCompra: params.idItemPedidoCompra,
+        campo: params.campo,
+      },
+    },
+  });
+  if (!row) return null;
+  return { ...mapFormularioDivergencia(row), caminhoArquivo: row.caminhoArquivo };
+}
+
+export async function gravarFormularioDivergencia(params: {
+  idDocumentoEstoque: number;
+  idItemDocumentoEstoque: number;
+  idItemPedidoCompra: number;
+  campo: DoubleCheckInCampoComparativo;
+  nomeArquivo: string;
+  caminhoArquivo: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  usuarioId: number;
+  usuarioLogin: string;
+}): Promise<DoubleCheckInFormularioDivergenciaRow> {
+  if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
+    throw new Error(`Campo inválido: ${params.campo}`);
+  }
+  const row = await prisma.doubleCheckInFormularioDivergencia.upsert({
+    where: {
+      idDocumentoEstoque_idItemDocumentoEstoque_idItemPedidoCompra_campo: {
+        idDocumentoEstoque: params.idDocumentoEstoque,
+        idItemDocumentoEstoque: params.idItemDocumentoEstoque,
+        idItemPedidoCompra: params.idItemPedidoCompra,
+        campo: params.campo,
+      },
+    },
+    create: params,
+    update: {
+      nomeArquivo: params.nomeArquivo,
+      caminhoArquivo: params.caminhoArquivo,
+      mimeType: params.mimeType,
+      tamanhoBytes: params.tamanhoBytes,
+      usuarioId: params.usuarioId,
+      usuarioLogin: params.usuarioLogin,
+    },
+  });
+  return mapFormularioDivergencia(row);
+}
+
 export async function upsertDecisaoComparativo(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;

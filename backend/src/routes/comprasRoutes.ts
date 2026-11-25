@@ -43,6 +43,8 @@ import {
   putDoubleCheckInCriterios,
   putDoubleCheckInSolicitacaoOtimiza,
   putDoubleCheckInSolicitacaoOtimizaSemVinculo,
+  putDoubleCheckInFormularioDivergencia,
+  getDoubleCheckInFormularioDivergenciaArquivo,
   postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
@@ -581,6 +583,16 @@ router.put(
   '/double-checkin/solicitacao-otimiza-sem-vinculo',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(putDoubleCheckInSolicitacaoOtimizaSemVinculo)
+);
+router.put(
+  '/double-checkin/formulario-divergencia',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(putDoubleCheckInFormularioDivergencia)
+);
+router.get(
+  '/double-checkin/formulario-divergencia/:id/arquivo',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(getDoubleCheckInFormularioDivergenciaArquivo)
 );
 router.put(
   '/double-checkin/comparativo-decisao',

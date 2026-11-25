@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, CircleHelp, Copy, Eye, Link2, MessageSquarePlus, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, Copy, Eye, Link2, MessageSquarePlus, Paperclip, X, XCircle } from 'lucide-react';
 import {
+  abrirDoubleCheckInFormularioDivergencia,
   addDoubleCheckInComparativoObservacao,
   DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO,
   saveDoubleCheckInComparativoDecisao,
+  saveDoubleCheckInFormularioDivergencia,
   saveDoubleCheckInSolicitacaoOtimiza,
   saveDoubleCheckInSolicitacaoOtimizaSemVinculo,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInComparativoObsHist,
+  type DoubleCheckInFormularioDivergencia,
   type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
@@ -464,12 +467,14 @@ type Props = {
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
+  formularios?: DoubleCheckInFormularioDivergencia[];
   criterios?: Partial<Record<DoubleCheckInCampoComparativo, boolean>>;
   camposLancados?: DoubleCheckInCampoComparativo[];
   loading: boolean;
   erro: string | null;
   onDecisoesChange: (next: DoubleCheckInComparativoDecisao[]) => void;
   onSolicitacoesChange: (next: DoubleCheckInSolicitacaoOtimiza[]) => void;
+  onFormulariosChange?: (next: DoubleCheckInFormularioDivergencia[]) => void;
   onLinhasChange?: (next: DoubleCheckInComparativoLinha[]) => void;
 };
 
@@ -494,12 +499,14 @@ export default function DoubleCheckInComparativoPcTab({
   decisoes,
   justificativas,
   solicitacoesOtimiza,
+  formularios = [],
   criterios,
   camposLancados = [],
   loading,
   erro,
   onDecisoesChange,
   onSolicitacoesChange,
+  onFormulariosChange,
   onLinhasChange,
 }: Props) {
   const campoVisivel = (campo: DoubleCheckInCampoComparativo) =>
@@ -523,6 +530,10 @@ export default function DoubleCheckInComparativoPcTab({
   const [salvando, setSalvando] = useState(false);
   const [salvandoNumero, setSalvandoNumero] = useState(false);
   const [justErro, setJustErro] = useState<string | null>(null);
+  const [arquivoFormulario, setArquivoFormulario] = useState<File | null>(null);
+  const [salvandoFormulario, setSalvandoFormulario] = useState(false);
+  const [formularioInputKey, setFormularioInputKey] = useState(0);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
 
   const [draftObs, setDraftObs] = useState<DraftObs | null>(null);
   const [novaObs, setNovaObs] = useState('');
@@ -574,6 +585,17 @@ export default function DoubleCheckInComparativoPcTab({
       ) ?? null,
     [solicitacoesOtimiza]
   );
+
+  const formularioMap = useMemo(() => {
+    const m = new Map<string, DoubleCheckInFormularioDivergencia>();
+    for (const formulario of formularios) {
+      m.set(
+        chaveDecisao(formulario.idItemDocumentoEstoque, formulario.idItemPedidoCompra, formulario.campo),
+        formulario
+      );
+    }
+    return m;
+  }, [formularios]);
 
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
@@ -740,6 +762,8 @@ export default function DoubleCheckInComparativoPcTab({
     setNumeroGravado(salva?.numero ?? null);
     setStatusGravado(salva?.status ?? null);
     setAplicouNasDemais(false);
+    setArquivoFormulario(null);
+    setFormularioInputKey((k) => k + 1);
     setJustErro(null);
     setAvisoOtimiza(
       salva?.status === 'in_progress'
@@ -847,6 +871,56 @@ export default function DoubleCheckInComparativoPcTab({
       }
     } finally {
       setSalvandoNumero(false);
+    }
+  };
+
+  const abrirFormulario = async (formulario: DoubleCheckInFormularioDivergencia) => {
+    setErroArquivo(null);
+    const r = await abrirDoubleCheckInFormularioDivergencia(formulario);
+    if (r.erro) setErroArquivo(r.erro);
+  };
+
+  const anexarFormulario = async (aplicarNasDemais = false) => {
+    if (!draft || draft.decisao !== 'aceita') return;
+    const salvo = formularioMap.get(
+      chaveDecisao(draft.linha.idItemDocumentoEstoque, draft.linha.idItemPedidoCompra, draft.campo)
+    );
+    if (!arquivoFormulario && !(aplicarNasDemais && salvo)) {
+      setJustErro('Selecione o arquivo do formulário de divergência.');
+      return;
+    }
+    setSalvandoFormulario(true);
+    setJustErro(null);
+    setErroArquivo(null);
+    try {
+      const r = await saveDoubleCheckInFormularioDivergencia({
+        idDocumento,
+        idItemDocumentoEstoque: draft.linha.idItemDocumentoEstoque,
+        idItemPedidoCompra: draft.linha.idItemPedidoCompra,
+        campo: draft.campo,
+        aplicarNasDemais,
+        arquivo: arquivoFormulario,
+      });
+      if (r.erro || !r.formulario) {
+        setJustErro(r.erro ?? 'Não foi possível anexar o formulário de divergência.');
+        return;
+      }
+      const aplicadas = [r.formulario, ...(r.replicadas ?? [])];
+      const keys = new Set(
+        aplicadas.map((item) =>
+          chaveDecisao(item.idItemDocumentoEstoque, item.idItemPedidoCompra, item.campo)
+        )
+      );
+      onFormulariosChange?.([
+        ...formularios.filter(
+          (item) => !keys.has(chaveDecisao(item.idItemDocumentoEstoque, item.idItemPedidoCompra, item.campo))
+        ),
+        ...aplicadas,
+      ]);
+      setArquivoFormulario(null);
+      setFormularioInputKey((k) => k + 1);
+    } finally {
+      setSalvandoFormulario(false);
     }
   };
 
@@ -965,6 +1039,9 @@ export default function DoubleCheckInComparativoPcTab({
     const solicitacaoCampo = solicitacaoMap.get(
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
     );
+    const formularioCampo = formularioMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id)
+    );
     const numeroSolicitacaoOtimiza =
       dec?.numeroSolicitacaoOtimiza ?? solicitacaoCampo?.numero ?? null;
     const otimizaEmAndamento = !decVigente && solicitacaoCampo?.status === 'in_progress';
@@ -993,6 +1070,17 @@ export default function DoubleCheckInComparativoPcTab({
             Otimiza nº {numeroSolicitacaoOtimiza}
             {otimizaEmAndamento ? ' · em andamento' : ''}
           </p>
+        ) : null}
+        {diverg && formularioCampo ? (
+          <button
+            type="button"
+            className="mb-1 inline-flex max-w-full items-center gap-1 text-left text-[11px] font-semibold text-primary-700 hover:underline dark:text-primary-300"
+            title={formularioCampo.nomeArquivo}
+            onClick={() => void abrirFormulario(formularioCampo)}
+          >
+            <Paperclip className="h-3 w-3 shrink-0" aria-hidden />
+            <span className="truncate">Formulário de divergência</span>
+          </button>
         ) : null}
         <div className="mb-1 flex items-center justify-between gap-1">
           <div className="flex min-w-0 items-center gap-1.5">
@@ -1288,6 +1376,11 @@ export default function DoubleCheckInComparativoPcTab({
 
   return (
     <div className="space-y-3">
+      {erroArquivo ? (
+        <p className="text-sm text-rose-600" role="alert">
+          {erroArquivo}
+        </p>
+      ) : null}
       {semVinculo ? painelSemVinculo : null}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
@@ -1576,10 +1669,10 @@ export default function DoubleCheckInComparativoPcTab({
             className="fixed inset-0 z-[10070] flex items-center justify-center p-4 bg-slate-900/55"
             role="dialog"
             aria-modal="true"
-            onClick={() => !salvando && !salvandoNumero && setDraft(null)}
+            onClick={() => !salvando && !salvandoNumero && !salvandoFormulario && setDraft(null)}
           >
             <div
-              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-600 dark:bg-slate-800"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -1692,6 +1785,82 @@ export default function DoubleCheckInComparativoPcTab({
                     )}
                   </div>
                 )}
+                {draft.decisao === 'aceita' && (
+                  <div>
+                    <label className={labelClass}>Formulário de divergência</label>
+                    <div className="flex gap-2">
+                      <input
+                        key={formularioInputKey}
+                        className={`${inputClass} min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 dark:file:bg-slate-700 dark:file:text-slate-100`}
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.txt,application/pdf,image/*"
+                        onChange={(e) => {
+                          setArquivoFormulario(e.target.files?.[0] ?? null);
+                          setJustErro(null);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className={`${btnPrimary} shrink-0`}
+                        disabled={salvandoFormulario || salvando || !arquivoFormulario}
+                        onClick={() => void anexarFormulario(false)}
+                      >
+                        {salvandoFormulario && arquivoFormulario ? 'Anexando…' : 'Anexar'}
+                      </button>
+                    </div>
+                    {(() => {
+                      const salvo = formularioMap.get(
+                        chaveDecisao(
+                          draft.linha.idItemDocumentoEstoque,
+                          draft.linha.idItemPedidoCompra,
+                          draft.campo
+                        )
+                      );
+                      if (!salvo && !arquivoFormulario) return null;
+                      return (
+                        <p className="mt-1 truncate text-[11px] text-slate-600 dark:text-slate-300">
+                          {arquivoFormulario ? (
+                            arquivoFormulario.name
+                          ) : salvo ? (
+                            <button
+                              type="button"
+                              className="font-medium text-primary-700 underline dark:text-primary-300"
+                              onClick={() => void abrirFormulario(salvo)}
+                            >
+                              {salvo.nomeArquivo}
+                            </button>
+                          ) : null}
+                        </p>
+                      );
+                    })()}
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Opcional. PDF, imagem, Word, Excel ou TXT, até 15 MB.
+                    </p>
+                    {outrasDivergenciasAbertas > 0 && (
+                      <button
+                        type="button"
+                        className={`${btnSecondary} mt-2 w-full`}
+                        disabled={
+                          salvandoFormulario ||
+                          salvando ||
+                          (!arquivoFormulario &&
+                            !formularioMap.get(
+                              chaveDecisao(
+                                draft.linha.idItemDocumentoEstoque,
+                                draft.linha.idItemPedidoCompra,
+                                draft.campo
+                              )
+                            ))
+                        }
+                        onClick={() => void anexarFormulario(true)}
+                      >
+                        {salvandoFormulario
+                          ? 'Anexando…'
+                          : `Adicionar às demais divergências (${outrasDivergenciasAbertas})`}
+                      </button>
+                    )}
+                  </div>
+                )}
                 {aceiteLiberado && (
                 <>
                 <div>
@@ -1735,12 +1904,13 @@ export default function DoubleCheckInComparativoPcTab({
                 </>
                 )}
                 {justErro && <p className="text-sm text-rose-600">{justErro}</p>}
+                {erroArquivo && <p className="text-sm text-rose-600">{erroArquivo}</p>}
               </div>
               <div className="mt-5 flex justify-end gap-2">
                 <button
                   type="button"
                   className={btnSecondary}
-                  disabled={salvando}
+                  disabled={salvando || salvandoFormulario}
                   onClick={() => setDraft(null)}
                 >
                   Cancelar
@@ -1751,6 +1921,7 @@ export default function DoubleCheckInComparativoPcTab({
                   disabled={
                     salvando ||
                     salvandoNumero ||
+                    salvandoFormulario ||
                     !aceiteLiberado ||
                     !opcaoId ||
                     (observacaoObrigatoria && !obs.trim())

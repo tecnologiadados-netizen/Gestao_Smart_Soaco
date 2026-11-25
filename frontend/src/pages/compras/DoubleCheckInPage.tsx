@@ -28,6 +28,7 @@ import {
   type CriteriosDivergenciaDoubleCheck,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
+  type DoubleCheckInFormularioDivergencia,
   type DoubleCheckInSolicitacaoOtimiza,
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInJustificativaOpcao,
@@ -85,6 +86,7 @@ type ComparativoCache = {
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
   solicitacoesOtimiza: DoubleCheckInSolicitacaoOtimiza[];
+  formulariosDivergencia: DoubleCheckInFormularioDivergencia[];
   criterios: CriteriosDivergenciaDoubleCheck;
   camposLancados: DoubleCheckInCampoComparativo[];
   semVinculo: boolean;
@@ -342,6 +344,7 @@ export default function DoubleCheckInPage() {
   const [compDecisoes, setCompDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [compJustificativas, setCompJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [compSolicitacoes, setCompSolicitacoes] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
+  const [compFormularios, setCompFormularios] = useState<DoubleCheckInFormularioDivergencia[]>([]);
   const [compCriterios, setCompCriterios] = useState<CriteriosDivergenciaDoubleCheck>(
     CRITERIOS_DIVERGENCIA_PADRAO
   );
@@ -499,6 +502,7 @@ export default function DoubleCheckInPage() {
     setCompLinhas([]);
     setCompDecisoes([]);
     setCompSolicitacoes([]);
+    setCompFormularios([]);
   }, []);
 
   const carregarComparativo = useCallback(async (idDocumento: number) => {
@@ -508,6 +512,7 @@ export default function DoubleCheckInPage() {
       setCompDecisoes(cached.decisoes);
       setCompJustificativas(cached.justificativas);
       setCompSolicitacoes(cached.solicitacoesOtimiza ?? []);
+      setCompFormularios(cached.formulariosDivergencia ?? []);
       setCompCriterios(cached.criterios ?? CRITERIOS_DIVERGENCIA_PADRAO);
       setCompCamposLancados(cached.camposLancados ?? []);
       setCompSemVinculo(Boolean(cached.semVinculo));
@@ -523,6 +528,7 @@ export default function DoubleCheckInPage() {
         setCompLinhas([]);
         setCompDecisoes([]);
         setCompSolicitacoes([]);
+        setCompFormularios([]);
         setCompJustificativas(r.justificativas);
         setCompCriterios(r.criterios);
         setCompCamposLancados([]);
@@ -534,6 +540,7 @@ export default function DoubleCheckInPage() {
         decisoes: r.decisoes,
         justificativas: r.justificativas,
         solicitacoesOtimiza: r.solicitacoesOtimiza,
+        formulariosDivergencia: r.formulariosDivergencia,
         criterios: r.criterios,
         camposLancados: r.camposLancados,
         semVinculo: Boolean(r.semVinculo),
@@ -543,6 +550,7 @@ export default function DoubleCheckInPage() {
       setCompDecisoes(payload.decisoes);
       setCompJustificativas(payload.justificativas);
       setCompSolicitacoes(payload.solicitacoesOtimiza);
+      setCompFormularios(payload.formulariosDivergencia);
       setCompCriterios(payload.criterios);
       setCompCamposLancados(payload.camposLancados);
       setCompSemVinculo(payload.semVinculo);
@@ -587,6 +595,7 @@ export default function DoubleCheckInPage() {
       setCompLinhas([]);
       setCompDecisoes([]);
       setCompSolicitacoes([]);
+      setCompFormularios([]);
     } finally {
       setReabrindoConferencia(false);
     }
@@ -928,6 +937,7 @@ export default function DoubleCheckInPage() {
           decisoes: r.decisoes,
           justificativas: r.justificativas,
           solicitacoesOtimiza: r.solicitacoesOtimiza,
+          formulariosDivergencia: r.formulariosDivergencia,
           criterios: r.criterios,
           camposLancados: r.camposLancados,
           semVinculo: Boolean(r.semVinculo),
@@ -937,6 +947,7 @@ export default function DoubleCheckInPage() {
         setCompDecisoes(payload.decisoes);
         setCompJustificativas(payload.justificativas);
         setCompSolicitacoes(payload.solicitacoesOtimiza);
+        setCompFormularios(payload.formulariosDivergencia);
         setCompCriterios(payload.criterios);
         setCompCamposLancados(payload.camposLancados);
         setCompSemVinculo(payload.semVinculo);
@@ -1643,10 +1654,21 @@ export default function DoubleCheckInPage() {
                       decisoes={compDecisoes}
                       justificativas={compJustificativas}
                       solicitacoesOtimiza={compSolicitacoes}
+                      formularios={compFormularios}
                       criterios={compCriterios}
                       camposLancados={compCamposLancados}
                       loading={compLoading}
                       erro={compErro}
+                      onFormulariosChange={(next) => {
+                        setCompFormularios(next);
+                        const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
+                        if (prev) {
+                          comparativoCacheRef.current.set(modalNota.idDocumento, {
+                            ...prev,
+                            formulariosDivergencia: next,
+                          });
+                        }
+                      }}
                       onSolicitacoesChange={(next) => {
                         setCompSolicitacoes(next);
                         const responsavelPorNumero = new Map(

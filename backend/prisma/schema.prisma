@@ -329,6 +329,26 @@ model DoubleCheckInSolicitacaoOtimiza {
   @@map("double_checkin_solicitacao_otimiza")
 }
 
+/// Formulário de divergência anexado no aceite. Opcional. O mesmo arquivo pode valer para várias divergências.
+model DoubleCheckInFormularioDivergencia {
+  id                     Int      @id @default(autoincrement())
+  idDocumentoEstoque     Int
+  idItemDocumentoEstoque Int
+  idItemPedidoCompra     Int
+  campo                  String
+  nomeArquivo            String
+  caminhoArquivo         String
+  mimeType               String
+  tamanhoBytes           Int
+  usuarioId              Int
+  usuarioLogin           String
+  atualizadoEm           DateTime @default(now()) @updatedAt
+
+  @@unique([idDocumentoEstoque, idItemDocumentoEstoque, idItemPedidoCompra, campo], map: "dci_formulario_divergencia_chave")
+  @@index([idDocumentoEstoque], map: "dci_formulario_divergencia_doc_idx")
+  @@map("double_checkin_formulario_divergencia")
+}
+
 /// Primeira leitura em que a NF vinculada ao pedido divergiu. Permanece se o vínculo for desfeito.
 model DoubleCheckInDivergenciaApontada {
   id                     Int      @id @default(autoincrement())

@@ -11,6 +11,7 @@ import {
   type DoubleCheckInComparativoLinha,
   type DoubleCheckInHistorico,
   type DoubleCheckInHistoricoBloco,
+  type DoubleCheckInFormularioDivergencia,
   type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInNota,
   type DoubleCheckInSolicitacaoOtimiza,
@@ -59,6 +60,7 @@ function ComparativoHistoricoModal({
   const [decisoes, setDecisoes] = useState<DoubleCheckInComparativoDecisao[]>([]);
   const [justificativas, setJustificativas] = useState<DoubleCheckInJustificativaOpcao[]>([]);
   const [solicitacoesOtimiza, setSolicitacoesOtimiza] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
+  const [formularios, setFormularios] = useState<DoubleCheckInFormularioDivergencia[]>([]);
   const [criterios, setCriterios] = useState<CriteriosDivergenciaDoubleCheck>(CRITERIOS_DIVERGENCIA_PADRAO);
   const [camposLancados, setCamposLancados] = useState<DoubleCheckInCampoComparativo[]>([]);
 
@@ -83,6 +85,7 @@ function ComparativoHistoricoModal({
       setDecisoes([]);
       setJustificativas([]);
       setSolicitacoesOtimiza([]);
+      setFormularios([]);
       setCriterios(CRITERIOS_DIVERGENCIA_PADRAO);
       setCamposLancados([]);
       setAviso(null);
@@ -98,6 +101,7 @@ function ComparativoHistoricoModal({
             decisoes: [] as DoubleCheckInComparativoDecisao[],
             justificativas: [] as DoubleCheckInJustificativaOpcao[],
             solicitacoesOtimiza: [] as DoubleCheckInSolicitacaoOtimiza[],
+            formulariosDivergencia: [] as DoubleCheckInFormularioDivergencia[],
             criterios: CRITERIOS_DIVERGENCIA_PADRAO,
             camposLancados: [] as DoubleCheckInCampoComparativo[],
             aviso: r.aviso,
@@ -109,6 +113,7 @@ function ComparativoHistoricoModal({
             decisoes: r.decisoes,
             justificativas: r.justificativas,
             solicitacoesOtimiza: r.solicitacoesOtimiza,
+            formulariosDivergencia: r.formulariosDivergencia,
             criterios: r.semVinculo ? CRITERIOS_DIVERGENCIA_PADRAO : r.criterios,
             camposLancados: r.camposLancados,
             aviso: r.semVinculo
@@ -123,6 +128,7 @@ function ComparativoHistoricoModal({
       setDecisoes(r.decisoes);
       setJustificativas(r.justificativas);
       setSolicitacoesOtimiza(r.solicitacoesOtimiza);
+      setFormularios(r.formulariosDivergencia);
       setCriterios(r.criterios);
       setCamposLancados(r.camposLancados);
       setAviso(r.aviso);
@@ -192,12 +198,14 @@ function ComparativoHistoricoModal({
                 decisoes={decisoes}
                 justificativas={justificativas}
                 solicitacoesOtimiza={solicitacoesOtimiza}
+                formularios={formularios}
                 criterios={criterios}
                 camposLancados={camposLancados}
                 loading={loading}
                 erro={erro}
                 onDecisoesChange={setDecisoes}
                 onSolicitacoesChange={setSolicitacoesOtimiza}
+                onFormulariosChange={setFormularios}
               />
             </>
           )}
