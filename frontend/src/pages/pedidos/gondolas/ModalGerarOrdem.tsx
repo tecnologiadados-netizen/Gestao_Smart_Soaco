@@ -42,10 +42,11 @@ type PecaLinha = {
   tipo: ComponenteFicha['tipo'];
   quantidadeTotal: number;
   origem: DetalheItemGondola['origem'];
+  ordemGerada?: string;
 };
 
 function pecasDoDetalhe(detalhe: DetalheItemGondola): PecaLinha[] {
-  return detalhe.componentes.flatMap((componente, indice) => componente.ordemGerada ? [] : [{
+  return detalhe.componentes.map((componente, indice) => ({
     chave: `${detalhe.item.idItem}|${indice}`,
     idItem: detalhe.item.idItem,
     pedido: detalhe.item.pedido,
@@ -61,7 +62,8 @@ function pecasDoDetalhe(detalhe: DetalheItemGondola): PecaLinha[] {
     tipo: componente.tipo,
     quantidadeTotal: componente.quantidadeTotal,
     origem: detalhe.origem,
-  }]);
+    ordemGerada: componente.ordemGerada,
+  }));
 }
 
 export default function ModalGerarOrdem({
@@ -186,7 +188,15 @@ export default function ModalGerarOrdem({
       .then((lista) => {
         if (cancelado) return;
         setDetalhes(lista);
-        setMarcados(new Set(lista.flatMap((detalhe) => pecasDoDetalhe(detalhe).map((peca) => peca.chave))));
+        setMarcados(
+          new Set(
+            lista.flatMap((detalhe) =>
+              pecasDoDetalhe(detalhe)
+                .filter((peca) => !peca.ordemGerada)
+                .map((peca) => peca.chave)
+            )
+          )
+        );
       })
       .catch((e: unknown) => {
         if (cancelado) return;
@@ -256,7 +266,8 @@ export default function ModalGerarOrdem({
 
   const gondolas = itens.filter((item) => item.setor === 'Gôndolas').length;
   const portaPaletes = itens.filter((item) => item.setor === 'Porta Paletes').length;
-  const todosVisiveis = pecasVisiveis.length > 0 && pecasVisiveis.every((peca) => marcados.has(peca.chave));
+  const selecionaveis = pecasVisiveis.filter((peca) => !peca.ordemGerada);
+  const todosVisiveis = selecionaveis.length > 0 && selecionaveis.every((peca) => marcados.has(peca.chave));
 
   function alternar(chave: string) {
     setMarcados((atual) => {
@@ -371,7 +382,7 @@ export default function ModalGerarOrdem({
             </h2>
             <p className="mt-1 text-sm text-white/75">
               {setor
-                ? `${setor}. Cada pedido lista as peças da ficha. Todas entram marcadas.`
+                ? `${setor}. Cada pedido lista todo PI e todo PP da ficha. O que já saiu em ordem continua na lista, sem entrar de novo.`
                 : 'Escolha o setor da ordem antes de ver os pedidos e as peças.'}
             </p>
           </div>
@@ -504,7 +515,7 @@ export default function ModalGerarOrdem({
                 onChange={(e) => setBusca(e.target.value)}
               />
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                {chavesParaImprimir.size.toLocaleString('pt-BR')} de {pecasVisiveis.length.toLocaleString('pt-BR')} peças
+                {chavesParaImprimir.size.toLocaleString('pt-BR')} de {selecionaveis.length.toLocaleString('pt-BR')} peças
                 marcadas{busca.trim() ? ' no filtro' : ''}
               </p>
             </div>
@@ -526,9 +537,10 @@ export default function ModalGerarOrdem({
                         <input
                           type="checkbox"
                           checked={todosVisiveis}
+                          disabled={selecionaveis.length === 0}
                           onChange={() =>
                             alternarVarias(
-                              pecasVisiveis.map((peca) => peca.chave),
+                              selecionaveis.map((peca) => peca.chave),
                               !todosVisiveis
                             )
                           }
@@ -547,8 +559,10 @@ export default function ModalGerarOrdem({
                   </thead>
                   <tbody>
                     {grupos.map((grupo) => {
-                      const chavesPedido = [...grupo.itens.values()].flatMap((item) => item.pecas.map((peca) => peca.chave));
-                      const pedidoMarcado = chavesPedido.every((chave) => marcados.has(chave));
+                      const chavesPedido = [...grupo.itens.values()].flatMap((item) =>
+                        item.pecas.filter((peca) => !peca.ordemGerada).map((peca) => peca.chave)
+                      );
+                      const pedidoMarcado = chavesPedido.length > 0 && chavesPedido.every((chave) => marcados.has(chave));
                       return (
                         <Fragment key={grupo.pedido}>
                           <tr className="bg-black/40">
@@ -556,9 +570,10 @@ export default function ModalGerarOrdem({
                               <input
                                 type="checkbox"
                                 checked={pedidoMarcado}
+                                disabled={chavesPedido.length === 0}
                                 onChange={() => alternarVarias(chavesPedido, !pedidoMarcado)}
                                 aria-label={`Marcar peças do ${grupo.pedido}`}
-                                className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                               />
                             </td>
                             <td colSpan={7} className="px-3 py-2 font-semibold text-white">
@@ -585,20 +600,33 @@ export default function ModalGerarOrdem({
                                 </td>
                               </tr>
                               {item.pecas.map((peca) => (
-                                <tr key={peca.chave} className="border-b border-soaco-gray/20">
+                                <tr
+                                  key={peca.chave}
+                                  className={`border-b border-soaco-gray/20 ${peca.ordemGerada ? 'bg-emerald-500/5' : ''}`}
+                                >
                                   <td className="px-3 py-2">
                                     <input
                                       type="checkbox"
-                                      checked={marcados.has(peca.chave)}
+                                      checked={!peca.ordemGerada && marcados.has(peca.chave)}
+                                      disabled={Boolean(peca.ordemGerada)}
                                       onChange={() => alternar(peca.chave)}
-                                      aria-label={`Incluir ${peca.descricao} do ${peca.pedido}`}
-                                      className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                      aria-label={
+                                        peca.ordemGerada
+                                          ? `${peca.descricao} já saiu na ordem ${peca.ordemGerada}`
+                                          : `Incluir ${peca.descricao} do ${peca.pedido}`
+                                      }
+                                      className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-40"
                                     />
                                   </td>
                                   <td className="px-3 py-2 text-slate-800 dark:text-slate-100">
                                     {peca.descricao}
                                     {peca.codigo && peca.codigo !== peca.descricao ? (
                                       <span className="ml-2 text-xs text-slate-400">{peca.codigo}</span>
+                                    ) : null}
+                                    {peca.ordemGerada ? (
+                                      <span className="ml-2 inline-flex rounded border border-emerald-500/60 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                        Em ordem {peca.ordemGerada}
+                                      </span>
                                     ) : null}
                                   </td>
                                   <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
@@ -667,7 +695,7 @@ export default function ModalGerarOrdem({
                                     ) : (
                                       <span className="inline-flex items-center justify-end gap-1">
                                         {peca.medida02 || '—'}
-                                        {podeEditarMedidas && peca.origem === 'nomus' && peca.tipo === 'PP' && (
+                                        {podeEditarMedidas && peca.origem === 'nomus' && peca.tipo === 'PP' && !peca.ordemGerada && (
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -696,9 +724,10 @@ export default function ModalGerarOrdem({
                                       onChange={(e) =>
                                         setObservacoes((atual) => ({ ...atual, [peca.chave]: e.target.value }))
                                       }
-                                      placeholder="Observação"
+                                      placeholder={peca.ordemGerada ? '' : 'Observação'}
+                                      disabled={Boolean(peca.ordemGerada)}
                                       aria-label={`Observação de ${peca.descricao} do ${peca.pedido}`}
-                                      className="h-8 w-full min-w-[9rem] rounded border border-soaco-gray/40 bg-white px-2 text-sm text-slate-900 placeholder:text-slate-400 dark:bg-black dark:text-white"
+                                      className="h-8 w-full min-w-[9rem] rounded border border-soaco-gray/40 bg-white px-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:bg-transparent disabled:text-slate-400 dark:bg-black dark:text-white"
                                     />
                                   </td>
                                   <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900 dark:text-white">

@@ -22,13 +22,16 @@ function numero(valor: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** PP (e PI) da lista de produção de cada componente da ficha do pai. */
+/** PI e PP da lista de produção dos códigos indicados, encaixados na ficha já montada. */
 async function incluirPecasDasListasPi(
   pool: NonNullable<ReturnType<typeof getNomusPool>>,
   componentes: ComponenteDetalhe[],
-  qtdeReal: number
+  qtdeReal: number,
+  somenteCodigos?: Set<string>
 ): Promise<ComponenteDetalhe[]> {
-  const codigos = [...new Set(componentes.map((componente) => componente.codigo.trim()).filter(Boolean))];
+  const codigos = [...new Set(componentes.map((componente) => componente.codigo.trim()).filter(Boolean))].filter(
+    (codigo) => !somenteCodigos || somenteCodigos.has(codigo.toUpperCase())
+  );
   if (codigos.length === 0) return componentes;
   const ph = codigos.map(() => '?').join(', ');
   const [rows] = await pool.query<RowDataPacket[]>(
@@ -116,8 +119,9 @@ export async function paisComListaProducao(
 }
 
 /**
- * Ficha de produção padrão do Nomus: PI e PP da lista do item e, em seguida,
- * os PI e PP da lista de produção de cada um desses componentes.
+ * Ficha de produção padrão do Nomus: todo PI e todo PP da lista do item e,
+ * em seguida, os PI e PP da lista de produção de cada um, nível a nível,
+ * até a lista não trazer mais peça nova.
  */
 export async function lerFichaProducaoNomus(
   codigoItem: string,
@@ -197,7 +201,18 @@ export async function lerFichaProducaoNomus(
       });
     }
     const daListaPai = [...porChave.values()];
-    const componentes = await incluirPecasDasListasPi(pool, daListaPai, qtdeReal);
+    const expandidos = new Set<string>();
+    let componentes = daListaPai;
+    for (let nivel = 0; nivel < 6; nivel++) {
+      const pendentes = new Set(
+        componentes
+          .map((componente) => componente.codigo.trim().toUpperCase())
+          .filter((codigo) => codigo && !expandidos.has(codigo))
+      );
+      if (pendentes.size === 0) break;
+      for (const codigo of pendentes) expandidos.add(codigo);
+      componentes = await incluirPecasDasListasPi(pool, componentes, qtdeReal, pendentes);
+    }
 
     return { disponivel: true, temFicha, componentes };
   } catch (err) {
