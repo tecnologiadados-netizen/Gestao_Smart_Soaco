@@ -7,6 +7,7 @@ import GradeCelulaModalBtn from './GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from './ModalConsultaEstoqueDetalhe';
 import TabelaDetalheCotacao from './TabelaDetalheCotacao';
 import TabelaDetalheSolicitacao from './TabelaDetalheSolicitacao';
+import TabelaDetalhePreEntrada from './TabelaDetalhePreEntrada';
 import ModalPcPendDetalhes from '../ressupAlmox/ModalPcPendDetalhes';
 import ModalEscolhasConsultaEstoque from './ModalEscolhasConsultaEstoque';
 import {
@@ -29,11 +30,13 @@ import {
   obterCotacaoDetalhe,
   obterSaldoDetalhe,
   obterScDetalhe,
+  obterPreEntradaDetalhe,
   verificarProdutoFiltroTemBom,
   type ConsultaEstoqueLinha,
   type CotacaoDetalhe,
   type EmpenhoProdutoEscopoConsultaEstoque,
   type ModoProdutoConsultaEstoque,
+  type PreEntradaDetalhe,
   type SaldoSetorDetalhe,
   type ScDetalhe,
 } from '../../api/consultaEstoque';
@@ -59,20 +62,23 @@ const COLS = [
   { key: 'solicitacao', label: 'Solicitação', align: 'center' as const, clickable: true },
   { key: 'cotacao', label: 'Pré Compra', align: 'center' as const, clickable: true },
   { key: 'pedidoCompra', label: 'Pedido compra', align: 'center' as const, clickable: true },
+  { key: 'preEntrada', label: 'Pré Entrada', align: 'center' as const, clickable: true },
   { key: 'saldoProjetado', label: 'Saldo projetado', align: 'center' as const, clickable: false },
 ] as const;
 
 type ColKey = (typeof COLS)[number]['key'];
 const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
-const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'saldoProjetado'] as const;
+const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'preEntrada', 'saldoProjetado'] as const;
 
-function detalheTipoDaColuna(k: ColKey): 'saldo' | 'empenho' | 'solicitacao' | 'cotacao' | 'pc' | null {
+function detalheTipoDaColuna(k: ColKey): 'saldo' | 'empenho' | 'solicitacao' | 'cotacao' | 'preEntrada' | 'pc' | null {
   if (k === 'saldo' || k === 'empenho' || k === 'solicitacao' || k === 'cotacao') return k;
   if (k === 'pedidoCompra') return 'pc';
+  if (k === 'preEntrada') return 'preEntrada';
   return null;
 }
 
 const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
+const PRE_ENTRADA_CELL_CLASS = 'bg-violet-50/90 dark:bg-violet-950/30';
 const Z_MAIN_DEFAULT = 132;
 
 type EscolhasProdutoEmbed = {
@@ -85,12 +91,14 @@ type DetalheModal =
   | { tipo: 'empenho'; linha: ConsultaEstoqueLinha }
   | { tipo: 'solicitacao'; linha: ConsultaEstoqueLinha }
   | { tipo: 'cotacao'; linha: ConsultaEstoqueLinha }
+  | { tipo: 'preEntrada'; linha: ConsultaEstoqueLinha }
   | { tipo: 'pc'; linha: ConsultaEstoqueLinha };
 
 type DetalheCachePayload =
   | SaldoSetorDetalhe[]
   | ScDetalhe[]
   | CotacaoDetalhe[]
+  | PreEntradaDetalhe[]
   | RessupEmpenhoPedidoResultado;
 
 function detalheModalCacheKey(
@@ -152,6 +160,7 @@ export default function ModalConsultaEstoqueEmbed({
   );
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
+  const [detalhePreEntrada, setDetalhePreEntrada] = useState<PreEntradaDetalhe[]>([]);
   const [detalhePcCascata, setDetalhePcCascata] = useState<RessupAlmoxPcPendLinha[]>([]);
 
   const detalheCacheRef = useRef(new Map<string, DetalheCachePayload>());
@@ -181,6 +190,8 @@ export default function ModalConsultaEstoqueEmbed({
         return fmtQtde(row.cotacao ?? 0);
       case 'pedidoCompra':
         return fmtQtde(row.pedidoCompra ?? 0);
+      case 'preEntrada':
+        return fmtQtde(row.preEntrada ?? 0);
       case 'saldoProjetado':
         return fmtQtde(row.saldoProjetado);
       default:
@@ -352,7 +363,8 @@ export default function ModalConsultaEstoqueEmbed({
         setDetalheEmpenhoLiquido(cached as RessupEmpenhoPedidoResultado);
         if (!fontes) setDetalhePcCascata(await carregarPcCascata(id));
       } else if (detalhe.tipo === 'solicitacao') setDetalheSc(cached as ScDetalhe[]);
-      else setDetalheCotacao(cached as CotacaoDetalhe[]);
+      else if (detalhe.tipo === 'cotacao') setDetalheCotacao(cached as CotacaoDetalhe[]);
+      else setDetalhePreEntrada(cached as PreEntradaDetalhe[]);
       return {};
     }
     if (detalhe.tipo === 'saldo') {
@@ -381,9 +393,15 @@ export default function ModalConsultaEstoqueEmbed({
       setDetalheSc(r.data);
       return { error: r.error };
     }
-    const r = await obterCotacaoDetalhe(id);
+    if (detalhe.tipo === 'cotacao') {
+      const r = await obterCotacaoDetalhe(id);
+      if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
+      setDetalheCotacao(r.data);
+      return { error: r.error };
+    }
+    const r = await obterPreEntradaDetalhe(id);
     if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
-    setDetalheCotacao(r.data);
+    setDetalhePreEntrada(r.data);
     return { error: r.error };
   }, [detalhe, fontes]);
 
@@ -394,6 +412,7 @@ export default function ModalConsultaEstoqueEmbed({
       setDetalhePcCascata([]);
       setDetalheSc([]);
       setDetalheCotacao([]);
+      setDetalhePreEntrada([]);
     }
   }, [detalhe]);
 
@@ -568,15 +587,19 @@ export default function ModalConsultaEstoqueEmbed({
                   const val = row[k] ?? 0;
                   const tipoDetalhe = detalheTipoDaColuna(k);
                   const saldoNegativo = k === 'saldoProjetado' && val <= 0;
+                  const temPreEntrada = k === 'preEntrada' && val > 0;
                   return (
                     <td
                       key={k}
                       className={`px-2 py-1.5 text-center tabular-nums ${
                         saldoNegativo ? SALDO_PROJETADO_NEG_CLASS : ''
-                      }`}
+                      } ${temPreEntrada ? PRE_ENTRADA_CELL_CLASS : ''}`}
                     >
                       {tipoDetalhe ? (
-                        <GradeCelulaModalBtn onClick={() => setDetalhe({ tipo: tipoDetalhe, linha: row })}>
+                        <GradeCelulaModalBtn
+                          variant={k === 'preEntrada' ? 'violeta' : 'primary'}
+                          onClick={() => setDetalhe({ tipo: tipoDetalhe, linha: row })}
+                        >
                           {cellNum(val)}
                         </GradeCelulaModalBtn>
                       ) : (
@@ -652,7 +675,9 @@ export default function ModalConsultaEstoqueEmbed({
                 ? `Empenho — ${detalhe.linha.codigo}`
                 : detalhe.tipo === 'solicitacao'
                   ? `Solicitação de compra — ${detalhe.linha.codigo}`
-                  : `Pré Compra — ${detalhe.linha.codigo}`
+                  : detalhe.tipo === 'preEntrada'
+                    ? `Pré Entrada — ${detalhe.linha.codigo}`
+                    : `Pré Compra — ${detalhe.linha.codigo}`
           }
           subtitulo={detalhe.linha.descricao}
           onClose={() => setDetalhe(null)}
@@ -752,6 +777,14 @@ export default function ModalConsultaEstoqueEmbed({
             }
             if (detalhe.tipo === 'solicitacao') {
               return <TabelaDetalheSolicitacao linhas={detalheSc} />;
+            }
+            if (detalhe.tipo === 'preEntrada') {
+              return (
+                <TabelaDetalhePreEntrada
+                  linhas={detalhePreEntrada}
+                  qtdeGrade={detalhe.linha.preEntrada}
+                />
+              );
             }
             return (
               <TabelaDetalheCotacao

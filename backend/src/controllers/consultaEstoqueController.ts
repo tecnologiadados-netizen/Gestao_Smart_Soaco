@@ -10,6 +10,7 @@ import {
   listarOpcoesFiltroCascata,
   listarOpcoesFiltroConsultaEstoque,
   listarPcPendDetalhesPorProduto,
+  listarPreEntradaDetalhePorProduto,
   listarSaldoDetalhePorProduto,
   listarScDetalhePorProduto,
   validarFiltrosPedidoConsultaEstoque,
@@ -264,6 +265,20 @@ export async function getPcDetalheConsultaEstoque(req: Request, res: Response): 
     return;
   }
   const { data, erro } = await listarPcPendDetalhesPorProduto(idProduto);
+  if (erro) {
+    res.status(503).json({ error: erro, data: [] });
+    return;
+  }
+  res.json({ data });
+}
+
+export async function getPreEntradaDetalheConsultaEstoque(req: Request, res: Response): Promise<void> {
+  const idProduto = parseIdProduto(req);
+  if (idProduto == null) {
+    res.status(400).json({ error: 'Parâmetro idProduto inválido.', data: [] });
+    return;
+  }
+  const { data, erro } = await listarPreEntradaDetalhePorProduto(idProduto);
   if (erro) {
     res.status(503).json({ error: erro, data: [] });
     return;

@@ -12,6 +12,7 @@ export const CONSULTA_ESTOQUE_DEFAULT_COL_WIDTHS: Record<string, number> = {
   solicitacao: 100,
   cotacao: 88,
   pedidoCompra: 120,
+  preEntrada: 104,
   saldoProjetado: 120,
 };
 

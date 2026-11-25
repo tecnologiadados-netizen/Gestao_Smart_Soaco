@@ -12,6 +12,7 @@ import {
   getOpcoesFiltroConsultaEstoque,
   postOpcoesFiltroCascata,
   getPcDetalheConsultaEstoque,
+  getPreEntradaDetalheConsultaEstoque,
   getSaldoDetalheConsultaEstoque,
   getScDetalheConsultaEstoque,
   postContarConsultaEstoque,
@@ -179,6 +180,11 @@ router.get(
   '/consulta-estoque/detalhe/pedido-compra',
   podeConsultaEstoque,
   async503(getPcDetalheConsultaEstoque)
+);
+router.get(
+  '/consulta-estoque/detalhe/pre-entrada',
+  podeConsultaEstoque,
+  async503(getPreEntradaDetalheConsultaEstoque)
 );
 
 router.get('/gondolas-porta-paletes/itens', podeGondolas, async503(getGondolasItens));

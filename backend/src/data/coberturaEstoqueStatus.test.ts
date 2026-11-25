@@ -117,6 +117,7 @@ function row(
     solicitacao: partial.solicitacao ?? 0,
     cotacao: partial.cotacao ?? 0,
     pedidoCompra: partial.pedidoCompra ?? 0,
+    preEntrada: partial.preEntrada ?? 0,
     saldoProjetado: partial.saldoProjetado,
     consumoMedio: partial.consumoMedio ?? 10,
     comprador: partial.comprador,

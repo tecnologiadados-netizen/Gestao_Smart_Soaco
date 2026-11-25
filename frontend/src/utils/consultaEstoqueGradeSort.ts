@@ -8,6 +8,7 @@ const COLUNAS_NUMERICAS = new Set([
   'solicitacao',
   'cotacao',
   'pedidoCompra',
+  'preEntrada',
   'saldoProjetado',
 ]);
 

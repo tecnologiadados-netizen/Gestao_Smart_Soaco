@@ -16,7 +16,12 @@ import {
   buildEmpenhoLiquidoBatchSql,
   buildEmpenhoLiquidoBatchSqlPorPedido,
   buildEmpenhoLiquidoBatchSqlPorProduto,
+  SQL_PRE_ENTRADA_QTDE_POR_PRODUTO,
 } from './sqlRegistroColetaPrecos.js';
+import {
+  listarDetalheAcompanhamento,
+  type LinhaDetalhePreEntrada,
+} from './acompanhamentoSolicitacaoRepository.js';
 import {
   COLETAS_EXCLUIR_SETOR2_ALMOX,
   NOMUS_ATRIBUTO_COLETA,
@@ -91,6 +96,7 @@ export interface ConsultaEstoqueRow {
   solicitacao: number;
   cotacao: number;
   pedidoCompra: number;
+  preEntrada: number;
   saldoProjetado: number;
 }
 
@@ -371,6 +377,11 @@ function buildConsultaSql(filtros: FiltrosConsultaEstoque): { sql: string; param
     'Where ipc.idProduto In (Select id From produtos_filtrados) And ipc.status In'
   ).replace(/On pc_agg\.idProduto = p\.id/, 'On pc_agg.idProduto = pf_outer.id');
 
+  const preEntradaJoin = `
+Left Join (
+${SQL_PRE_ENTRADA_QTDE_POR_PRODUTO}
+) pre_entrada_agg On pre_entrada_agg.idProduto = pf_outer.id`;
+
   const sql = `
 With produtos_filtrados As (
   Select
@@ -397,11 +408,13 @@ Select
   pf_outer.tipoProduto,
   Round(Coalesce(saldo_agg.saldo, 0), 2) As saldo,
   Round(Coalesce(cot_agg.qtde, 0), 2) As cotacao,
-  Round(Coalesce(pc_agg.qtde, 0), 2) As pedidoCompra
+  Round(Coalesce(pc_agg.qtde, 0), 2) As pedidoCompra,
+  Round(Coalesce(pre_entrada_agg.quantidade, 0), 2) As preEntrada
 From produtos_filtrados pf_outer
 ${SQL_SALDO_AGREGADO_PARA_PRODUTOS_FILTRADOS}
 ${cotJoin}
 ${pcJoin}
+${preEntradaJoin}
 ${saldoWhere}
 Order By pf_outer.nome
 `.trim();
@@ -446,7 +459,7 @@ function passaFiltroSimNao(valor: number, filtro?: FiltroSimNaoTodos): boolean {
   return valor === 0;
 }
 
-function mapConsultaRow(
+export function mapConsultaRow(
   r: Record<string, unknown>,
   extras: { empenho?: number; solicitacao?: number } = {}
 ): ConsultaEstoqueRow {
@@ -455,7 +468,8 @@ function mapConsultaRow(
   const solicitacao = extras.solicitacao ?? Number(r.solicitacao ?? 0);
   const cotacao = Number(r.cotacao ?? 0);
   const pedidoCompra = Number(r.pedidoCompra ?? 0);
-  const saldoProjetado = saldo - empenho + solicitacao + cotacao + pedidoCompra;
+  const preEntrada = Number(r.preEntrada ?? 0);
+  const saldoProjetado = saldo - empenho + solicitacao + cotacao + pedidoCompra + preEntrada;
   return {
     idProduto: Number(r.idProduto ?? 0),
     codigo: String(r.codigo ?? '').trim(),
@@ -467,6 +481,7 @@ function mapConsultaRow(
     solicitacao,
     cotacao,
     pedidoCompra,
+    preEntrada,
     saldoProjetado: Math.round(saldoProjetado * 100) / 100,
   };
 }
@@ -1401,6 +1416,13 @@ export async function listarCotacaoDetalhePorProduto(
 }
 
 export { listarPcPendDetalhesPorProduto };
+
+export async function listarPreEntradaDetalhePorProduto(
+  idProduto: number
+): Promise<{ data: LinhaDetalhePreEntrada[]; erro?: string }> {
+  const { linhas, erro } = await listarDetalheAcompanhamento(idProduto, 'pre_entrada');
+  return { data: linhas as LinhaDetalhePreEntrada[], erro };
+}
 
 const PEDIDOS_GERENCIADOR_TYPEAHEAD_LIMITE = 40;
 

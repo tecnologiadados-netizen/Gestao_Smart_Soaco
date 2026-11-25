@@ -15,6 +15,7 @@ import GradeCelulaModalBtn from '../../components/pcp/GradeCelulaModalBtn';
 import ModalConsultaEstoqueDetalhe, { fmtQtde } from '../../components/pcp/ModalConsultaEstoqueDetalhe';
 import TabelaDetalheSolicitacao from '../../components/pcp/TabelaDetalheSolicitacao';
 import TabelaDetalheCotacao from '../../components/pcp/TabelaDetalheCotacao';
+import TabelaDetalhePreEntrada from '../../components/pcp/TabelaDetalhePreEntrada';
 import ModalFiltrosConsultaEstoque, {
   EMPTY_PRODUTO_FILTRO,
   MSG_MISTURA_BOM_PRODUTO,
@@ -47,6 +48,7 @@ import {
   obterOpcoesFiltroConsultaEstoque,
   obterSaldoDetalhe,
   obterScDetalhe,
+  obterPreEntradaDetalhe,
   verificarProdutoFiltroTemBom,
   type ConsultaEstoqueLinha,
   type CotacaoDetalhe,
@@ -56,6 +58,7 @@ import {
   type ModoProdutoConsultaEstoque,
   type OpcoesFiltroConsultaEstoque,
   type PedidoGerenciadorTypeaheadItem,
+  type PreEntradaDetalhe,
   type SaldoSetorDetalhe,
   type ScDetalhe,
 } from '../../api/consultaEstoque';
@@ -89,12 +92,13 @@ const COLS = [
   { key: 'solicitacao', label: 'Solicitação', clickable: true as const, align: 'center' as const },
   { key: 'cotacao', label: 'Pré Compra', clickable: true as const, align: 'center' as const },
   { key: 'pedidoCompra', label: 'Pedido compra', clickable: true as const, align: 'center' as const },
+  { key: 'preEntrada', label: 'Pré Entrada', clickable: true as const, align: 'center' as const },
   { key: 'saldoProjetado', label: 'Saldo projetado', clickable: false, align: 'center' as const },
 ] as const;
 
 type ColKey = (typeof COLS)[number]['key'];
 
-const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'saldoProjetado'] as const;
+const NUM_KEYS = ['empenho', 'saldo', 'solicitacao', 'cotacao', 'pedidoCompra', 'preEntrada', 'saldoProjetado'] as const;
 
 const COL_KEYS: ColKey[] = COLS.map((c) => c.key);
 
@@ -103,6 +107,7 @@ function isNumKey(k: string): k is (typeof NUM_KEYS)[number] {
 }
 
 const SALDO_PROJETADO_NEG_CLASS = 'bg-red-50 dark:bg-red-950/40';
+const PRE_ENTRADA_CELL_CLASS = 'bg-violet-50/90 dark:bg-violet-950/30';
 
 const EMPTY_OPCOES: OpcoesFiltroConsultaEstoque = {
   codigos: [],
@@ -142,11 +147,13 @@ type DetalheModal =
   | { tipo: 'empenho'; linha: ConsultaEstoqueLinha }
   | { tipo: 'solicitacao'; linha: ConsultaEstoqueLinha }
   | { tipo: 'cotacao'; linha: ConsultaEstoqueLinha }
+  | { tipo: 'preEntrada'; linha: ConsultaEstoqueLinha }
   | { tipo: 'pc'; linha: ConsultaEstoqueLinha };
 
 function detalheTipoDaColuna(k: ColKey): DetalheModal['tipo'] | null {
   if (k === 'saldo' || k === 'empenho' || k === 'solicitacao' || k === 'cotacao') return k;
   if (k === 'pedidoCompra') return 'pc';
+  if (k === 'preEntrada') return 'preEntrada';
   return null;
 }
 
@@ -154,6 +161,7 @@ type DetalheCachePayload =
   | SaldoSetorDetalhe[]
   | ScDetalhe[]
   | CotacaoDetalhe[]
+  | PreEntradaDetalhe[]
   | RessupEmpenhoPedidoResultado;
 
 const EMPTY_PEDIDO_FILTRO: PedidoFiltroConsultaEstoque = {
@@ -249,6 +257,7 @@ export default function ConsultaEstoquePage() {
   const [detalhePcCascata, setDetalhePcCascata] = useState<RessupAlmoxPcPendLinha[]>([]);
   const [detalheSc, setDetalheSc] = useState<ScDetalhe[]>([]);
   const [detalheCotacao, setDetalheCotacao] = useState<CotacaoDetalhe[]>([]);
+  const [detalhePreEntrada, setDetalhePreEntrada] = useState<PreEntradaDetalhe[]>([]);
   const [colunasOcultas, setColunasOcultas] = useState<string[]>(() => loadConsultaEstoqueColunasOcultas());
   const [colunasOcultasOpen, setColunasOcultasOpen] = useState(false);
   const [colWidths, setColWidths] = useState<Record<string, number>>(readConsultaEstoqueColWidths);
@@ -287,6 +296,8 @@ export default function ConsultaEstoquePage() {
         return fmtQtde(row.cotacao);
       case 'pedidoCompra':
         return fmtQtde(row.pedidoCompra);
+      case 'preEntrada':
+        return fmtQtde(row.preEntrada);
       case 'saldoProjetado':
         return fmtQtde(row.saldoProjetado);
       default:
@@ -954,7 +965,8 @@ export default function ConsultaEstoquePage() {
         setDetalheEmpenhoLiquido(cached as RessupEmpenhoPedidoResultado);
         setDetalhePcCascata(await carregarPcCascata(id));
       } else if (detalhe.tipo === 'solicitacao') setDetalheSc(cached as ScDetalhe[]);
-      else setDetalheCotacao(cached as CotacaoDetalhe[]);
+      else if (detalhe.tipo === 'cotacao') setDetalheCotacao(cached as CotacaoDetalhe[]);
+      else setDetalhePreEntrada(cached as PreEntradaDetalhe[]);
       return {};
     }
     if (detalhe.tipo === 'saldo') {
@@ -986,9 +998,15 @@ export default function ConsultaEstoquePage() {
       setDetalheSc(r.data);
       return { error: r.error };
     }
-    const r = await obterCotacaoDetalhe(id);
+    if (detalhe.tipo === 'cotacao') {
+      const r = await obterCotacaoDetalhe(id);
+      if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
+      setDetalheCotacao(r.data);
+      return { error: r.error };
+    }
+    const r = await obterPreEntradaDetalhe(id);
     if (!r.error) detalheCacheRef.current.set(cacheKey, r.data);
-    setDetalheCotacao(r.data);
+    setDetalhePreEntrada(r.data);
     return { error: r.error };
   }, [detalhe, considerarRequisicoes]);
 
@@ -999,6 +1017,7 @@ export default function ConsultaEstoquePage() {
       setDetalhePcCascata([]);
       setDetalheSc([]);
       setDetalheCotacao([]);
+      setDetalhePreEntrada([]);
     }
   }, [detalhe]);
 
@@ -1303,16 +1322,18 @@ export default function ConsultaEstoquePage() {
                       const val = row[col.key];
                       const clickable = col.clickable;
                       const saldoNegativo = col.key === 'saldoProjetado' && val <= 0;
+                      const temPreEntrada = col.key === 'preEntrada' && val > 0;
                       const tipoDetalhe = detalheTipoDaColuna(col.key);
                       return (
                         <td
                           key={col.key}
                           className={`overflow-hidden px-2 py-1.5 text-center tabular-nums ${
                             saldoNegativo ? SALDO_PROJETADO_NEG_CLASS : ''
-                          }`}
+                          } ${temPreEntrada ? PRE_ENTRADA_CELL_CLASS : ''}`}
                         >
                           {clickable && tipoDetalhe ? (
                             <GradeCelulaModalBtn
+                              variant={col.key === 'preEntrada' ? 'violeta' : 'primary'}
                               onClick={() =>
                                 setDetalhe({
                                   tipo: tipoDetalhe,
@@ -1499,7 +1520,9 @@ export default function ConsultaEstoquePage() {
                 ? `Empenho — ${detalhe.linha.codigo}`
                 : detalhe.tipo === 'solicitacao'
                   ? `Solicitação de compra — ${detalhe.linha.codigo}`
-                  : `Pré Compra — ${detalhe.linha.codigo}`
+                  : detalhe.tipo === 'preEntrada'
+                    ? `Pré Entrada — ${detalhe.linha.codigo}`
+                    : `Pré Compra — ${detalhe.linha.codigo}`
           }
           subtitulo={detalhe.linha.descricao}
           onClose={() => setDetalhe(null)}
@@ -1595,6 +1618,14 @@ export default function ConsultaEstoquePage() {
             }
             if (detalhe.tipo === 'solicitacao') {
               return <TabelaDetalheSolicitacao linhas={detalheSc} />;
+            }
+            if (detalhe.tipo === 'preEntrada') {
+              return (
+                <TabelaDetalhePreEntrada
+                  linhas={detalhePreEntrada}
+                  qtdeGrade={detalhe.linha.preEntrada}
+                />
+              );
             }
             return (
               <TabelaDetalheCotacao

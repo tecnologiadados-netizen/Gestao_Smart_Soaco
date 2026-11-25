@@ -10,17 +10,25 @@ const SECOES: SecaoAjuda[] = [
     id: 'cascata',
     titulo: 'Grade sintética e clique na célula',
     oQueE:
-      'A grade traz só valores consolidados (estoque, empenho, SC, Pré Compra, PC, saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
+      'A grade traz só valores consolidados (estoque, empenho, SC, Pré Compra, PC, Pré Entrada e saldo projetado). O detalhe analítico abre sob demanda ao clicar na célula.',
     comoLe:
-      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação (usuário, emissão, necessidade e saldo). O modal aberto pelo código do produto no pedido, no sequenciamento, no heatmap e no calendário usa esta mesma grade: empenho, estoque, solicitação, pré compra, pedido de compra e saldo projetado, com o mesmo clique em cada coluna.',
+      'Clique na célula para ver o modal com a mesma regra/fonte do número da grade. O detalhe fica em cache até um novo “Filtrar/Consultar”; a soma do modal deve bater com a coluna. Pré Entrada mostra solicitação, pedido vinculado, documento, NF, fornecedor, emissão, situação e quantidade. No modal de Pré Compra, clique no código da coluna SC para abrir essa solicitação. O modal aberto pelo código do produto no pedido, no sequenciamento, no heatmap e no calendário usa esta mesma grade.',
   },
   {
     id: 'saldo',
     titulo: 'Saldo projetado',
     oQueE:
-      'Indicador de disponibilidade líquida do item: estoque − empenho + solicitação + Pré Compra + pedido de compra.',
+      'Indicador de disponibilidade líquida do item: estoque − empenho + solicitação + Pré Compra + pedido de compra + Pré Entrada.',
     comoLe:
       'Valor ≤ 0 fica em destaque (vermelho): há risco de ruptura se o empenho for consumido antes das entradas. Não é o estoque físico sozinho — já desconta o comprometido e soma entradas esperadas.',
+  },
+  {
+    id: 'pre-entrada',
+    titulo: 'Pedido de compra × Pré Entrada',
+    oQueE:
+      'Pedido compra mostra somente o saldo ainda aberto do PC. Quando o material passa para IMPORTAÇÃO DE XML - PRÉ ENTRADA (tipo 46) e está vinculado ao item do pedido já atendido, a quantidade deixa o PC e aparece somente em Pré Entrada.',
+    comoLe:
+      'A célula violeta evidencia material a caminho que ainda não entrou no estoque. Clique no valor para conferir o documento e o pedido vinculado. A soma das linhas do modal deve ser exatamente igual ao valor da grade.',
   },
   {
     id: 'empenho',

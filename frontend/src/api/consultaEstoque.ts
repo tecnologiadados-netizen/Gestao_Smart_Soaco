@@ -11,6 +11,7 @@ export type ConsultaEstoqueLinha = {
   solicitacao: number;
   cotacao: number;
   pedidoCompra: number;
+  preEntrada: number;
   saldoProjetado: number;
 };
 
@@ -225,6 +226,19 @@ export type PcPendDetalhe = {
   qtde: number;
   dataEntrega: string | null;
 };
+export type PreEntradaDetalhe = {
+  idItem: number;
+  idDocumento: number;
+  numeroDocumento: string | null;
+  numeroNfe: string | null;
+  solicitacoes: string | null;
+  fornecedor: string | null;
+  dataEmissao: string | null;
+  pedidos: string | null;
+  pedidosRef: { id: number; numero: string }[];
+  qtde: number;
+  situacao: 'Pré-entrada';
+};
 
 async function getDetalhe<T>(path: string, query: Record<string, string>): Promise<{ data: T[]; error?: string }> {
   const qs = new URLSearchParams(query).toString();
@@ -250,4 +264,8 @@ export function obterCotacaoDetalhe(idProduto: number) {
 
 export function obterPcDetalhe(idProduto: number) {
   return getDetalhe<PcPendDetalhe>('pedido-compra', { idProduto: String(idProduto) });
+}
+
+export function obterPreEntradaDetalhe(idProduto: number) {
+  return getDetalhe<PreEntradaDetalhe>('pre-entrada', { idProduto: String(idProduto) });
 }
