@@ -1511,6 +1511,8 @@ export type DoubleCheckInNota = {
   /** Havia ao menos uma divergência real no instante da conferência. */
   temDivergenciaRealHistorica?: boolean;
   totalDivergenciasReaisHistorica?: number;
+  /** Solicitações ainda em tratamento no Otimiza, sem repetição. */
+  solicitacoesOtimizaEmAndamento?: number[];
 };
 
 export type DoubleCheckInHistoricoEntrada = {

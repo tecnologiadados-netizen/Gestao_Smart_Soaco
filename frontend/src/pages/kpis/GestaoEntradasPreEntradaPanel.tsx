@@ -223,14 +223,7 @@ export default function GestaoEntradasPreEntradaPanel() {
   });
   const exibidas = grade.rowsExibidas;
 
-  const resumo = useMemo(() => {
-    const todas = dados?.linhas ?? [];
-    return {
-      preEntrada: todas.length,
-      pendente: todas.filter((linha) => linha.conferencia === 'pendente').length,
-      comOtimiza: todas.filter((linha) => linha.comunicacoes.length > 0).length,
-    };
-  }, [dados]);
+  const totalPreEntradas = dados?.linhas.length ?? 0;
 
   function filtrarPeriodo() {
     if ((dataInicio === '') !== (dataFim === '')) {
@@ -353,12 +346,8 @@ export default function GestaoEntradasPreEntradaPanel() {
       <div className={`overflow-hidden ${panelSurface}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
           <p>
-            {resumo.preEntrada} {resumo.preEntrada === 1 ? 'pré-entrada' : 'pré-entradas'}
-            {' · '}
-            {resumo.pendente} {resumo.pendente === 1 ? 'conferência pendente' : 'conferências pendentes'}
-            {' · '}
-            {resumo.comOtimiza}{' '}
-            {resumo.comOtimiza === 1 ? 'comunicação em aberto' : 'comunicações em aberto'}
+            {totalPreEntradas}{' '}
+            {totalPreEntradas === 1 ? 'documento em pré-entrada' : 'documentos em pré-entrada'}
           </p>
           <div className="flex items-center gap-3">
             <button

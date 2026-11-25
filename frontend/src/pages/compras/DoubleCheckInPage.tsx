@@ -166,10 +166,19 @@ const COLUNAS_GRADE: GradeColunaConfiguravel[] = [
 
 const IDS_COLUNAS_GRADE = COLUNAS_GRADE.map((coluna) => coluna.id);
 
+function textoOtimizaEmTratamento(nota: DoubleCheckInNota): string | null {
+  const numeros = [...new Set(nota.solicitacoesOtimizaEmAndamento ?? [])]
+    .filter((numero) => Number.isInteger(numero) && numero > 0);
+  if (numeros.length === 0) return null;
+  return `Em tratamento no Otimiza ${numeros.map((numero) => `#${numero}`).join(', ')}`;
+}
+
 function labelConferenciaNota(nota: DoubleCheckInNota): string {
   if (regimeDaNota(nota) === 'nao_aplicada') return 'Não aplicada';
   if (nota.conferido && nota.conferidoComDivergencia) return 'Conferido c/ divergência';
   if (nota.conferido) return 'Conferido';
+  const otimiza = textoOtimizaEmTratamento(nota);
+  if (otimiza) return `Pendente · ${otimiza}`;
   return 'Pendente';
 }
 
@@ -1243,6 +1252,7 @@ export default function DoubleCheckInPage() {
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
                 const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
+                const otimizaEmTratamento = textoOtimizaEmTratamento(n);
                 const faixa =
                   indice % 2 === 0
                     ? 'bg-white dark:bg-black'
@@ -1309,8 +1319,16 @@ export default function DoubleCheckInPage() {
                           Conferido
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border-2 border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200">
-                          Pendente
+                        <span
+                          className="inline-flex max-w-full flex-col items-start rounded-md border-2 border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200"
+                          title={otimizaEmTratamento ?? 'Conferência pendente'}
+                        >
+                          <span>Pendente</span>
+                          {otimizaEmTratamento ? (
+                            <span className="whitespace-normal text-[10px] font-medium leading-tight">
+                              {otimizaEmTratamento}
+                            </span>
+                          ) : null}
                         </span>
                       )}
                     </td>

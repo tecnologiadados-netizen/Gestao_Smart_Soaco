@@ -33,6 +33,7 @@ import {
   listarCamposDivergenciaLancados,
   listarDecisoesComparativo,
   listarSolicitacoesOtimiza,
+  listarSolicitacoesOtimizaEmAndamentoPorDocumentos,
   gravarSolicitacaoOtimiza,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
@@ -353,6 +354,8 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   temDivergenciaBenignaAtual: boolean;
   temDivergenciaRealHistorica: boolean;
   totalDivergenciasReaisHistorica: number;
+  /** Números das solicitações que ainda estão em tratamento no Otimiza. */
+  solicitacoesOtimizaEmAndamento: number[];
 };
 
 async function enriquecerNotasComConferencia(
@@ -362,9 +365,10 @@ async function enriquecerNotasComConferencia(
   const idsConferenciaCompleta = notas
     .filter((n) => regimeConferenciaPorDataEntrada(n.dataEntrada) === 'completa')
     .map((n) => n.idDocumento);
-  const [map, resumosAtuais] = await Promise.all([
+  const [map, resumosAtuais, solicitacoesOtimizaEmAndamento] = await Promise.all([
     listarDocumentosConferidos(ids),
     carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
+    listarSolicitacoesOtimizaEmAndamentoPorDocumentos(ids),
   ]);
   const nomes = await nomesConferidores([...map.values()]);
   return notas.map((n) => {
@@ -399,6 +403,8 @@ async function enriquecerNotasComConferencia(
         regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
+      solicitacoesOtimizaEmAndamento:
+        solicitacoesOtimizaEmAndamento.get(n.idDocumento) ?? [],
     };
   });
 }

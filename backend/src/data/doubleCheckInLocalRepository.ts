@@ -520,6 +520,33 @@ export async function listarSolicitacoesOtimiza(
   }));
 }
 
+export async function listarSolicitacoesOtimizaEmAndamentoPorDocumentos(
+  idsDocumentos: number[]
+): Promise<Map<number, number[]>> {
+  const ids = [...new Set(idsDocumentos.filter((id) => Number.isInteger(id) && id > 0))];
+  const resultado = new Map<number, number[]>();
+  if (ids.length === 0) return resultado;
+
+  const rows = await prisma.doubleCheckInSolicitacaoOtimiza.findMany({
+    where: {
+      idDocumentoEstoque: { in: ids },
+      status: 'in_progress',
+    },
+    select: {
+      idDocumentoEstoque: true,
+      numero: true,
+    },
+    orderBy: [{ idDocumentoEstoque: 'asc' }, { numero: 'asc' }],
+  });
+
+  for (const row of rows) {
+    const numeros = resultado.get(row.idDocumentoEstoque) ?? [];
+    if (!numeros.includes(row.numero)) numeros.push(row.numero);
+    resultado.set(row.idDocumentoEstoque, numeros);
+  }
+  return resultado;
+}
+
 export async function gravarSolicitacaoOtimiza(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
