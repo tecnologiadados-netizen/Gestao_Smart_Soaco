@@ -42,6 +42,7 @@ import {
   putDoubleCheckInPagamentoXml,
   putDoubleCheckInCriterios,
   putDoubleCheckInSolicitacaoOtimiza,
+  putDoubleCheckInSolicitacaoOtimizaSemVinculo,
   postDoubleCheckInComparativoObservacao,
   putDoubleCheckInDestinatarios,
   putDoubleCheckInParametros,
@@ -575,6 +576,11 @@ router.put(
   '/double-checkin/solicitacao-otimiza',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(putDoubleCheckInSolicitacaoOtimiza)
+);
+router.put(
+  '/double-checkin/solicitacao-otimiza-sem-vinculo',
+  requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
+  async503(putDoubleCheckInSolicitacaoOtimizaSemVinculo)
 );
 router.put(
   '/double-checkin/comparativo-decisao',

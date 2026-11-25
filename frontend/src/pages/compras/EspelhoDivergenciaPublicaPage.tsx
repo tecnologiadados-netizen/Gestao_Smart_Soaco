@@ -5,6 +5,7 @@ import { getApiBase } from '../../api/client';
 import {
   CRITERIOS_DIVERGENCIA_PADRAO,
   type DoubleCheckInComparativoLinha,
+  type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
 
 type Cabecalho = {
@@ -39,6 +40,7 @@ export default function EspelhoDivergenciaPublicaPage() {
   const [cabecalho, setCabecalho] = useState<Cabecalho | null>(null);
   const [linhas, setLinhas] = useState<DoubleCheckInComparativoLinha[]>([]);
   const [semVinculo, setSemVinculo] = useState(false);
+  const [solicitacoesOtimiza, setSolicitacoesOtimiza] = useState<DoubleCheckInSolicitacaoOtimiza[]>([]);
 
   useEffect(() => {
     if (!token) {
@@ -59,12 +61,16 @@ export default function EspelhoDivergenciaPublicaPage() {
           cabecalho?: Cabecalho;
           linhas?: DoubleCheckInComparativoLinha[];
           semVinculo?: boolean;
+          solicitacoesOtimiza?: DoubleCheckInSolicitacaoOtimiza[];
           error?: string;
         };
         if (!res.ok) throw new Error(body.error ?? 'Link não encontrado.');
         setCabecalho(body.cabecalho ?? null);
         setLinhas(Array.isArray(body.linhas) ? body.linhas : []);
         setSemVinculo(body.semVinculo === true);
+        setSolicitacoesOtimiza(
+          Array.isArray(body.solicitacoesOtimiza) ? body.solicitacoesOtimiza : []
+        );
       })
       .catch((e: unknown) => {
         if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -95,21 +101,16 @@ export default function EspelhoDivergenciaPublicaPage() {
           </p>
         ) : (
           <div className="flex-1 space-y-3 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            {semVinculo ? (
-              <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-                Este documento está sem vínculo com pedido de compra. Os cards abaixo são o espelho da
-                primeira leitura. Role para ver as demais divergências.
-              </p>
-            ) : null}
             <DoubleCheckInComparativoPcTab
               idDocumento={0}
               conferido={false}
               somenteLeitura
               evidencia
+              semVinculo={semVinculo}
               linhas={linhas}
               decisoes={[]}
               justificativas={[]}
-              solicitacoesOtimiza={[]}
+              solicitacoesOtimiza={solicitacoesOtimiza}
               criterios={CRITERIOS_DIVERGENCIA_PADRAO}
               loading={loading}
               erro={null}

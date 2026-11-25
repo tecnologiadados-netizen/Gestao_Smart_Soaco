@@ -35,6 +35,10 @@ export const DOUBLE_CHECKIN_CRITERIOS_KEY = 'double_checkin_criterios_divergenci
 
 export const DOUBLE_CHECKIN_CAMPOS = ['valor_unitario', 'qtde', 'ipi', 'condicao_pagamento'] as const;
 export type DoubleCheckInCampoComparativo = (typeof DOUBLE_CHECKIN_CAMPOS)[number];
+export const DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO = 'sem_vinculo_pedido' as const;
+export type DoubleCheckInSolicitacaoCampo =
+  | DoubleCheckInCampoComparativo
+  | typeof DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO;
 
 function ymdHojeSaoPaulo(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -495,7 +499,7 @@ export type DoubleCheckInSolicitacaoOtimizaRow = {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
   idItemPedidoCompra: number;
-  campo: DoubleCheckInCampoComparativo;
+  campo: DoubleCheckInSolicitacaoCampo;
   numero: number;
   status: 'in_progress' | 'completed' | 'cancelled' | null;
 };
@@ -511,7 +515,7 @@ export async function listarSolicitacoesOtimiza(
     idDocumentoEstoque: r.idDocumentoEstoque,
     idItemDocumentoEstoque: r.idItemDocumentoEstoque,
     idItemPedidoCompra: r.idItemPedidoCompra,
-    campo: r.campo as DoubleCheckInCampoComparativo,
+    campo: r.campo as DoubleCheckInSolicitacaoCampo,
     numero: r.numero,
     status:
       r.status === 'in_progress' || r.status === 'completed' || r.status === 'cancelled'
@@ -551,13 +555,16 @@ export async function gravarSolicitacaoOtimiza(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
   idItemPedidoCompra: number;
-  campo: DoubleCheckInCampoComparativo;
+  campo: DoubleCheckInSolicitacaoCampo;
   numero: number;
   status?: 'in_progress' | 'completed' | 'cancelled' | null;
   usuarioId: number;
   usuarioLogin: string;
 }): Promise<DoubleCheckInSolicitacaoOtimizaRow> {
-  if (!DOUBLE_CHECKIN_CAMPOS.includes(params.campo)) {
+  if (
+    !(DOUBLE_CHECKIN_CAMPOS as readonly string[]).includes(params.campo) &&
+    params.campo !== DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO
+  ) {
     throw new Error(`Campo inválido: ${params.campo}`);
   }
   const numero = numeroSolicitacaoOtimizaValido(params.numero);

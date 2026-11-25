@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, CircleHelp, Copy, Eye, MessageSquarePlus, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, Copy, Eye, Link2, MessageSquarePlus, X, XCircle } from 'lucide-react';
 import {
   addDoubleCheckInComparativoObservacao,
+  DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO,
   saveDoubleCheckInComparativoDecisao,
   saveDoubleCheckInSolicitacaoOtimiza,
+  saveDoubleCheckInSolicitacaoOtimizaSemVinculo,
   type DoubleCheckInCampoComparativo,
   type DoubleCheckInComparativoDecisao,
   type DoubleCheckInComparativoLinha,
@@ -14,6 +16,7 @@ import {
 } from '../../api/compras';
 import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
 import PagamentoXmlPreEntradaPanel from './PagamentoXmlPreEntradaPanel';
+import { MENSAGEM_DOUBLE_CHECK_SEM_VINCULO } from './doubleCheckInSemVinculo';
 
 const nfBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const nfBrl4 = new Intl.NumberFormat('pt-BR', {
@@ -164,6 +167,13 @@ function chaveDecisao(
   campo: string
 ): string {
   return `${idItemDocumentoEstoque}:${idItemPedidoCompra}:${campo}`;
+}
+
+function labelStatusOtimiza(status: DoubleCheckInSolicitacaoOtimiza['status']): string {
+  if (status === 'in_progress') return 'em andamento';
+  if (status === 'completed') return 'concluída';
+  if (status === 'cancelled') return 'cancelada';
+  return 'status não consultado';
 }
 
 function fmtYmdBr(ymd: string | null | undefined): string {
@@ -447,6 +457,9 @@ type Props = {
   somenteLeitura?: boolean;
   /** Evidência pública: mostra os valores e esconde o estado da decisão interna. */
   evidencia?: boolean;
+  semVinculo?: boolean;
+  /** Permite registrar o Otimiza do documento quando não há NF × pedido. */
+  permitirOtimizaSemVinculo?: boolean;
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
   justificativas: DoubleCheckInJustificativaOpcao[];
@@ -475,6 +488,8 @@ export default function DoubleCheckInComparativoPcTab({
   conferido,
   somenteLeitura = false,
   evidencia = false,
+  semVinculo = false,
+  permitirOtimizaSemVinculo = false,
   linhas,
   decisoes,
   justificativas,
@@ -516,6 +531,10 @@ export default function DoubleCheckInComparativoPcTab({
   const [prazosModalLinha, setPrazosModalLinha] = useState<DoubleCheckInComparativoLinha | null>(null);
   const [ajudaTotaisAberta, setAjudaTotaisAberta] = useState(false);
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
+  const [editandoOtimizaSemVinculo, setEditandoOtimizaSemVinculo] = useState(false);
+  const [numeroOtimizaSemVinculo, setNumeroOtimizaSemVinculo] = useState('');
+  const [salvandoOtimizaSemVinculo, setSalvandoOtimizaSemVinculo] = useState(false);
+  const [erroOtimizaSemVinculo, setErroOtimizaSemVinculo] = useState<string | null>(null);
 
   const totaisVinculos = useMemo(() => {
     const base = linhas[0];
@@ -548,6 +567,13 @@ export default function DoubleCheckInComparativoPcTab({
     }
     return m;
   }, [solicitacoesOtimiza]);
+  const solicitacaoSemVinculo = useMemo(
+    () =>
+      solicitacoesOtimiza.find(
+        (solicitacao) => solicitacao.campo === DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO
+      ) ?? null,
+    [solicitacoesOtimiza]
+  );
 
   const decisaoMap = useMemo(() => {
     const m = new Map<string, DoubleCheckInComparativoDecisao>();
@@ -569,6 +595,36 @@ export default function DoubleCheckInComparativoPcTab({
     () => (somenteLeitura ? 0 : contarPendentesComparativo(linhas, decisoes)),
     [linhas, decisoes, somenteLeitura]
   );
+
+  const gravarOtimizaSemVinculo = async () => {
+    const texto = numeroOtimizaSemVinculo.trim();
+    if (!/^\d+$/.test(texto) || Number(texto) <= 0) {
+      setErroOtimizaSemVinculo('Informe o número inteiro da solicitação no Otimiza.');
+      return;
+    }
+    setSalvandoOtimizaSemVinculo(true);
+    setErroOtimizaSemVinculo(null);
+    try {
+      const resultado = await saveDoubleCheckInSolicitacaoOtimizaSemVinculo({
+        idDocumento,
+        numero: Number(texto),
+      });
+      if (resultado.erro || !resultado.solicitacao) {
+        setErroOtimizaSemVinculo(resultado.erro ?? 'Não foi possível vincular a solicitação.');
+        return;
+      }
+      onSolicitacoesChange([
+        ...solicitacoesOtimiza.filter(
+          (solicitacao) => solicitacao.campo !== DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO
+        ),
+        resultado.solicitacao,
+      ]);
+      setNumeroOtimizaSemVinculo(String(resultado.solicitacao.numero));
+      setEditandoOtimizaSemVinculo(false);
+    } finally {
+      setSalvandoOtimizaSemVinculo(false);
+    }
+  };
 
   /** Cond. pagamento é do documento × pedido, não de cada item. */
   const gruposPagamento = useMemo(() => {
@@ -1144,16 +1200,95 @@ export default function DoubleCheckInComparativoPcTab({
       </p>
     );
   }
-  if (linhas.length === 0) {
-    return (
-      <p className="py-6 text-center text-sm text-slate-500">
-        Nenhum vínculo item da NF × item de pedido de compra encontrado para este documento.
+  const painelSemVinculo = (
+    <section className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/40">
+      <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+        Documento sem vínculo com pedido de compra
       </p>
-    );
+      <p className="mt-1 text-xs text-amber-900 dark:text-amber-200">
+        {MENSAGEM_DOUBLE_CHECK_SEM_VINCULO}
+      </p>
+      {linhas.length > 0 ? (
+        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+          Os cards abaixo são apenas o espelho da primeira leitura.
+        </p>
+      ) : null}
+      {solicitacaoSemVinculo ? (
+        <div className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-400 bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-amber-900 dark:border-amber-600 dark:bg-slate-950/40 dark:text-amber-100">
+          <span>Otimiza nº {solicitacaoSemVinculo.numero}</span>
+          <span aria-hidden>·</span>
+          <span>{labelStatusOtimiza(solicitacaoSemVinculo.status)}</span>
+        </div>
+      ) : null}
+      {permitirOtimizaSemVinculo ? (
+        <div className="mt-3">
+          {!editandoOtimizaSemVinculo ? (
+            <button
+              type="button"
+              className={btnSecondary}
+              onClick={() => {
+                setNumeroOtimizaSemVinculo(
+                  solicitacaoSemVinculo ? String(solicitacaoSemVinculo.numero) : ''
+                );
+                setErroOtimizaSemVinculo(null);
+                setEditandoOtimizaSemVinculo(true);
+              }}
+            >
+              <Link2 className="h-4 w-4" aria-hidden />
+              {solicitacaoSemVinculo ? 'Alterar Otimiza vinculado' : 'Vincular Otimiza'}
+            </button>
+          ) : (
+            <div className="max-w-md space-y-2 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-700 dark:bg-slate-900/70">
+              <label className={labelClass} htmlFor={`otimiza-sem-vinculo-${idDocumento}`}>
+                Nº da solicitação no Otimiza
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  id={`otimiza-sem-vinculo-${idDocumento}`}
+                  className={`${inputClass} min-w-[12rem] flex-1`}
+                  inputMode="numeric"
+                  value={numeroOtimizaSemVinculo}
+                  onChange={(evento) => setNumeroOtimizaSemVinculo(evento.target.value)}
+                  placeholder="Ex.: 8882"
+                />
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  disabled={salvandoOtimizaSemVinculo}
+                  onClick={() => void gravarOtimizaSemVinculo()}
+                >
+                  {salvandoOtimizaSemVinculo ? 'Consultando…' : 'Consultar e vincular'}
+                </button>
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  disabled={salvandoOtimizaSemVinculo}
+                  onClick={() => {
+                    setEditandoOtimizaSemVinculo(false);
+                    setErroOtimizaSemVinculo(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+              {erroOtimizaSemVinculo ? (
+                <p className="text-xs text-rose-700 dark:text-rose-300" role="alert">
+                  {erroOtimizaSemVinculo}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+  if (linhas.length === 0) {
+    return painelSemVinculo;
   }
 
   return (
     <div className="space-y-3">
+      {semVinculo ? painelSemVinculo : null}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
           {linhas.length} vínculo(s)

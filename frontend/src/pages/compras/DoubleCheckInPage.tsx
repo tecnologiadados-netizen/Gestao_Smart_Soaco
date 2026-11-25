@@ -36,6 +36,7 @@ import {
 } from '../../api/compras';
 import { PERMISSOES } from '../../config/permissoes';
 import { PLACEHOLDER_BUSCA_TEXTO_LIVRE, criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
+import { MENSAGEM_DOUBLE_CHECK_SEM_VINCULO } from './doubleCheckInSemVinculo';
 
 const POLL_MS = 120_000;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -1535,16 +1536,14 @@ export default function DoubleCheckInPage() {
                         Não é necessário aceitar ou recusar divergências.
                       </p>
                     ) : null}
-                    {compSemVinculo ? (
-                      <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-                        Este documento está sem vínculo com pedido de compra no Nomus. Os cards abaixo são o
-                        espelho da primeira leitura. Role para ver as demais divergências.
-                      </p>
-                    ) : null}
                     <DoubleCheckInComparativoPcTab
                       idDocumento={modalNota.idDocumento}
                       conferido={Boolean(modalNota.conferido)}
                       somenteLeitura={regimeDaNota(modalNota) !== 'completa' || compSemVinculo}
+                      semVinculo={compSemVinculo}
+                      permitirOtimizaSemVinculo={
+                        regimeDaNota(modalNota) === 'completa' && compSemVinculo
+                      }
                       linhas={compLinhas}
                       decisoes={compDecisoes}
                       justificativas={compJustificativas}
@@ -1555,6 +1554,19 @@ export default function DoubleCheckInPage() {
                       erro={compErro}
                       onSolicitacoesChange={(next) => {
                         setCompSolicitacoes(next);
+                        const emAndamento = [
+                          ...new Set(
+                            next
+                              .filter((solicitacao) => solicitacao.status === 'in_progress')
+                              .map((solicitacao) => solicitacao.numero)
+                          ),
+                        ];
+                        const atualizarOtimiza = (nota: DoubleCheckInNota): DoubleCheckInNota =>
+                          nota.idDocumento === modalNota.idDocumento
+                            ? { ...nota, solicitacoesOtimizaEmAndamento: emAndamento }
+                            : nota;
+                        setNotas((prev) => prev.map(atualizarOtimiza));
+                        setModalNota((prev) => (prev ? atualizarOtimiza(prev) : prev));
                         const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
                         if (prev) {
                           comparativoCacheRef.current.set(modalNota.idDocumento, {
@@ -1605,8 +1617,7 @@ export default function DoubleCheckInPage() {
                     </span>
                   ) : regimeDaNota(modalNota) === 'completa' && !compLoading && compSemVinculo ? (
                     <span>
-                      Sem vínculo com pedido de compra. A tela mantém o espelho da primeira leitura para
-                      consulta e impressão. A conferência fica disponível quando o documento for vinculado de novo.
+                      {MENSAGEM_DOUBLE_CHECK_SEM_VINCULO} Vincule uma solicitação do Otimiza para registrar o tratamento.
                     </span>
                   ) : regimeDaNota(modalNota) === 'completa' &&
                     !compLoading &&

@@ -19,6 +19,7 @@ import {
 } from '../data/doubleCheckInRepository.js';
 import { salvarRespostaPagamentoPreEntrada } from '../data/doubleCheckInPagamentoXmlRepository.js';
 import {
+  DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO,
   DOUBLE_CHECKIN_CAMPOS,
   DOUBLE_CHECKIN_NF_PC_WA_CODE,
   DOUBLE_CHECKIN_WA_CODE,
@@ -497,7 +498,7 @@ export async function carregarComparativoVisivel(idDocumento: number): Promise<{
   }
   await sincronizarEspelhosLeitura(idDocumento, []);
   const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
-  return { linhas: linhasComNatureza(espelho, []), semVinculo: espelho.length > 0 };
+  return { linhas: linhasComNatureza(espelho, []), semVinculo: true };
 }
 
 /**
@@ -544,7 +545,10 @@ export async function getDoubleCheckInEvidenciaPublica(req: Request, res: Respon
       res.status(404).json({ error: 'Link não encontrado.' });
       return;
     }
-    const comparativo = await carregarComparativoVisivel(acesso.idDocumentoEstoque);
+    const [comparativo, solicitacoesOtimiza] = await Promise.all([
+      carregarComparativoVisivel(acesso.idDocumentoEstoque),
+      listarSolicitacoesOtimiza(acesso.idDocumentoEstoque),
+    ]);
     if (comparativo.erro) {
       res.status(503).json({ error: comparativo.erro });
       return;
@@ -553,6 +557,9 @@ export async function getDoubleCheckInEvidenciaPublica(req: Request, res: Respon
       cabecalho: acesso.cabecalho,
       linhas: comparativo.linhas,
       semVinculo: comparativo.semVinculo,
+      solicitacoesOtimiza: solicitacoesOtimiza.filter(
+        (item) => item.campo === DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO
+      ),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -594,25 +601,23 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     if (linhas.length === 0) {
       await sincronizarEspelhosLeitura(idDocumento, []);
       const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
-      if (espelho.length > 0) {
-        res.json({
-          linhas: linhasComNatureza(espelho, decisoes),
-          decisoes,
-          justificativas,
-          solicitacoesOtimiza,
-          pendentes: 0,
-          criterios: {
-            valor_unitario: true,
-            qtde: true,
-            ipi: true,
-            condicao_pagamento: true,
-          },
-          camposLancados: [...DOUBLE_CHECKIN_CAMPOS],
-          semVinculo: true,
-          idDocumento,
-        });
-        return;
-      }
+      res.json({
+        linhas: linhasComNatureza(espelho, decisoes),
+        decisoes,
+        justificativas,
+        solicitacoesOtimiza,
+        pendentes: 0,
+        criterios: {
+          valor_unitario: true,
+          qtde: true,
+          ipi: true,
+          condicao_pagamento: true,
+        },
+        camposLancados: [...DOUBLE_CHECKIN_CAMPOS],
+        semVinculo: true,
+        idDocumento,
+      });
+      return;
     }
     const aplicado = await linhasComCriteriosAplicados(idDocumento, linhas);
     const validacao = validarDecisoesCompletas(aplicado.linhas, decisoes);
@@ -897,6 +902,91 @@ export async function putDoubleCheckInSolicitacaoOtimiza(req: Request, res: Resp
       replicadas,
       concluida,
       mensagem: concluida ? null : mensagemBloqueioAceiteOtimiza(statusOtimiza),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/**
+ * PUT /api/compras/double-checkin/solicitacao-otimiza-sem-vinculo
+ * Vincula uma solicitação ao documento inteiro quando não há NF × pedido.
+ */
+export async function putDoubleCheckInSolicitacaoOtimizaSemVinculo(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const login = req.user?.login;
+  if (!login) {
+    res.status(401).json({ error: 'Não autorizado.' });
+    return;
+  }
+  const idDocumento = Math.trunc(Number(req.body?.idDocumento));
+  const numero = numeroSolicitacaoOtimizaValido(
+    typeof req.body?.numero === 'string' ? req.body.numero.trim() : req.body?.numero
+  );
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  if (numero == null) {
+    res.status(400).json({ error: 'Informe o número inteiro da solicitação no Otimiza.' });
+    return;
+  }
+
+  try {
+    const [{ linhas, erro }, dataDocumento, usuario] = await Promise.all([
+      queryDoubleCheckInComparativoPc({ idDocumento }),
+      queryDoubleCheckInDataEntrada(idDocumento),
+      prisma.usuario.findUnique({
+        where: { login },
+        select: { id: true, login: true },
+      }),
+    ]);
+    if (erro || dataDocumento.erro) {
+      res.status(503).json({ error: erro ?? dataDocumento.erro });
+      return;
+    }
+    if (!usuario) {
+      res.status(401).json({ error: 'Usuário não encontrado.' });
+      return;
+    }
+    if (regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada) !== 'completa') {
+      res.status(400).json({
+        error: 'Para entradas anteriores a 21/09/2026, o comparativo NF × PC é somente leitura.',
+      });
+      return;
+    }
+    if (linhas.length > 0) {
+      res.status(400).json({
+        error: 'O documento já possui vínculo com pedido de compra. Vincule o Otimiza à divergência correspondente.',
+      });
+      return;
+    }
+
+    const statusOtimiza = await consultarStatusSolicitacaoOtimiza(numero);
+    if (!statusOtimiza.found) {
+      res.status(400).json({ error: mensagemBloqueioAceiteOtimiza(statusOtimiza) });
+      return;
+    }
+    const solicitacao = await gravarSolicitacaoOtimiza({
+      idDocumentoEstoque: idDocumento,
+      idItemDocumentoEstoque: 0,
+      idItemPedidoCompra: 0,
+      campo: DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO,
+      numero,
+      status: statusOtimiza.status,
+      usuarioId: usuario.id,
+      usuarioLogin: usuario.login,
+    });
+    res.json({
+      ok: true,
+      solicitacao,
+      concluida: solicitacaoOtimizaConcluida(statusOtimiza),
+      mensagem: solicitacaoOtimizaConcluida(statusOtimiza)
+        ? null
+        : mensagemBloqueioAceiteOtimiza(statusOtimiza),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

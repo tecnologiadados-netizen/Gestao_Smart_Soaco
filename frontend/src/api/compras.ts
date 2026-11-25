@@ -1941,11 +1941,16 @@ export async function excluirDoubleCheckInJustificativa(id: number): Promise<{ o
   return { ok: true };
 }
 
+export const DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO = 'sem_vinculo_pedido' as const;
+export type DoubleCheckInSolicitacaoCampo =
+  | DoubleCheckInCampoComparativo
+  | typeof DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO;
+
 export type DoubleCheckInSolicitacaoOtimiza = {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;
   idItemPedidoCompra: number;
-  campo: DoubleCheckInCampoComparativo;
+  campo: DoubleCheckInSolicitacaoCampo;
   numero: number;
   status?: 'in_progress' | 'completed' | 'cancelled' | null;
 };
@@ -2107,6 +2112,36 @@ export async function saveDoubleCheckInSolicitacaoOtimiza(params: {
     ok: true,
     solicitacao: body.solicitacao,
     replicadas: Array.isArray(body.replicadas) ? body.replicadas : [],
+    concluida: body.concluida === true,
+    mensagem: body.mensagem ?? null,
+  };
+}
+
+export async function saveDoubleCheckInSolicitacaoOtimizaSemVinculo(params: {
+  idDocumento: number;
+  numero: number;
+}): Promise<{
+  ok: boolean;
+  solicitacao?: DoubleCheckInSolicitacaoOtimiza;
+  concluida?: boolean;
+  mensagem?: string | null;
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/compras/double-checkin/solicitacao-otimiza-sem-vinculo', {
+    method: 'PUT',
+    body: params,
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    solicitacao?: DoubleCheckInSolicitacaoOtimiza;
+    concluida?: boolean;
+    mensagem?: string | null;
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, erro: body.error ?? res.statusText };
+  return {
+    ok: true,
+    solicitacao: body.solicitacao,
     concluida: body.concluida === true,
     mensagem: body.mensagem ?? null,
   };
