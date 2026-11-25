@@ -74,6 +74,7 @@ import {
   observacaoNaturezaDivergencia,
   type NaturezaDivergencia,
 } from '../services/doubleCheckInNatureza.js';
+import { documentoConferidoComDivergencia } from '../services/doubleCheckInStatusConferencia.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
 import {
@@ -341,7 +342,7 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   conferidoPor: string | null;
   /** Tinha conferência, mas uma divergência atual ainda não possui decisão. */
   conferenciaReaberta: boolean;
-  /** Conferido e a NF ainda diverge do pedido de compra. */
+  /** Conferido e a NF ainda tem divergência real em relação ao pedido. Benigna não entra. */
   conferidoComDivergencia: boolean;
   temDivergenciaRealAtual: boolean;
   temDivergenciaBenignaAtual: boolean;
@@ -383,8 +384,10 @@ async function enriquecerNotasComConferencia(
       conferidoEm: c?.conferidoEm ?? null,
       conferidoPor: c ? (nomes.get(c.usuarioId) ?? c.usuarioLogin) : null,
       conferenciaReaberta,
-      conferidoComDivergencia:
-        regimeConferencia === 'completa' && conferido && Boolean(atual?.temQualquer),
+      conferidoComDivergencia: documentoConferidoComDivergencia(
+        regimeConferencia === 'completa' && conferido,
+        Boolean(atual?.temReal)
+      ),
       temDivergenciaRealAtual:
         regimeConferencia === 'completa' && Boolean(atual?.temReal),
       temDivergenciaBenignaAtual:
@@ -1442,7 +1445,10 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
         conferido: true,
         conferidoEm: ja.conferidoEm,
         conferidoPor: await nomeConferidor(ja.usuarioId, ja.usuarioLogin),
-        conferidoComDivergencia: Boolean(resumoAtual?.temQualquer),
+        conferidoComDivergencia: documentoConferidoComDivergencia(
+          true,
+          Boolean(resumoAtual?.temReal)
+        ),
         temDivergenciaRealAtual: Boolean(resumoAtual?.temReal),
         temDivergenciaBenignaAtual: Boolean(resumoAtual?.temBenigna),
         temDivergenciaRealHistorica: ja.temDivergenciaRealHistorica,
@@ -1467,7 +1473,6 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       renovar: Boolean(ja && reconferenciaSolicitada),
     });
 
-    const conferidoComDivergencia = linhas.some((l) => l.temDivergencia);
     const conferidoPor = await nomeConferidor(created.usuarioId, created.usuarioLogin);
     const relato = montarRelatoConferencia({
       meta: {
@@ -1485,6 +1490,7 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     });
     const totalReaisHistorica = relato?.totalDivergenciasReais ?? 0;
     const totalBenignasHistorica = relato?.totalDivergenciasBenignas ?? 0;
+    const conferidoComDivergencia = documentoConferidoComDivergencia(true, totalReaisHistorica > 0);
     let alertaNfPcEnviado = false;
     try {
       await atualizarClassificacaoHistoricaConferencia({
