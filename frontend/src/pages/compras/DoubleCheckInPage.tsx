@@ -68,6 +68,17 @@ const CRITERIOS_OPCOES: { id: DoubleCheckInCampoComparativo; label: string }[] =
   { id: 'condicao_pagamento', label: 'Condição de pagamento' },
 ];
 
+function faturaXmlBloqueiaConferencia(
+  linhas: { pagamentoXmlPendente?: boolean }[],
+  criterios: { condicao_pagamento?: boolean } | null | undefined,
+  lancados: readonly string[]
+): boolean {
+  const condicaoAtiva =
+    criterios?.condicao_pagamento !== false || lancados.includes('condicao_pagamento');
+  if (!condicaoAtiva) return false;
+  return linhas.some((linha) => Boolean(linha.pagamentoXmlPendente));
+}
+
 type ComparativoCache = {
   linhas: DoubleCheckInComparativoLinha[];
   decisoes: DoubleCheckInComparativoDecisao[];
@@ -816,6 +827,8 @@ export default function DoubleCheckInPage() {
     let linhas = compLinhas;
     let decisoes = compDecisoes;
     let semVinculoEspelho = compSemVinculo;
+    let criteriosUsados = compCriterios;
+    let lancadosUsados = compCamposLancados;
     const cached = comparativoCacheRef.current.get(modalNota.idDocumento);
     if (regimeConferencia === 'completa' && !cached) {
       setCompLoading(true);
@@ -845,6 +858,8 @@ export default function DoubleCheckInPage() {
         linhas = payload.linhas;
         decisoes = payload.decisoes;
         semVinculoEspelho = payload.semVinculo;
+        criteriosUsados = payload.criterios;
+        lancadosUsados = payload.camposLancados;
       } finally {
         setCompLoading(false);
       }
@@ -852,6 +867,8 @@ export default function DoubleCheckInPage() {
       linhas = cached.linhas;
       decisoes = cached.decisoes;
       semVinculoEspelho = Boolean(cached.semVinculo);
+      criteriosUsados = cached.criterios;
+      lancadosUsados = cached.camposLancados;
     }
 
     if (regimeConferencia === 'completa' && (linhas.length === 0 || semVinculoEspelho)) {
@@ -861,7 +878,10 @@ export default function DoubleCheckInPage() {
       return;
     }
 
-    if (regimeConferencia === 'completa' && linhas.some((l) => l.pagamentoXmlPendente)) {
+    if (
+      regimeConferencia === 'completa' &&
+      faturaXmlBloqueiaConferencia(linhas, criteriosUsados, lancadosUsados)
+    ) {
       setCompBloqueioMsg(
         'A pré-entrada não tem fatura na NF. Informe se já foi paga ou lance a condição completa antes de conferir.'
       );
@@ -1613,7 +1633,7 @@ export default function DoubleCheckInPage() {
                       Boolean(modalNota.conferido) ||
                       regimeDaNota(modalNota) === 'nao_aplicada' ||
                       compLoading ||
-                      compLinhas.some((l) => l.pagamentoXmlPendente) ||
+                      faturaXmlBloqueiaConferencia(compLinhas, compCriterios, compCamposLancados) ||
                       (regimeDaNota(modalNota) === 'completa' &&
                         (compSemVinculo ||
                           comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0))

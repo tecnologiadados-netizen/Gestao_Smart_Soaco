@@ -562,8 +562,8 @@ export default function DoubleCheckInComparativoPcTab({
     [linhas]
   );
   const pagamentoXmlPendente = useMemo(
-    () => linhas.some((l) => l.pagamentoXmlPendente),
-    [linhas]
+    () => campoVisivel('condicao_pagamento') && linhas.some((l) => l.pagamentoXmlPendente),
+    [linhas, criterios, camposLancados]
   );
   const pendentes = useMemo(
     () => (somenteLeitura ? 0 : contarPendentesComparativo(linhas, decisoes)),

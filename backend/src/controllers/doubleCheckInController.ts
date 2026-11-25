@@ -77,6 +77,7 @@ import {
 import { documentoConferidoComDivergencia } from '../services/doubleCheckInStatusConferencia.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
 import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import { pagamentoXmlPendenteEfetivo } from '../utils/doubleCheckInFaturaConferencia.js';
 import {
   regimeConferenciaPorDataEntrada,
   type RegimeConferenciaDoubleCheck,
@@ -144,15 +145,19 @@ function mascararLinhasPorCriterio(
     const divergValorUnitario = ocultar('valor_unitario') ? false : linha.divergValorUnitario;
     const divergQtde = ocultar('qtde') ? false : linha.divergQtde;
     const divergIpi = ocultar('ipi') ? false : linha.divergIpi;
-    const divergCondicaoPagamento = ocultar('condicao_pagamento')
-      ? false
-      : linha.divergCondicaoPagamento;
+    const ocultarCondicao = ocultar('condicao_pagamento');
+    const divergCondicaoPagamento = ocultarCondicao ? false : linha.divergCondicaoPagamento;
     return {
       ...linha,
       divergValorUnitario,
       divergQtde,
       divergIpi,
       divergCondicaoPagamento,
+      pagamentoXmlPendente: pagamentoXmlPendenteEfetivo({
+        pagamentoXmlPendente: Boolean(linha.pagamentoXmlPendente),
+        criterioCondicaoAtivo: criterios.condicao_pagamento !== false,
+        condicaoJaLancada: lancados.has('condicao_pagamento'),
+      }),
       temDivergencia: divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
     };
   });
