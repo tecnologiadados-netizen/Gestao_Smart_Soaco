@@ -565,6 +565,27 @@ export async function listarSolicitacoesOtimizaPorDocumentos(
   return resultado;
 }
 
+/** Grava o status consultado no Otimiza em todas as linhas daquele número. */
+export async function atualizarStatusSolicitacoesOtimizaPorNumero(
+  atualizacoes: Array<{ numero: number; status: 'in_progress' | 'completed' | 'cancelled' }>
+): Promise<void> {
+  const porStatus = new Map<'in_progress' | 'completed' | 'cancelled', number[]>();
+  for (const item of atualizacoes) {
+    if (!Number.isInteger(item.numero) || item.numero <= 0) continue;
+    const numeros = porStatus.get(item.status) ?? [];
+    if (!numeros.includes(item.numero)) numeros.push(item.numero);
+    porStatus.set(item.status, numeros);
+  }
+  await Promise.all(
+    [...porStatus.entries()].map(([status, numeros]) =>
+      prisma.doubleCheckInSolicitacaoOtimiza.updateMany({
+        where: { numero: { in: numeros }, NOT: { status } },
+        data: { status },
+      })
+    )
+  );
+}
+
 export async function gravarSolicitacaoOtimiza(params: {
   idDocumentoEstoque: number;
   idItemDocumentoEstoque: number;

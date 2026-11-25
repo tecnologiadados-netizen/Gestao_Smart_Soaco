@@ -71,6 +71,27 @@ describe('status da solicitação no Otimiza', () => {
     });
   });
 
+  it('trata concluída mesmo quando o texto do status foge do trio conhecido', () => {
+    expect(
+      interpretarRespostaStatusOtimiza(
+        { found: true, number: 7563, status: 'done', isCompleted: true, finishedAt: '2026-10-20T19:56:32.031+00:00' },
+        7563
+      ).status
+    ).toBe('completed');
+    expect(
+      interpretarRespostaStatusOtimiza(
+        { found: true, number: 9, status: null, isCompleted: true, finishedAt: '2026-10-01T00:00:00.000Z' },
+        9
+      ).status
+    ).toBe('completed');
+    expect(
+      interpretarRespostaStatusOtimiza(
+        { found: true, number: 10, status: 'cancelled_by_user', isCompleted: true, finishedAt: null },
+        10
+      ).status
+    ).toBe('cancelled');
+  });
+
   it('em andamento existe e pode ser registrada, mas não libera o aceite', () => {
     const emAndamento = interpretarRespostaStatusOtimiza(
       { found: true, number: 7565, status: 'in_progress', isCompleted: false, finishedAt: null },

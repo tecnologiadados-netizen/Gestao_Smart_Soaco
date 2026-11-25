@@ -1497,6 +1497,10 @@ export type DoubleCheckInNota = {
   nomeParceiro: string | null;
   /** Usuário do Nomus que criou o documento. */
   nomeCriador?: string | null;
+  /** Tipo de movimentação vigente do documento no Nomus. */
+  tipoMovimentacao?: string | null;
+  /** Pedidos de compra ligados aos itens da nota. */
+  pedidosVinculados?: Array<{ id: number; nome: string }>;
   qtdeItens: number;
   regimeConferencia?: 'nao_aplicada' | 'simples' | 'completa';
   conferido?: boolean;

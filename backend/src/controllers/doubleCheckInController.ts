@@ -35,6 +35,7 @@ import {
   listarDecisoesComparativo,
   listarSolicitacoesOtimiza,
   listarSolicitacoesOtimizaPorDocumentos,
+  atualizarStatusSolicitacoesOtimizaPorNumero,
   gravarSolicitacaoOtimiza,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
@@ -86,12 +87,13 @@ import {
 } from '../services/doubleCheckInConferenciaPeriodo.js';
 import { conferenciaDoubleCheckLiberadaParaMesa } from '../services/mesaDoubleCheckGate.js';
 import {
-  consultarResponsaveisAtuaisOtimiza,
+  consultarStatusesOtimiza,
   consultarStatusSolicitacaoOtimiza,
   exigirSolicitacaoOtimizaConcluida,
   mensagemBloqueioAceiteOtimiza,
   numeroSolicitacaoOtimizaValido,
   solicitacaoOtimizaConcluida,
+  type StatusSolicitacaoOtimiza,
 } from '../data/doubleCheckInOtimiza.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -366,6 +368,52 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   }>;
 };
 
+type StatusOtimizaGravado = 'in_progress' | 'completed' | 'cancelled' | null;
+
+function statusOtimizaEfetivo(
+  numero: number,
+  armazenado: StatusOtimizaGravado,
+  consultados: Map<number, StatusSolicitacaoOtimiza>
+): StatusOtimizaGravado {
+  const fresco = consultados.get(numero);
+  if (fresco?.found && fresco.status) return fresco.status;
+  return armazenado;
+}
+
+/**
+ * Solicitação sem status final é consultada de novo. Concluída e cancelada
+ * já gravadas não voltam à API. Falha de rede deixa o status anterior.
+ */
+async function refrescarStatusOtimiza(
+  solicitacoes: Array<{ numero: number; status: StatusOtimizaGravado }>
+): Promise<Map<number, StatusSolicitacaoOtimiza>> {
+  const numeros = [
+    ...new Set(
+      solicitacoes
+        .filter((item) => item.status == null || item.status === 'in_progress')
+        .map((item) => item.numero)
+        .filter((numero) => Number.isInteger(numero) && numero > 0)
+    ),
+  ];
+  const consultados = await consultarStatusesOtimiza(numeros);
+  const gravar: Array<{ numero: number; status: 'in_progress' | 'completed' | 'cancelled' }> = [];
+  for (const [numero, status] of consultados) {
+    if (status.found && status.status) gravar.push({ numero, status: status.status });
+  }
+  if (gravar.length > 0) await atualizarStatusSolicitacoesOtimizaPorNumero(gravar);
+  return consultados;
+}
+
+function comStatusOtimizaAtual<T extends { numero: number; status: StatusOtimizaGravado }>(
+  solicitacoes: T[],
+  consultados: Map<number, StatusSolicitacaoOtimiza>
+): T[] {
+  return solicitacoes.map((item) => ({
+    ...item,
+    status: statusOtimizaEfetivo(item.numero, item.status, consultados),
+  }));
+}
+
 async function enriquecerNotasComConferencia(
   notas: DoubleCheckInNota[]
 ): Promise<DoubleCheckInNotaComConferencia[]> {
@@ -378,15 +426,7 @@ async function enriquecerNotasComConferencia(
     carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
     listarSolicitacoesOtimizaPorDocumentos(ids),
   ]);
-  const numerosEmAndamento = [
-    ...new Set(
-      [...solicitacoesOtimiza.values()]
-        .flat()
-        .filter((solicitacao) => solicitacao.status === 'in_progress')
-        .map((solicitacao) => solicitacao.numero)
-    ),
-  ];
-  const responsaveisOtimiza = await consultarResponsaveisAtuaisOtimiza(numerosEmAndamento);
+  const consultadosOtimiza = await refrescarStatusOtimiza([...solicitacoesOtimiza.values()].flat());
   const nomes = await nomesConferidores([...map.values()]);
   return notas.map((n) => {
     const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
@@ -420,19 +460,26 @@ async function enriquecerNotasComConferencia(
         regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
-      otimizaVinculados: (solicitacoesOtimiza.get(n.idDocumento) ?? []).map((solicitacao) => ({
-        numero: solicitacao.numero,
-        status: solicitacao.status,
-        responsavel:
-          solicitacao.status === 'in_progress'
-            ? (responsaveisOtimiza.get(solicitacao.numero) ?? null)
-            : null,
-      })),
+      otimizaVinculados: (solicitacoesOtimiza.get(n.idDocumento) ?? []).map((solicitacao) => {
+        const status = statusOtimizaEfetivo(solicitacao.numero, solicitacao.status, consultadosOtimiza);
+        return {
+          numero: solicitacao.numero,
+          status,
+          responsavel:
+            status === 'in_progress'
+              ? (consultadosOtimiza.get(solicitacao.numero)?.currentResponsible ?? null)
+              : null,
+        };
+      }),
       solicitacoesOtimizaEmAndamento: (solicitacoesOtimiza.get(n.idDocumento) ?? [])
+        .map((solicitacao) => ({
+          numero: solicitacao.numero,
+          status: statusOtimizaEfetivo(solicitacao.numero, solicitacao.status, consultadosOtimiza),
+        }))
         .filter((solicitacao) => solicitacao.status === 'in_progress')
         .map((solicitacao) => ({
           numero: solicitacao.numero,
-          responsavel: responsaveisOtimiza.get(solicitacao.numero) ?? null,
+          responsavel: consultadosOtimiza.get(solicitacao.numero)?.currentResponsible ?? null,
         })),
     };
   });
@@ -581,11 +628,12 @@ export async function getDoubleCheckInEvidenciaPublica(req: Request, res: Respon
       res.status(503).json({ error: comparativo.erro });
       return;
     }
+    const consultadosOtimiza = await refrescarStatusOtimiza(solicitacoesOtimiza);
     res.json({
       cabecalho: acesso.cabecalho,
       linhas: comparativo.linhas,
       semVinculo: comparativo.semVinculo,
-      solicitacoesOtimiza: solicitacoesOtimiza.filter(
+      solicitacoesOtimiza: comStatusOtimizaAtual(solicitacoesOtimiza, consultadosOtimiza).filter(
         (item) => item.campo === DOUBLE_CHECKIN_CAMPO_SEM_VINCULO_PEDIDO
       ),
     });
@@ -618,6 +666,8 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
       res.status(503).json({ linhas: [], decisoes: [], justificativas, erro, error: erro });
       return;
     }
+    const consultadosOtimiza = await refrescarStatusOtimiza(solicitacoesOtimiza);
+    const solicitacoesAtuais = comStatusOtimizaAtual(solicitacoesOtimiza, consultadosOtimiza);
     const regime = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
     if (linhas.length > 0) {
       await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
@@ -633,7 +683,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
         linhas: linhasComNatureza(espelho, decisoes),
         decisoes,
         justificativas,
-        solicitacoesOtimiza,
+        solicitacoesOtimiza: solicitacoesAtuais,
         pendentes: 0,
         criterios: {
           valor_unitario: true,
@@ -653,7 +703,7 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
       linhas: linhasComNatureza(aplicado.linhas, decisoes),
       decisoes,
       justificativas,
-      solicitacoesOtimiza,
+      solicitacoesOtimiza: solicitacoesAtuais,
       pendentes: validacao.ok ? 0 : validacao.pendentes,
       criterios: aplicado.criterios,
       camposLancados: aplicado.camposLancados,

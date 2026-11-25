@@ -40,6 +40,10 @@ export type DoubleCheckInNota = {
   nomeParceiro: string | null;
   /** Usuário do Nomus vinculado ao documento (`documentoestoque.idUsuario`). */
   nomeCriador: string | null;
+  /** Tipo de movimentação vigente do documento no Nomus. */
+  tipoMovimentacao: string | null;
+  /** Pedidos de compra ligados aos itens da nota, sem repetir o mesmo pedido. */
+  pedidosVinculados: Array<{ id: number; nome: string }>;
   qtdeItens: number;
 };
 
@@ -96,6 +100,7 @@ SELECT
   de.idParceiro AS idParceiro,
   pe.nome AS nomeParceiro,
   MAX(NULLIF(TRIM(uc.nome), '')) AS nomeCriador,
+  MAX(NULLIF(TRIM(tp.nome), '')) AS tipoMovimentacao,
   COUNT(ide.id) AS qtdeItens
 FROM itemdocumentoestoque ide
 LEFT JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
@@ -118,6 +123,58 @@ GROUP BY
 ORDER BY DATE(de.dataEntrada) DESC, de.id DESC
 LIMIT 2000
 `.trim();
+
+/** Mesmo vínculo do comparativo NF × PC: item da nota → item do pedido de compra. */
+const SQL_PEDIDOS_VINCULADOS = `
+SELECT
+  ide.idDocumentoEstoque AS idDocumento,
+  pc.id AS idPedido,
+  NULLIF(TRIM(pc.nome), '') AS nomePedido
+FROM itemdocumentoestoque ide
+INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+INNER JOIN itempedidocompra ipc ON ipc.id = ideipc.idItemPedidoCompra
+INNER JOIN pedidocompra pc ON pc.id = ipc.idPedidoCompra
+WHERE ide.discriminador = 'ItemDocumentoEntrada'
+  AND ide.idDocumentoEstoque IN (__IDS__)
+`.trim();
+
+function rotuloPedidoVinculado(idPedido: number, nome: string | null): string {
+  return nome?.trim() || `PC ${idPedido}`;
+}
+
+async function carregarPedidosVinculados(
+  pool: NonNullable<ReturnType<typeof getNomusPool>>,
+  idsDocumento: number[]
+): Promise<Map<number, Array<{ id: number; nome: string }>>> {
+  const ids = [...new Set(idsDocumento.filter((id) => Number.isInteger(id) && id > 0))];
+  const mapa = new Map<number, Map<number, string>>();
+  for (const id of ids) mapa.set(id, new Map());
+  const TAMANHO = 400;
+  for (let i = 0; i < ids.length; i += TAMANHO) {
+    const parte = ids.slice(i, i + TAMANHO);
+    const sql = SQL_PEDIDOS_VINCULADOS.replace('__IDS__', parte.join(', '));
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql);
+    const list = Array.isArray(rows) ? rows : [];
+    for (const row of list) {
+      const idDocumento = toInt(row.idDocumento);
+      const idPedido = toInt(row.idPedido);
+      if (idDocumento <= 0 || idPedido <= 0) continue;
+      const pedidos = mapa.get(idDocumento) ?? new Map<number, string>();
+      pedidos.set(idPedido, rotuloPedidoVinculado(idPedido, strOrNull(row.nomePedido)));
+      mapa.set(idDocumento, pedidos);
+    }
+  }
+  const resultado = new Map<number, Array<{ id: number; nome: string }>>();
+  for (const [idDocumento, pedidos] of mapa) {
+    resultado.set(
+      idDocumento,
+      [...pedidos.entries()]
+        .map(([id, nome]) => ({ id, nome }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.id - b.id)
+    );
+  }
+  return resultado;
+}
 
 const SQL_DATA_ENTRADA_DOCUMENTO = `
 SELECT DATE(de.dataEntrada) AS dataEntrada
@@ -217,8 +274,17 @@ export async function queryDoubleCheckInNotas(params: {
       idParceiro: r.idParceiro != null ? toInt(r.idParceiro) : null,
       nomeParceiro: strOrNull(r.nomeParceiro ?? r['nomeParceiro']),
       nomeCriador: strOrNull(r.nomeCriador ?? r['nomeCriador']),
+      tipoMovimentacao: strOrNull(r.tipoMovimentacao ?? r['tipoMovimentacao']),
+      pedidosVinculados: [],
       qtdeItens: toInt(r.qtdeItens ?? r['qtdeItens']),
     }));
+    const pedidos = await carregarPedidosVinculados(
+      pool,
+      notas.map((nota) => nota.idDocumento)
+    );
+    for (const nota of notas) {
+      nota.pedidosVinculados = pedidos.get(nota.idDocumento) ?? [];
+    }
     return { notas };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

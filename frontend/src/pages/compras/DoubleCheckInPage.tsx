@@ -158,6 +158,8 @@ function ajustarLargurasGrade(preferidas: Record<string, number>, disponivel: nu
 
 const COLUNAS_GRADE: GradeColunaConfiguravel[] = [
   { id: 'documento', label: 'Documento', largura: 148, larguraMinima: 112 },
+  { id: 'movimentacao', label: 'Atual movimentação', largura: 220, larguraMinima: 140 },
+  { id: 'pedido', label: 'Pedido vinculado', largura: 200, larguraMinima: 140 },
   { id: 'datas', label: 'Datas', largura: 132, larguraMinima: 112 },
   { id: 'parceiro', label: 'Parceiro', largura: 280, larguraMinima: 140 },
   { id: 'criador', label: 'Criador', largura: 300, larguraMinima: 140 },
@@ -238,8 +240,20 @@ function labelConferenciaNota(nota: DoubleCheckInNota): string {
   return 'Pendente';
 }
 
+function nomesPedidosVinculados(nota: DoubleCheckInNota): string[] {
+  const nomes = (nota.pedidosVinculados ?? [])
+    .map((pedido) => pedido.nome?.trim() || (pedido.id > 0 ? `PC ${pedido.id}` : ''))
+    .filter(Boolean);
+  return [...new Set(nomes)];
+}
+
 function textoCelulaGrade(nota: DoubleCheckInNota, coluna: string): string {
   if (coluna === 'documento') return (nota.numeroDocumentoFiscal ?? '').trim() || (nota.numeroNfe ?? '').trim() || '—';
+  if (coluna === 'movimentacao') return nota.tipoMovimentacao?.trim() || '—';
+  if (coluna === 'pedido') {
+    const nomes = nomesPedidosVinculados(nota);
+    return nomes.length > 0 ? nomes.join(' · ') : '—';
+  }
   if (coluna === 'datas') return fmtDataBr(nota.dataEntrada);
   if (coluna === 'parceiro') return nota.nomeParceiro?.trim() || '—';
   if (coluna === 'criador') return nota.nomeCriador?.trim() || '—';
@@ -254,6 +268,10 @@ function valoresFiltroGrade(nota: DoubleCheckInNota, coluna: string): string[] |
       .map((valor) => valor?.trim() ?? '')
       .filter(Boolean);
     return valores.length > 0 ? [...new Set(valores)] : ['—'];
+  }
+  if (coluna === 'pedido') {
+    const nomes = nomesPedidosVinculados(nota);
+    return nomes.length > 0 ? nomes : ['—'];
   }
   if (coluna === 'datas') {
     const valores = [`entrada ${fmtDataBr(nota.dataEntrada)}`];
@@ -587,6 +605,8 @@ export default function DoubleCheckInPage() {
         match(n.numeroNfe ?? '') ||
         match(n.nomeParceiro ?? '') ||
         match(n.nomeCriador ?? '') ||
+        match(n.tipoMovimentacao ?? '') ||
+        nomesPedidosVinculados(n).some((pedido) => match(pedido)) ||
         match(String(n.idParceiro ?? ''));
       if (!passaTexto) return false;
       if (filtroSituacao === 'pendentes') {
@@ -603,7 +623,7 @@ export default function DoubleCheckInPage() {
     });
   })();
 
-  const colunasUi = useGradeColunasExcel('compras.double-checkin.colunas.v2', COLUNAS_GRADE);
+  const colunasUi = useGradeColunasExcel('compras.double-checkin.colunas.v4', COLUNAS_GRADE);
   const [larguraDisponivel, setLarguraDisponivel] = useState(0);
   const redimensionandoRef = useRef(false);
   const grade = useGradeFiltrosExcel<DoubleCheckInNota>({
@@ -1103,7 +1123,7 @@ export default function DoubleCheckInPage() {
               className={`${inputClass} w-full`}
               value={filtroTexto}
               onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Número, fornecedor ou criador; use %"
+              placeholder="Número, fornecedor, criador, movimentação ou pedido; use %"
             />
           </div>
           <div className="w-full sm:w-60">
@@ -1296,7 +1316,7 @@ export default function DoubleCheckInPage() {
           <tbody>
             {notasPagina.length === 0 ? (
               <tr>
-                <td colSpan={7} className="bg-white px-4 py-10 text-center text-slate-500 dark:bg-transparent">
+                <td colSpan={9} className="bg-white px-4 py-10 text-center text-slate-500 dark:bg-transparent">
                   {notasFiltradas.length === 0
                     ? 'Nenhuma entrada no período.'
                     : 'Nenhum documento com os filtros da grade.'}
@@ -1331,6 +1351,24 @@ export default function DoubleCheckInPage() {
                         ) : null}
                       </div>
                       <div className="text-xs tabular-nums text-slate-400">NF-e {n.numeroNfe ?? '—'}</div>
+                    </td>
+                    <td className="overflow-hidden px-4 py-3.5" title={n.tipoMovimentacao ?? undefined}>
+                      <div className="truncate text-slate-700 dark:text-slate-200">
+                        {n.tipoMovimentacao?.trim() || '—'}
+                      </div>
+                    </td>
+                    <td className="overflow-hidden px-4 py-3.5" title={textoCelulaGrade(n, 'pedido')}>
+                      {nomesPedidosVinculados(n).length === 0 ? (
+                        <span className="text-slate-400">—</span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {nomesPedidosVinculados(n).map((pedido) => (
+                            <div key={pedido} className="truncate text-slate-700 dark:text-slate-200" title={pedido}>
+                              {pedido}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <div className="tabular-nums text-slate-700 dark:text-slate-200">{fmtDataBr(n.dataEntrada)}</div>

@@ -40,18 +40,23 @@ export function interpretarRespostaStatusOtimiza(
   numeroPedido: number
 ): StatusSolicitacaoOtimiza {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-  const statusBruto = typeof raw.status === 'string' ? raw.status : null;
-  const status =
+  const statusBruto = typeof raw.status === 'string' ? raw.status.trim() : null;
+  const found = raw.found === true;
+  const isCompleted = typeof raw.isCompleted === 'boolean' ? raw.isCompleted : null;
+  let status: StatusSolicitacaoOtimiza['status'] =
     statusBruto && STATUS_CONHECIDOS.has(statusBruto)
       ? (statusBruto as StatusSolicitacaoOtimiza['status'])
       : null;
-  const found = raw.found === true;
+  // Otimiza às vezes devolve a solicitação concluída com um texto fora do trio conhecido.
+  if (found && status == null && isCompleted === true) {
+    status = statusBruto && /cancel/i.test(statusBruto) ? 'cancelled' : 'completed';
+  }
   return {
     found,
     number:
       typeof raw.number === 'number' && Number.isInteger(raw.number) ? raw.number : numeroPedido,
     status: found ? status : null,
-    isCompleted: typeof raw.isCompleted === 'boolean' ? raw.isCompleted : null,
+    isCompleted,
     finishedAt:
       typeof raw.finishedAt === 'string' && raw.finishedAt.trim() ? raw.finishedAt : null,
     currentResponsible:
@@ -128,16 +133,16 @@ export async function consultarStatusSolicitacaoOtimiza(
   return interpretarRespostaStatusOtimiza(body, numero);
 }
 
-const CONCORRENCIA_RESPONSAVEL = 4;
+const CONCORRENCIA_STATUS = 4;
 
 /**
- * Responsável da etapa atual de cada solicitação. Falha de uma consulta
- * não derruba as outras: o número segue na grade sem o nome.
+ * Status atual de cada solicitação. Falha de uma consulta não derruba as outras:
+ * número ausente no mapa permanece com o status já gravado.
  */
-export async function consultarResponsaveisAtuaisOtimiza(
+export async function consultarStatusesOtimiza(
   numeros: number[]
-): Promise<Map<number, string | null>> {
-  const mapa = new Map<number, string | null>();
+): Promise<Map<number, StatusSolicitacaoOtimiza>> {
+  const mapa = new Map<number, StatusSolicitacaoOtimiza>();
   const fila = [...new Set(numeros.filter((numero) => Number.isInteger(numero) && numero > 0))];
   if (fila.length === 0) return mapa;
 
@@ -145,20 +150,18 @@ export async function consultarResponsaveisAtuaisOtimiza(
     const numero = fila.shift();
     if (numero == null) return;
     try {
-      const status = await consultarStatusSolicitacaoOtimiza(numero);
-      mapa.set(numero, status.currentResponsible);
+      mapa.set(numero, await consultarStatusSolicitacaoOtimiza(numero));
     } catch (err) {
-      console.error('[otimiza] responsável da etapa indisponível', {
+      console.error('[otimiza] status indisponível', {
         numero,
         motivo: err instanceof Error ? err.message : 'erro',
       });
-      mapa.set(numero, null);
     }
     await proximo();
   }
 
   await Promise.all(
-    Array.from({ length: Math.min(CONCORRENCIA_RESPONSAVEL, fila.length) }, () => proximo())
+    Array.from({ length: Math.min(CONCORRENCIA_STATUS, fila.length) }, () => proximo())
   );
   return mapa;
 }
