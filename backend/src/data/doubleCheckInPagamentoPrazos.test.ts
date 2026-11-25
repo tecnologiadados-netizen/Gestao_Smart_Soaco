@@ -132,14 +132,14 @@ describe('divergenciaCondicaoPorPrazos — à vista', () => {
 });
 
 describe('divergenciaCondicaoPreEntrada', () => {
-  it('já paga contra pedido à vista não diverge', () => {
+  it('já paga não gera divergência, mesmo com prazo no pedido', () => {
     expect(
       divergenciaCondicaoPreEntrada({
         origem: 'ja_paga',
         prazosNF: [0],
-        prazosPC: [],
-        condicaoPC: 'À Vista.',
-        regraPC: '0',
+        prazosPC: [1],
+        condicaoPC: 'Não Existente',
+        regraPC: '1',
       })
     ).toBe(false);
   });

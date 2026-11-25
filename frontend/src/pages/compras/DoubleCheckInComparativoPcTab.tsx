@@ -597,10 +597,11 @@ export default function DoubleCheckInComparativoPcTab({
       return { key, linha, nome: nomePedidoLinha(linha) };
     });
     // Link de evidência: só o que realmente diverge (benigna ou real).
+    const visiveis = grupos.filter((grupo) => grupo.linha.origemParcelasNF !== 'ja_paga');
     if (evidencia) {
-      return grupos.filter((grupo) => Boolean(grupo.linha.divergCondicaoPagamento));
+      return visiveis.filter((grupo) => Boolean(grupo.linha.divergCondicaoPagamento));
     }
-    return grupos;
+    return visiveis;
   }, [linhas, decisoes, evidencia]);
 
   const linhaPagamentoEditavel = useMemo(
@@ -1331,11 +1332,14 @@ export default function DoubleCheckInComparativoPcTab({
         </div>
       )}
 
-      {campoVisivel('condicao_pagamento') && gruposPagamento.length > 0 && (
+      {campoVisivel('condicao_pagamento') &&
+      (gruposPagamento.length > 0 || (!somenteLeitura && !evidencia && linhaPagamentoEditavel)) && (
         <section>
+          {gruposPagamento.length > 0 ? (
           <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Divergência do documento
           </h4>
+          ) : null}
           <div className="flex flex-wrap items-start gap-2">
             {gruposPagamento.map((grupo) => (
               <div key={grupo.key} className="w-full max-w-xs">

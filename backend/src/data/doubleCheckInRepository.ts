@@ -979,7 +979,7 @@ export function divergenciaCondicaoPorPrazos(params: {
 
 /**
  * Pré-entrada: a NF não usa a condição cadastrada no documento.
- * Já paga conta como à vista. Fatura ou boleto comparam os dias com o pedido
+ * Já paga não gera divergência. Fatura ou boleto comparam os dias com o pedido
  * (parcelas do PC ou, na falta delas, a regra cadastral).
  */
 export function divergenciaCondicaoPreEntrada(params: {
@@ -989,9 +989,9 @@ export function divergenciaCondicaoPreEntrada(params: {
   condicaoPC: string | null;
   regraPC: string | null;
 }): boolean {
-  const aVistaNf =
-    params.origem === 'ja_paga' ||
-    (params.prazosNF.length > 0 && params.prazosNF.every((d) => d === 0));
+  // Já paga encerra a comparação: não há card de divergência contra o pedido.
+  if (params.origem === 'ja_paga') return false;
+  const aVistaNf = params.prazosNF.length > 0 && params.prazosNF.every((d) => d === 0);
   const aVistaPc = ehCondicaoAVista({
     condicao: params.condicaoPC,
     regra: params.regraPC,

@@ -357,13 +357,13 @@ router.get(
 
 router.get(
   '/condicoes-pagamento',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getCondicoesPagamento)
 );
 
 router.get(
   '/formas-pagamento',
-  requirePermission(PERMISSOES.COMPRAS_VER),
+  requirePermission(PERMISSOES.COMPRAS_VER, PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getFormasPagamento)
 );
 
@@ -685,7 +685,10 @@ router.post(
 );
 router.post(
   '/double-checkin/reabrir',
-  requirePermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA),
+  requirePermission(
+    PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA,
+    PERMISSOES.COMPRAS_DOUBLE_CHECKIN
+  ),
   async503(postDoubleCheckInReabrir)
 );
 router.get(

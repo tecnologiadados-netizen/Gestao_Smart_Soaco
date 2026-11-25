@@ -218,7 +218,9 @@ function resumoFiltroNotas(lista: DoubleCheckInNota[]) {
 export default function DoubleCheckInPage() {
   const { isMaster, hasPermission } = useAuth();
   const podeConfiguracoes = hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN_CONFIGURACOES);
-  const podeReabrirConferencia = hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA);
+  const podeReabrirConferencia =
+    hasPermission(PERMISSOES.DIVERGENCIAS_REABRIR_CONFERENCIA) ||
+    hasPermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN);
 
   const [dataInicio, setDataInicio] = useState('2024-01-01');
   const [dataFim, setDataFim] = useState(hojeYmd());
