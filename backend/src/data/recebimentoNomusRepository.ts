@@ -12,6 +12,29 @@ export const RECEBIMENTO_ID_EMPRESA_SO_ACO = PCP_ID_EMPRESA_SO_ACO;
 /** Nomus `tipomovimentacao.id` — IMPORTAÇÃO DE XML - PRÉ ENTRADA. */
 export const RECEBIMENTO_ID_TIPO_PRE_ENTRADA = 46;
 
+/** Tipos que representam a entrada já efetivada no Nomus. */
+export const RECEBIMENTO_IDS_TIPOS_ENTRADA_EFETIVA_SQL = '11, 35, 111, 112, 113, 114, 115, 116';
+
+/**
+ * Ignora a cópia legada da pré-entrada quando o Nomus manteve o documento tipo 46
+ * e criou outro documento efetivado com o mesmo número fiscal.
+ *
+ * Os consumidores deste fragmento usam `de` como alias de `documentoestoque`.
+ */
+export const SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO = `
+NOT EXISTS (
+  SELECT 1
+  FROM documentoestoque deEfetivado
+  WHERE deEfetivado.id <> de.id
+    AND deEfetivado.idEmpresaEntrada = de.idEmpresaEntrada
+    AND COALESCE(deEfetivado.idParceiro, 0) = COALESCE(de.idParceiro, 0)
+    AND NULLIF(TRIM(de.numeroDocumentoFiscal), '') IS NOT NULL
+    AND TRIM(COALESCE(deEfetivado.numeroDocumentoFiscal, '')) =
+        TRIM(de.numeroDocumentoFiscal)
+    AND deEfetivado.idTipoMovimentacao IN (${RECEBIMENTO_IDS_TIPOS_ENTRADA_EFETIVA_SQL})
+)
+`.trim();
+
 export const RECEBIMENTO_STATUS = {
   AGUARDANDO_DOUBLE_CHECK: 'AGUARDANDO_DOUBLE_CHECK',
   AGUARDANDO_CONFERENTE: 'AGUARDANDO_CONFERENTE',
@@ -128,6 +151,7 @@ LEFT JOIN itemdocumentoestoque ide
  AND ide.discriminador = 'ItemDocumentoEntrada'
 WHERE de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
   AND tm.id IN (__TIPOS__)
+  AND ${SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO}
 GROUP BY
   de.id,
   de.numeroDocumentoFiscal,

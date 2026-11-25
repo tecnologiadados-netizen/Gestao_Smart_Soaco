@@ -26,7 +26,7 @@ const SECOES: SecaoAjuda[] = [
     id: 'pre-entrada',
     titulo: 'Pedido de compra × Pré Entrada',
     oQueE:
-      'Pedido compra mostra somente o saldo ainda aberto do PC. Quando o material passa para IMPORTAÇÃO DE XML - PRÉ ENTRADA (tipo 46) e está vinculado ao item do pedido já atendido, a quantidade deixa o PC e aparece somente em Pré Entrada.',
+      'Pedido compra mostra somente o saldo ainda aberto do PC. Quando o material passa para IMPORTAÇÃO DE XML - PRÉ ENTRADA (tipo 46) e está vinculado ao item do pedido já atendido, a quantidade deixa o PC e aparece somente em Pré Entrada. A cópia tipo 46 deixa de contar quando já existe uma entrada efetivada com o mesmo número fiscal.',
     comoLe:
       'A célula violeta evidencia material a caminho que ainda não entrou no estoque. Clique no valor para conferir o documento e o pedido vinculado. A soma das linhas do modal deve ser exatamente igual ao valor da grade.',
   },

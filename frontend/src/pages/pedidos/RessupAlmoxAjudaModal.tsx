@@ -36,7 +36,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A quantidade em documento IMPORTAÇÃO DE XML - PRÉ ENTRADA (tipo 46), ligada a item de pedido já atendido, continua compondo o saldo projetado e a cobertura como material a caminho. Ela não é exibida em uma coluna própria na grade.',
     comoLe:
-      'Quando o documento deixa o tipo 46, a quantidade deixa de compor essa parcela do saldo projetado. Consulte Materiais a chegar para analisar os documentos de pré-entrada.',
+      'Quando o documento deixa o tipo 46, ou já existe uma entrada efetivada com o mesmo número fiscal, a quantidade deixa de compor essa parcela do saldo projetado. Consulte Materiais a chegar para analisar os documentos de pré-entrada.',
   },
   {
     id: 'sug-aprov',

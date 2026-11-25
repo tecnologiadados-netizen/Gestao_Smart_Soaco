@@ -18,7 +18,10 @@ import {
 } from '../config/nomusDb.js';
 import { termoParaPadraoLikeSql } from '../utils/textoLivreBusca.js';
 import { PCP_ID_EMPRESA_SO_ACO, STATUS_COTACAO_AGPAG_SQL } from './sql/sqlComprasEstoqueFragments.js';
-import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
+import {
+  RECEBIMENTO_ID_TIPO_PRE_ENTRADA,
+  SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO,
+} from './recebimentoNomusRepository.js';
 
 /** Nomus `solicitacaocompra.status` = Liberada. */
 export const SC_STATUS_LIBERADA = 6;
@@ -78,6 +81,7 @@ export const SQL_DOC_PRE_ENTRADA = `
 de.idTipoMovimentacao = ${RECEBIMENTO_ID_TIPO_PRE_ENTRADA}
 AND de.idEmpresaEntrada = ${PCP_ID_EMPRESA_SO_ACO}
 AND ide.discriminador = 'ItemDocumentoEntrada'
+AND ${SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO}
 `.trim();
 
 /**

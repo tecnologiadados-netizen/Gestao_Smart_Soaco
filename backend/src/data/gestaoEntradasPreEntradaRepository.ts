@@ -23,6 +23,7 @@ import {
 import {
   RECEBIMENTO_ID_EMPRESA_SO_ACO,
   RECEBIMENTO_ID_TIPO_PRE_ENTRADA,
+  SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO,
 } from './recebimentoNomusRepository.js';
 
 const SQL_ATUAIS = `
@@ -43,6 +44,7 @@ LEFT JOIN usuario uc ON uc.id = de.idUsuario
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE de.idEmpresaEntrada = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
   AND de.idTipoMovimentacao = ${RECEBIMENTO_ID_TIPO_PRE_ENTRADA}
+  AND ${SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO}
 GROUP BY de.id, DATE(de.dataEmissao), DATE(de.dataEntrada), tm.id
 `.trim();
 

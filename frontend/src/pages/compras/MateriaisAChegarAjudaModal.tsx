@@ -12,7 +12,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'A tela mostra só o material que ainda está a caminho da empresa. Cada produto é uma linha, e as quatro etapas são colunas do processo: Solicitado, Pré-compra, Comprado e Pré-entrada.',
     comoLe:
-      'Se o produto não está em nenhuma das quatro etapas, ele não aparece. Entrada cujo documento já saiu do tipo IMPORTAÇÃO DE XML - PRÉ ENTRADA (46) também não aparece: o material já entrou de fato.',
+      'Se o produto não está em nenhuma das quatro etapas, ele não aparece. Entrada cujo documento já saiu do tipo IMPORTAÇÃO DE XML - PRÉ ENTRADA (46) também não aparece: o material já entrou de fato. Se o Nomus mantiver uma cópia no tipo 46, ela também deixa de contar quando já existe uma entrada efetivada com o mesmo número fiscal.',
     detalhes: [
       {
         titulo: 'Solicitado',

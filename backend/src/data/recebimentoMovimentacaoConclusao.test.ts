@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { movimentacaoDeixouPreEntrada } from './recebimentoNomusRepository.js';
+import {
+  movimentacaoDeixouPreEntrada,
+  SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO,
+} from './recebimentoNomusRepository.js';
 
 describe('movimentacaoDeixouPreEntrada', () => {
   const preEntrada = new Set([10, 11]);
@@ -14,5 +17,18 @@ describe('movimentacaoDeixouPreEntrada', () => {
 
   it('não conclui sem tipo identificado', () => {
     expect(movimentacaoDeixouPreEntrada(0, preEntrada)).toBe(false);
+  });
+
+  it('exclui a cópia tipo 46 quando existe entrada efetivada com o mesmo número fiscal', () => {
+    expect(SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO).toContain('NOT EXISTS');
+    expect(SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO).toContain(
+      'deEfetivado.idEmpresaEntrada = de.idEmpresaEntrada'
+    );
+    expect(SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO).toContain(
+      'COALESCE(deEfetivado.idParceiro, 0) = COALESCE(de.idParceiro, 0)'
+    );
+    expect(SQL_PRE_ENTRADA_SEM_DOCUMENTO_EFETIVADO).toContain(
+      'deEfetivado.idTipoMovimentacao IN (11, 35, 111, 112, 113, 114, 115, 116)'
+    );
   });
 });
