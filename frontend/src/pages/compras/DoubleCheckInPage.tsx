@@ -167,18 +167,36 @@ const COLUNAS_GRADE: GradeColunaConfiguravel[] = [
 
 const IDS_COLUNAS_GRADE = COLUNAS_GRADE.map((coluna) => coluna.id);
 
-function textoOtimizaEmTratamento(nota: DoubleCheckInNota): string | null {
+function textoOtimizaNaGrade(nota: DoubleCheckInNota): string | null {
+  const vinculados = [...(nota.otimizaVinculados ?? [])]
+    .filter((item) => Number.isInteger(item.numero) && item.numero > 0)
+    .sort((a, b) => (a.status === 'in_progress' ? -1 : b.status === 'in_progress' ? 1 : a.numero - b.numero));
+  if (vinculados.length > 0) {
+    const status = (valor: (typeof vinculados)[number]['status']) => {
+      if (valor === 'in_progress') return 'em andamento';
+      if (valor === 'completed') return 'concluída';
+      if (valor === 'cancelled') return 'cancelada';
+      return 'status não consultado';
+    };
+    if (vinculados.every((item) => item.status === 'in_progress')) {
+      return `Em tratamento no Otimiza ${vinculados.map((item) => `#${item.numero}`).join(', ')}`;
+    }
+    return `Otimiza ${vinculados
+      .map((item) => `#${item.numero} · ${status(item.status)}`)
+      .join(', ')}`;
+  }
   const numeros = [...new Set(nota.solicitacoesOtimizaEmAndamento ?? [])]
     .filter((numero) => Number.isInteger(numero) && numero > 0);
-  if (numeros.length === 0) return null;
-  return `Em tratamento no Otimiza ${numeros.map((numero) => `#${numero}`).join(', ')}`;
+  return numeros.length > 0
+    ? `Em tratamento no Otimiza ${numeros.map((numero) => `#${numero}`).join(', ')}`
+    : null;
 }
 
 function labelConferenciaNota(nota: DoubleCheckInNota): string {
   if (regimeDaNota(nota) === 'nao_aplicada') return 'Não aplicada';
   if (nota.conferido && nota.conferidoComDivergencia) return 'Conferido c/ divergência';
   if (nota.conferido) return 'Conferido';
-  const otimiza = textoOtimizaEmTratamento(nota);
+  const otimiza = textoOtimizaNaGrade(nota);
   if (otimiza) return `Pendente · ${otimiza}`;
   return 'Pendente';
 }
@@ -1253,7 +1271,7 @@ export default function DoubleCheckInPage() {
                 const conferido = Boolean(n.conferido);
                 const conferidoComDivergencia = conferido && Boolean(n.conferidoComDivergencia);
                 const temRealAtual = conferido && Boolean(n.temDivergenciaRealAtual);
-                const otimizaEmTratamento = textoOtimizaEmTratamento(n);
+                const otimizaNaGrade = textoOtimizaNaGrade(n);
                 const faixa =
                   indice % 2 === 0
                     ? 'bg-white dark:bg-black'
@@ -1322,12 +1340,12 @@ export default function DoubleCheckInPage() {
                       ) : (
                         <span
                           className="inline-flex max-w-full flex-col items-start rounded-md border-2 border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200"
-                          title={otimizaEmTratamento ?? 'Conferência pendente'}
+                          title={otimizaNaGrade ?? 'Conferência pendente'}
                         >
                           <span>Pendente</span>
-                          {otimizaEmTratamento ? (
+                          {otimizaNaGrade ? (
                             <span className="whitespace-normal text-[10px] font-medium leading-tight">
-                              {otimizaEmTratamento}
+                              {otimizaNaGrade}
                             </span>
                           ) : null}
                         </span>
@@ -1565,8 +1583,26 @@ export default function DoubleCheckInPage() {
                           nota.idDocumento === modalNota.idDocumento
                             ? { ...nota, solicitacoesOtimizaEmAndamento: emAndamento }
                             : nota;
-                        setNotas((prev) => prev.map(atualizarOtimiza));
-                        setModalNota((prev) => (prev ? atualizarOtimiza(prev) : prev));
+                        const vinculados = [
+                          ...new Map(
+                            next.map((solicitacao) => [
+                              solicitacao.numero,
+                              {
+                                numero: solicitacao.numero,
+                                status: solicitacao.status ?? null,
+                              },
+                            ])
+                          ).values(),
+                        ];
+                        const atualizarOtimizaComStatus = (nota: DoubleCheckInNota): DoubleCheckInNota =>
+                          nota.idDocumento === modalNota.idDocumento
+                            ? {
+                                ...atualizarOtimiza(nota),
+                                otimizaVinculados: vinculados,
+                              }
+                            : nota;
+                        setNotas((prev) => prev.map(atualizarOtimizaComStatus));
+                        setModalNota((prev) => (prev ? atualizarOtimizaComStatus(prev) : prev));
                         const prev = comparativoCacheRef.current.get(modalNota.idDocumento);
                         if (prev) {
                           comparativoCacheRef.current.set(modalNota.idDocumento, {

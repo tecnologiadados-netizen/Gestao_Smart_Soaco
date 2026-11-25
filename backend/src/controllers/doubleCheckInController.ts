@@ -34,7 +34,7 @@ import {
   listarCamposDivergenciaLancados,
   listarDecisoesComparativo,
   listarSolicitacoesOtimiza,
-  listarSolicitacoesOtimizaEmAndamentoPorDocumentos,
+  listarSolicitacoesOtimizaPorDocumentos,
   gravarSolicitacaoOtimiza,
   listarDocumentosConferidos,
   listarDocumentosJaAlertados,
@@ -357,6 +357,11 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   totalDivergenciasReaisHistorica: number;
   /** Números das solicitações que ainda estão em tratamento no Otimiza. */
   solicitacoesOtimizaEmAndamento: number[];
+  /** Solicitações vinculadas ao documento, inclusive concluídas e canceladas. */
+  otimizaVinculados: Array<{
+    numero: number;
+    status: 'in_progress' | 'completed' | 'cancelled' | null;
+  }>;
 };
 
 async function enriquecerNotasComConferencia(
@@ -366,10 +371,10 @@ async function enriquecerNotasComConferencia(
   const idsConferenciaCompleta = notas
     .filter((n) => regimeConferenciaPorDataEntrada(n.dataEntrada) === 'completa')
     .map((n) => n.idDocumento);
-  const [map, resumosAtuais, solicitacoesOtimizaEmAndamento] = await Promise.all([
+  const [map, resumosAtuais, solicitacoesOtimiza] = await Promise.all([
     listarDocumentosConferidos(ids),
     carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
-    listarSolicitacoesOtimizaEmAndamentoPorDocumentos(ids),
+    listarSolicitacoesOtimizaPorDocumentos(ids),
   ]);
   const nomes = await nomesConferidores([...map.values()]);
   return notas.map((n) => {
@@ -404,8 +409,10 @@ async function enriquecerNotasComConferencia(
         regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
-      solicitacoesOtimizaEmAndamento:
-        solicitacoesOtimizaEmAndamento.get(n.idDocumento) ?? [],
+      solicitacoesOtimizaEmAndamento: (solicitacoesOtimiza.get(n.idDocumento) ?? [])
+        .filter((solicitacao) => solicitacao.status === 'in_progress')
+        .map((solicitacao) => solicitacao.numero),
+      otimizaVinculados: solicitacoesOtimiza.get(n.idDocumento) ?? [],
     };
   });
 }

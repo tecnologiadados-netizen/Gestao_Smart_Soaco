@@ -524,29 +524,43 @@ export async function listarSolicitacoesOtimiza(
   }));
 }
 
-export async function listarSolicitacoesOtimizaEmAndamentoPorDocumentos(
+export type DoubleCheckInSolicitacaoOtimizaResumo = {
+  numero: number;
+  status: 'in_progress' | 'completed' | 'cancelled' | null;
+};
+
+export async function listarSolicitacoesOtimizaPorDocumentos(
   idsDocumentos: number[]
-): Promise<Map<number, number[]>> {
+): Promise<Map<number, DoubleCheckInSolicitacaoOtimizaResumo[]>> {
   const ids = [...new Set(idsDocumentos.filter((id) => Number.isInteger(id) && id > 0))];
-  const resultado = new Map<number, number[]>();
+  const resultado = new Map<number, DoubleCheckInSolicitacaoOtimizaResumo[]>();
   if (ids.length === 0) return resultado;
 
   const rows = await prisma.doubleCheckInSolicitacaoOtimiza.findMany({
     where: {
       idDocumentoEstoque: { in: ids },
-      status: 'in_progress',
     },
     select: {
       idDocumentoEstoque: true,
       numero: true,
+      status: true,
     },
     orderBy: [{ idDocumentoEstoque: 'asc' }, { numero: 'asc' }],
   });
 
   for (const row of rows) {
-    const numeros = resultado.get(row.idDocumentoEstoque) ?? [];
-    if (!numeros.includes(row.numero)) numeros.push(row.numero);
-    resultado.set(row.idDocumentoEstoque, numeros);
+    const solicitacoes = resultado.get(row.idDocumentoEstoque) ?? [];
+    const status =
+      row.status === 'in_progress' || row.status === 'completed' || row.status === 'cancelled'
+        ? row.status
+        : null;
+    const existente = solicitacoes.find((item) => item.numero === row.numero);
+    if (!existente) {
+      solicitacoes.push({ numero: row.numero, status });
+    } else if (status === 'in_progress' || existente.status == null) {
+      existente.status = status;
+    }
+    resultado.set(row.idDocumentoEstoque, solicitacoes);
   }
   return resultado;
 }

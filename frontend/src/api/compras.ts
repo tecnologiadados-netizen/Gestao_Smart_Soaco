@@ -1513,6 +1513,11 @@ export type DoubleCheckInNota = {
   totalDivergenciasReaisHistorica?: number;
   /** Solicitações ainda em tratamento no Otimiza, sem repetição. */
   solicitacoesOtimizaEmAndamento?: number[];
+  /** Solicitações vinculadas ao documento, inclusive concluídas e canceladas. */
+  otimizaVinculados?: Array<{
+    numero: number;
+    status: 'in_progress' | 'completed' | 'cancelled' | null;
+  }>;
 };
 
 export type DoubleCheckInHistoricoEntrada = {
