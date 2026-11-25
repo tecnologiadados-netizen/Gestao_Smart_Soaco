@@ -22,6 +22,27 @@ describe('número da solicitação no Otimiza', () => {
 });
 
 describe('status da solicitação no Otimiza', () => {
+  it('lê o responsável da etapa atual', () => {
+    expect(
+      interpretarRespostaStatusOtimiza(
+        {
+          found: true,
+          number: 8867,
+          status: 'in_progress',
+          isCompleted: false,
+          finishedAt: null,
+          currentResponsible: ' Compras ',
+        },
+        8867
+      ).currentResponsible
+    ).toBe('Compras');
+    expect(
+      interpretarRespostaStatusOtimiza(
+        { found: true, number: 1, status: 'in_progress', isCompleted: false, finishedAt: null },
+        1
+      ).currentResponsible
+    ).toBeNull();
+  });
   it('interpreta concluída, em andamento e inexistente', () => {
     expect(
       interpretarRespostaStatusOtimiza(
@@ -70,6 +91,7 @@ describe('status da solicitação no Otimiza', () => {
         status: 'completed',
         isCompleted: true,
         finishedAt: '2026-05-29T14:08:50.06+00:00',
+        currentResponsible: null,
       })
     ).toBeNull();
     expect(
@@ -79,6 +101,7 @@ describe('status da solicitação no Otimiza', () => {
         status: 'cancelled',
         isCompleted: true,
         finishedAt: '2026-10-01T00:00:00.000Z',
+        currentResponsible: null,
       })
     ).toBeNull();
   });
@@ -91,6 +114,7 @@ describe('status da solicitação no Otimiza', () => {
         status: null,
         isCompleted: null,
         finishedAt: null,
+        currentResponsible: null,
       })
     ).toBe('A solicitação 1 não existe no Otimiza.');
     expect(
@@ -100,6 +124,7 @@ describe('status da solicitação no Otimiza', () => {
         status: 'in_progress',
         isCompleted: false,
         finishedAt: null,
+        currentResponsible: null,
       })
     ).toBe('A solicitação 7565 do Otimiza ainda está em andamento.');
   });

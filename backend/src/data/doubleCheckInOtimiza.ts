@@ -21,6 +21,8 @@ export type StatusSolicitacaoOtimiza = {
   status: 'in_progress' | 'completed' | 'cancelled' | null;
   isCompleted: boolean | null;
   finishedAt: string | null;
+  /** Setor ou pessoa da etapa atual no Otimiza. */
+  currentResponsible: string | null;
 };
 
 const cacheConcluida = new Map<number, number>();
@@ -52,6 +54,10 @@ export function interpretarRespostaStatusOtimiza(
     isCompleted: typeof raw.isCompleted === 'boolean' ? raw.isCompleted : null,
     finishedAt:
       typeof raw.finishedAt === 'string' && raw.finishedAt.trim() ? raw.finishedAt : null,
+    currentResponsible:
+      typeof raw.currentResponsible === 'string' && raw.currentResponsible.trim()
+        ? raw.currentResponsible.trim()
+        : null,
   };
 }
 
@@ -120,6 +126,41 @@ export async function consultarStatusSolicitacaoOtimiza(
     throw new Error('Não foi possível consultar a solicitação no Otimiza. Tente novamente.');
   }
   return interpretarRespostaStatusOtimiza(body, numero);
+}
+
+const CONCORRENCIA_RESPONSAVEL = 4;
+
+/**
+ * Responsável da etapa atual de cada solicitação. Falha de uma consulta
+ * não derruba as outras: o número segue na grade sem o nome.
+ */
+export async function consultarResponsaveisAtuaisOtimiza(
+  numeros: number[]
+): Promise<Map<number, string | null>> {
+  const mapa = new Map<number, string | null>();
+  const fila = [...new Set(numeros.filter((numero) => Number.isInteger(numero) && numero > 0))];
+  if (fila.length === 0) return mapa;
+
+  async function proximo(): Promise<void> {
+    const numero = fila.shift();
+    if (numero == null) return;
+    try {
+      const status = await consultarStatusSolicitacaoOtimiza(numero);
+      mapa.set(numero, status.currentResponsible);
+    } catch (err) {
+      console.error('[otimiza] responsável da etapa indisponível', {
+        numero,
+        motivo: err instanceof Error ? err.message : 'erro',
+      });
+      mapa.set(numero, null);
+    }
+    await proximo();
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCORRENCIA_RESPONSAVEL, fila.length) }, () => proximo())
+  );
+  return mapa;
 }
 
 /** Consulta o Otimiza e só segue se a solicitação existir e estiver concluída. */

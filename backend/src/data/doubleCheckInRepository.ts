@@ -15,6 +15,7 @@ import {
   unitariosExatosIguais,
 } from './doubleCheckInPeso.js';
 import { RECEBIMENTO_ID_TIPO_PRE_ENTRADA } from './recebimentoNomusRepository.js';
+import { PCP_ID_EMPRESA_SO_ACO } from './sql/sqlComprasEstoqueFragments.js';
 import { resolverPagamentoPreEntradaLote } from './doubleCheckInPagamentoXmlRepository.js';
 import type { PagamentoPreEntradaResolvido } from './nfeXmlParcelas.js';
 
@@ -103,6 +104,7 @@ LEFT JOIN usuario uc ON uc.id = de.idUsuario
 LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
 LEFT JOIN nfe ON nfe.idDocumentoEstoque = de.id
 WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
+  AND de.idEmpresaEntrada = ${PCP_ID_EMPRESA_SO_ACO}
   AND ide.discriminador = 'ItemDocumentoEntrada'
   AND tp.id IN (${TIPOS_GRADE})
 GROUP BY

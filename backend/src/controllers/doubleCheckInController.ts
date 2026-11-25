@@ -86,6 +86,7 @@ import {
 } from '../services/doubleCheckInConferenciaPeriodo.js';
 import { conferenciaDoubleCheckLiberadaParaMesa } from '../services/mesaDoubleCheckGate.js';
 import {
+  consultarResponsaveisAtuaisOtimiza,
   consultarStatusSolicitacaoOtimiza,
   exigirSolicitacaoOtimizaConcluida,
   mensagemBloqueioAceiteOtimiza,
@@ -355,12 +356,13 @@ export type DoubleCheckInNotaComConferencia = DoubleCheckInNota & {
   temDivergenciaBenignaAtual: boolean;
   temDivergenciaRealHistorica: boolean;
   totalDivergenciasReaisHistorica: number;
-  /** Números das solicitações que ainda estão em tratamento no Otimiza. */
-  solicitacoesOtimizaEmAndamento: number[];
+  /** Solicitações em tratamento no Otimiza, com o responsável da etapa atual. */
+  solicitacoesOtimizaEmAndamento: Array<{ numero: number; responsavel: string | null }>;
   /** Solicitações vinculadas ao documento, inclusive concluídas e canceladas. */
   otimizaVinculados: Array<{
     numero: number;
     status: 'in_progress' | 'completed' | 'cancelled' | null;
+    responsavel: string | null;
   }>;
 };
 
@@ -376,6 +378,15 @@ async function enriquecerNotasComConferencia(
     carregarResumosDivergenciasAtuais(idsConferenciaCompleta),
     listarSolicitacoesOtimizaPorDocumentos(ids),
   ]);
+  const numerosEmAndamento = [
+    ...new Set(
+      [...solicitacoesOtimiza.values()]
+        .flat()
+        .filter((solicitacao) => solicitacao.status === 'in_progress')
+        .map((solicitacao) => solicitacao.numero)
+    ),
+  ];
+  const responsaveisOtimiza = await consultarResponsaveisAtuaisOtimiza(numerosEmAndamento);
   const nomes = await nomesConferidores([...map.values()]);
   return notas.map((n) => {
     const regimeConferencia = regimeConferenciaPorDataEntrada(n.dataEntrada);
@@ -409,10 +420,20 @@ async function enriquecerNotasComConferencia(
         regimeConferencia === 'completa' && Boolean(atual?.temBenigna),
       temDivergenciaRealHistorica: Boolean(c?.temDivergenciaRealHistorica),
       totalDivergenciasReaisHistorica: c?.totalDivergenciasReaisHistorica ?? 0,
+      otimizaVinculados: (solicitacoesOtimiza.get(n.idDocumento) ?? []).map((solicitacao) => ({
+        numero: solicitacao.numero,
+        status: solicitacao.status,
+        responsavel:
+          solicitacao.status === 'in_progress'
+            ? (responsaveisOtimiza.get(solicitacao.numero) ?? null)
+            : null,
+      })),
       solicitacoesOtimizaEmAndamento: (solicitacoesOtimiza.get(n.idDocumento) ?? [])
         .filter((solicitacao) => solicitacao.status === 'in_progress')
-        .map((solicitacao) => solicitacao.numero),
-      otimizaVinculados: solicitacoesOtimiza.get(n.idDocumento) ?? [],
+        .map((solicitacao) => ({
+          numero: solicitacao.numero,
+          responsavel: responsaveisOtimiza.get(solicitacao.numero) ?? null,
+        })),
     };
   });
 }

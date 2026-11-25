@@ -167,29 +167,66 @@ const COLUNAS_GRADE: GradeColunaConfiguravel[] = [
 
 const IDS_COLUNAS_GRADE = COLUNAS_GRADE.map((coluna) => coluna.id);
 
-function textoOtimizaNaGrade(nota: DoubleCheckInNota): string | null {
+function textoOtimizaNaGrade(nota: DoubleCheckInNota): { linhas: string[]; titulo: string } | null {
   const vinculados = [...(nota.otimizaVinculados ?? [])]
     .filter((item) => Number.isInteger(item.numero) && item.numero > 0)
     .sort((a, b) => (a.status === 'in_progress' ? -1 : b.status === 'in_progress' ? 1 : a.numero - b.numero));
-  if (vinculados.length > 0) {
-    const status = (valor: (typeof vinculados)[number]['status']) => {
-      if (valor === 'in_progress') return 'em andamento';
-      if (valor === 'completed') return 'concluída';
-      if (valor === 'cancelled') return 'cancelada';
-      return 'status não consultado';
-    };
-    if (vinculados.every((item) => item.status === 'in_progress')) {
-      return `Em tratamento no Otimiza ${vinculados.map((item) => `#${item.numero}`).join(', ')}`;
+  const fonte =
+    vinculados.length > 0
+      ? vinculados.map((item) => ({
+          numero: item.numero,
+          status: item.status,
+          responsavel: item.responsavel?.trim() || null,
+        }))
+      : (nota.solicitacoesOtimizaEmAndamento ?? [])
+          .filter((item) => Number.isInteger(item.numero) && item.numero > 0)
+          .map((item) => ({
+            numero: item.numero,
+            status: 'in_progress' as const,
+            responsavel: item.responsavel?.trim() || null,
+          }));
+  if (fonte.length === 0) return null;
+
+  const rotuloStatus = (status: (typeof fonte)[number]['status']) => {
+    if (status === 'completed') return 'concluída';
+    if (status === 'cancelled') return 'cancelada';
+    return 'status não consultado';
+  };
+  const emAndamento = fonte.filter((item) => item.status === 'in_progress');
+  const demais = fonte.filter((item) => item.status !== 'in_progress');
+  const linhas: string[] = [];
+  const titulos: string[] = [];
+
+  if (emAndamento.length > 0) {
+    const responsaveis = [...new Set(emAndamento.flatMap((item) => (item.responsavel ? [item.responsavel] : [])))];
+    if (responsaveis.length <= 1) {
+      const numeros = emAndamento.map((item) => `#${item.numero}`).join(', ');
+      const linhaNumero = `Em andamento no Otimiza ${numeros}`;
+      linhas.push(linhaNumero);
+      if (responsaveis[0]) {
+        const linhaQuem = `Atualmente com ${responsaveis[0]}`;
+        linhas.push(linhaQuem);
+        titulos.push(`${linhaNumero}. ${linhaQuem}`);
+      } else {
+        titulos.push(linhaNumero);
+      }
+    } else {
+      for (const item of emAndamento) {
+        linhas.push(item.responsavel ? `#${item.numero} · ${item.responsavel}` : `#${item.numero}`);
+        titulos.push(
+          item.responsavel
+            ? `Em andamento no Otimiza #${item.numero}. Atualmente com ${item.responsavel}`
+            : `Em andamento no Otimiza #${item.numero}`
+        );
+      }
     }
-    return `Otimiza ${vinculados
-      .map((item) => `#${item.numero} · ${status(item.status)}`)
-      .join(', ')}`;
   }
-  const numeros = [...new Set(nota.solicitacoesOtimizaEmAndamento ?? [])]
-    .filter((numero) => Number.isInteger(numero) && numero > 0);
-  return numeros.length > 0
-    ? `Em tratamento no Otimiza ${numeros.map((numero) => `#${numero}`).join(', ')}`
-    : null;
+  if (demais.length > 0) {
+    const linha = `Otimiza ${demais.map((item) => `#${item.numero} · ${rotuloStatus(item.status)}`).join(', ')}`;
+    linhas.push(linha);
+    titulos.push(linha);
+  }
+  return { linhas, titulo: titulos.join(' ') };
 }
 
 function labelConferenciaNota(nota: DoubleCheckInNota): string {
@@ -197,7 +234,7 @@ function labelConferenciaNota(nota: DoubleCheckInNota): string {
   if (nota.conferido && nota.conferidoComDivergencia) return 'Conferido c/ divergência';
   if (nota.conferido) return 'Conferido';
   const otimiza = textoOtimizaNaGrade(nota);
-  if (otimiza) return `Pendente · ${otimiza}`;
+  if (otimiza) return `Pendente · ${otimiza.titulo}`;
   return 'Pendente';
 }
 
@@ -1340,14 +1377,16 @@ export default function DoubleCheckInPage() {
                       ) : (
                         <span
                           className="inline-flex max-w-full flex-col items-start rounded-md border-2 border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200"
-                          title={otimizaNaGrade ?? 'Conferência pendente'}
+                          title={otimizaNaGrade?.titulo ?? 'Conferência pendente'}
                         >
                           <span>Pendente</span>
-                          {otimizaNaGrade ? (
-                            <span className="whitespace-normal text-[10px] font-medium leading-tight">
-                              {otimizaNaGrade}
-                            </span>
-                          ) : null}
+                          {otimizaNaGrade
+                            ? otimizaNaGrade.linhas.map((linha) => (
+                                <span key={linha} className="whitespace-normal text-[10px] font-medium leading-tight">
+                                  {linha}
+                                </span>
+                              ))
+                            : null}
                         </span>
                       )}
                     </td>
@@ -1572,13 +1611,21 @@ export default function DoubleCheckInPage() {
                       erro={compErro}
                       onSolicitacoesChange={(next) => {
                         setCompSolicitacoes(next);
+                        const responsavelPorNumero = new Map(
+                          (modalNota.otimizaVinculados ?? modalNota.solicitacoesOtimizaEmAndamento ?? []).map(
+                            (item) => [item.numero, item.responsavel ?? null] as const
+                          )
+                        );
                         const emAndamento = [
                           ...new Set(
                             next
                               .filter((solicitacao) => solicitacao.status === 'in_progress')
                               .map((solicitacao) => solicitacao.numero)
                           ),
-                        ];
+                        ].map((numero) => ({
+                          numero,
+                          responsavel: responsavelPorNumero.get(numero) ?? null,
+                        }));
                         const atualizarOtimiza = (nota: DoubleCheckInNota): DoubleCheckInNota =>
                           nota.idDocumento === modalNota.idDocumento
                             ? { ...nota, solicitacoesOtimizaEmAndamento: emAndamento }
@@ -1590,6 +1637,10 @@ export default function DoubleCheckInPage() {
                               {
                                 numero: solicitacao.numero,
                                 status: solicitacao.status ?? null,
+                                responsavel:
+                                  solicitacao.status === 'in_progress'
+                                    ? (responsavelPorNumero.get(solicitacao.numero) ?? null)
+                                    : null,
                               },
                             ])
                           ).values(),

@@ -1511,12 +1511,13 @@ export type DoubleCheckInNota = {
   /** Havia ao menos uma divergência real no instante da conferência. */
   temDivergenciaRealHistorica?: boolean;
   totalDivergenciasReaisHistorica?: number;
-  /** Solicitações ainda em tratamento no Otimiza, sem repetição. */
-  solicitacoesOtimizaEmAndamento?: number[];
+  /** Solicitações ainda em tratamento no Otimiza, sem repetição, com o responsável da etapa. */
+  solicitacoesOtimizaEmAndamento?: Array<{ numero: number; responsavel: string | null }>;
   /** Solicitações vinculadas ao documento, inclusive concluídas e canceladas. */
   otimizaVinculados?: Array<{
     numero: number;
     status: 'in_progress' | 'completed' | 'cancelled' | null;
+    responsavel?: string | null;
   }>;
 };
 
