@@ -154,7 +154,20 @@ export async function exportDreXlsx(params: {
   }
   autosize(wsRec, recHeaders.length);
 
-  const devHeaders = ['Empresa', 'Emissão', 'NF', 'Produto', 'Grupo', 'Qtde', 'Unitário', 'Valor', 'Tipo movimento'];
+  const devHeaders = [
+    'Empresa',
+    'Emissão',
+    'NF',
+    'Documento',
+    'Pedido',
+    'Cliente',
+    'Produto',
+    'Grupo',
+    'Qtde',
+    'Unitário',
+    'Valor',
+    'Tipo movimento',
+  ];
   const wsDev = wb.addWorksheet('Devoluções');
   wsDev.addRow(devHeaders);
   styleHeader(wsDev, devHeaders.length);
@@ -162,7 +175,10 @@ export async function exportDreXlsx(params: {
     const row = wsDev.addRow([
       r.empresa ?? '',
       toExcelDate(r.dataEmissao),
+      r.numeroNfe ?? r.numeroDocumentoFiscal ?? '',
       r.numeroDocumentoFiscal ?? '',
+      r.pedido ?? '',
+      r.cliente ?? '',
       r.produto ?? '',
       r.grupoProduto,
       r.qtde,
@@ -171,9 +187,9 @@ export async function exportDreXlsx(params: {
       r.tipoMovimentacao ?? '',
     ]);
     if (row.getCell(2).value instanceof Date) row.getCell(2).numFmt = DATE_FMT;
-    row.getCell(6).numFmt = '#,##0.000';
-    row.getCell(7).numFmt = MONEY_FMT;
-    row.getCell(8).numFmt = MONEY_FMT;
+    row.getCell(9).numFmt = '#,##0.000';
+    row.getCell(10).numFmt = MONEY_FMT;
+    row.getCell(11).numFmt = MONEY_FMT;
   }
   autosize(wsDev, devHeaders.length);
 

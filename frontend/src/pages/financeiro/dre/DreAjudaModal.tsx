@@ -38,6 +38,13 @@ const SECOES: SecaoAjuda[] = [
       'São os valores que “comem” a receita bruta antes de chegar na receita líquida: devoluções, cancelamentos, descontos incondicionais e impostos sobre as vendas (incluindo Simples, quando aplicável).',
     comoLe:
       'Quanto maior a dedução em relação ao faturamento, menor a receita que realmente fica disponível. Acompanhe devoluções e descontos por período para ver se o problema é comercial, operacional ou fiscal.',
+    detalhes: [
+      {
+        titulo: 'Detalhe de devoluções',
+        texto:
+          'Clique na célula de devoluções para abrir uma linha por nota: data, NF (número da NF-e e, abaixo, o documento Nomus), pedido de origem, cliente, movimentação e valor. Clique na nota para expandir os produtos, com grupo, quantidade e valor. A soma dos valores da nota é a soma dos produtos, e o total do modal continua igual à célula da grade.',
+      },
+    ],
   },
   {
     id: 'cpv',

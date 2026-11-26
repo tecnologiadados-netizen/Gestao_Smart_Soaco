@@ -793,9 +793,13 @@ export async function fetchDreDevolucoes(params: {
 
 export interface DreDevolucoesDetalheLinha {
   idItemDocumentoEstoque: number;
+  idDocumentoEstoque: number;
   idEmpresaEntrada: number;
   dataEmissao: string | null;
-  numeroDocumentoFiscal: number | null;
+  /** Código do documento no Nomus (ex.: DE39486). */
+  numeroDocumentoFiscal: string | null;
+  /** Número da NF-e autorizada, quando houver. */
+  numeroNfe: string | null;
   tipoMovimentacao: string | null;
   idProduto: number | null;
   produto: string | null;
@@ -803,6 +807,8 @@ export interface DreDevolucoesDetalheLinha {
   qtde: number;
   valorUnitario: number;
   valorTotal: number;
+  pedido: string | null;
+  cliente: string | null;
 }
 
 export async function fetchDreDevolucoesDetalhe(params: {

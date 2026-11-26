@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchDreDevolucoesDetalhe, type DreDevolucoesDetalheLinha } from '../../../api/financeiro';
 import { PLACEHOLDER_BUSCA_TEXTO_LIVRE, textoPassaBuscaLivre } from '../../../utils/textoLivreBusca';
@@ -11,7 +11,7 @@ import {
 } from '../dfc/dfcDetalheTabelaUtils';
 import { periodoReceitaParaIntervalo } from './dreReceitaDetalheUtils';
 
-type ColSort = 'dataEmissao' | 'nf' | 'produto' | 'grupoProduto' | 'tipoMovimentacao' | 'qtde' | 'valorTotal';
+type ColSort = 'dataEmissao' | 'nf' | 'pedido' | 'cliente' | 'tipoMovimentacao' | 'valorTotal';
 
 const CELULA_CLASS = 'px-2 py-1.5 text-sm text-black dark:text-black font-sans';
 
@@ -29,6 +29,65 @@ function fmtDataBr(ymd: string | null): string {
   const [y, m, d] = ymd.slice(0, 10).split('-');
   if (y && m && d) return `${d}/${m}/${y}`;
   return ymd;
+}
+
+function textoUnico(valores: Array<string | null | undefined>, separador = ' · '): string {
+  const unicos: string[] = [];
+  const vistos = new Set<string>();
+  for (const valor of valores) {
+    const texto = (valor ?? '').trim();
+    if (!texto) continue;
+    const chave = texto.toLocaleLowerCase('pt-BR');
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicos.push(texto);
+  }
+  return unicos.join(separador);
+}
+
+type NotaDevolucao = {
+  key: string;
+  dataEmissao: string | null;
+  nfPrincipal: string;
+  documento: string | null;
+  pedido: string;
+  cliente: string;
+  tipoMovimentacao: string;
+  valorTotal: number;
+  itens: DreDevolucoesDetalheLinha[];
+};
+
+function montarNota(itens: DreDevolucoesDetalheLinha[]): NotaDevolucao {
+  const primeiro = itens[0];
+  const nfPrincipal = textoUnico(itens.map((item) => item.numeroNfe || item.numeroDocumentoFiscal)) || '—';
+  const documento = textoUnico(
+    itens
+      .map((item) => item.numeroDocumentoFiscal)
+      .filter((doc) => doc && doc !== nfPrincipal),
+  );
+  const idDoc = primeiro.idDocumentoEstoque > 0 ? String(primeiro.idDocumentoEstoque) : `item-${primeiro.idItemDocumentoEstoque}`;
+  return {
+    key: idDoc,
+    dataEmissao: primeiro.dataEmissao,
+    nfPrincipal,
+    documento: documento || null,
+    pedido: textoUnico(itens.map((item) => item.pedido)) || '—',
+    cliente: textoUnico(itens.map((item) => item.cliente)) || '—',
+    tipoMovimentacao: textoUnico(itens.map((item) => item.tipoMovimentacao)) || '—',
+    valorTotal: itens.reduce((soma, item) => soma + item.valorTotal, 0),
+    itens: [...itens].sort((a, b) => compareNum(b.valorTotal, a.valorTotal) || compareStr(a.produto, b.produto)),
+  };
+}
+
+function agruparPorNota(linhas: DreDevolucoesDetalheLinha[]): NotaDevolucao[] {
+  const grupos = new Map<string, DreDevolucoesDetalheLinha[]>();
+  for (const linha of linhas) {
+    const key = linha.idDocumentoEstoque > 0 ? String(linha.idDocumentoEstoque) : `item-${linha.idItemDocumentoEstoque}`;
+    const atual = grupos.get(key);
+    if (atual) atual.push(linha);
+    else grupos.set(key, [linha]);
+  }
+  return [...grupos.values()].map(montarNota);
 }
 
 export type DreDevolucoesDetalheModalProps = {
@@ -60,6 +119,7 @@ export default function DreDevolucoesDetalheModal({
   const [busca, setBusca] = useState('');
   const [sortKey, setSortKey] = useState<ColSort>('dataEmissao');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
   const loadId = useRef(0);
 
   const intervalo = useMemo(
@@ -81,6 +141,7 @@ export default function DreDevolucoesDetalheModal({
     setErro(undefined);
     setLinhas([]);
     setTruncado(false);
+    setAbertos(new Set());
     void fetchDreDevolucoesDetalhe({
       dataInicio: intervalo.dataInicio,
       dataFim: intervalo.dataFim,
@@ -102,8 +163,10 @@ export default function DreDevolucoesDetalheModal({
         row.produto,
         row.grupoProduto,
         row.tipoMovimentacao,
-        String(row.numeroDocumentoFiscal ?? ''),
-        String(row.idItemDocumentoEstoque),
+        row.numeroDocumentoFiscal,
+        row.numeroNfe,
+        row.pedido,
+        row.cliente,
         fmtDataBr(row.dataEmissao),
       ]
         .filter(Boolean)
@@ -112,8 +175,10 @@ export default function DreDevolucoesDetalheModal({
     });
   }, [linhas, busca]);
 
-  const linhasOrdenadas = useMemo(() => {
-    const list = [...linhasFiltradas];
+  const notas = useMemo(() => agruparPorNota(linhasFiltradas), [linhasFiltradas]);
+
+  const notasOrdenadas = useMemo(() => {
+    const list = [...notas];
     const sinal = sortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       let c = 0;
@@ -122,19 +187,16 @@ export default function DreDevolucoesDetalheModal({
           c = compareYmd(a.dataEmissao, b.dataEmissao);
           break;
         case 'nf':
-          c = compareNum(a.numeroDocumentoFiscal ?? 0, b.numeroDocumentoFiscal ?? 0);
+          c = compareStr(a.nfPrincipal, b.nfPrincipal);
           break;
-        case 'produto':
-          c = compareStr(a.produto, b.produto);
+        case 'pedido':
+          c = compareStr(a.pedido, b.pedido);
           break;
-        case 'grupoProduto':
-          c = compareStr(a.grupoProduto, b.grupoProduto);
+        case 'cliente':
+          c = compareStr(a.cliente, b.cliente);
           break;
         case 'tipoMovimentacao':
           c = compareStr(a.tipoMovimentacao, b.tipoMovimentacao);
-          break;
-        case 'qtde':
-          c = compareNum(a.qtde, b.qtde);
           break;
         case 'valorTotal':
           c = compareNum(a.valorTotal, b.valorTotal);
@@ -143,10 +205,10 @@ export default function DreDevolucoesDetalheModal({
           c = 0;
       }
       if (c !== 0) return c * sinal;
-      return compareNum(a.idItemDocumentoEstoque, b.idItemDocumentoEstoque) * sinal;
+      return compareStr(a.key, b.key) * sinal;
     });
     return list;
-  }, [linhasFiltradas, sortKey, sortDir]);
+  }, [notas, sortKey, sortDir]);
 
   const totalDetalhe = useMemo(
     () => linhasFiltradas.reduce((s, r) => s + r.valorTotal, 0),
@@ -156,6 +218,21 @@ export default function DreDevolucoesDetalheModal({
   const onSortCol = (key: ColSort) => {
     setSortDir((d) => nextSortDir(sortKey, key, d));
     setSortKey(key);
+  };
+
+  const toggleNota = (key: string) => {
+    setAbertos((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(key)) proximo.delete(key);
+      else proximo.add(key);
+      return proximo;
+    });
+  };
+
+  const todasAbertas = notasOrdenadas.length > 0 && notasOrdenadas.every((nota) => abertos.has(nota.key));
+
+  const alternarTodas = () => {
+    setAbertos(todasAbertas ? new Set() : new Set(notasOrdenadas.map((nota) => nota.key)));
   };
 
   const gradeAbs = valorEsperadoGrade != null ? Math.abs(valorEsperadoGrade) : null;
@@ -170,7 +247,7 @@ export default function DreDevolucoesDetalheModal({
       role="presentation"
     >
       <div
-        className="relative flex w-full max-w-5xl max-h-[min(92vh,880px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
+        className="relative flex w-full max-w-6xl max-h-[min(92vh,880px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -186,6 +263,8 @@ export default function DreDevolucoesDetalheModal({
               {intervalo.dataInicio === intervalo.dataFim
                 ? fmtDataBr(intervalo.dataInicio)
                 : `${fmtDataBr(intervalo.dataInicio)} → ${fmtDataBr(intervalo.dataFim)}`}
+              {' · '}
+              clique na nota para ver os produtos
             </p>
           </div>
           <button
@@ -198,7 +277,7 @@ export default function DreDevolucoesDetalheModal({
           </button>
         </div>
 
-        <div className="shrink-0 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
+        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-4 py-2 dark:border-slate-600">
           <input
             type="search"
             value={busca}
@@ -206,6 +285,15 @@ export default function DreDevolucoesDetalheModal({
             placeholder={PLACEHOLDER_BUSCA_TEXTO_LIVRE}
             className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm text-black dark:text-black"
           />
+          {notasOrdenadas.length > 0 ? (
+            <button
+              type="button"
+              onClick={alternarTodas}
+              className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-black hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
+            >
+              {todasAbertas ? 'Recolher tudo' : 'Expandir tudo'}
+            </button>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -219,29 +307,88 @@ export default function DreDevolucoesDetalheModal({
             <table className="w-full text-sm border-collapse font-sans">
               <thead className="sticky top-0 z-[1]">
                 <tr className="bg-primary-600 text-left text-xs text-white">
-                  <SortableTh label="Emissão" sortKey="dataEmissao" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
+                  <th className="w-8 px-2 py-2" aria-hidden />
+                  <SortableTh label="Data" sortKey="dataEmissao" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
                   <SortableTh label="NF" sortKey="nf" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
-                  <SortableTh label="Produto" sortKey="produto" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
-                  <SortableTh label="Grupo" sortKey="grupoProduto" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
+                  <SortableTh label="Pedido" sortKey="pedido" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
+                  <SortableTh label="Cliente" sortKey="cliente" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
                   <SortableTh label="Movimentação" sortKey="tipoMovimentacao" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} />
-                  <SortableTh label="Qtde" sortKey="qtde" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} align="right" />
                   <SortableTh label="Valor" sortKey="valorTotal" activeKey={sortKey} dir={sortDir} onSort={(k) => onSortCol(k as ColSort)} align="right" />
                 </tr>
               </thead>
               <tbody>
-                {linhasOrdenadas.map((row) => (
-                  <tr key={row.idItemDocumentoEstoque} className="border-t border-slate-100 dark:border-slate-700">
-                    <td className={`${CELULA_CLASS} whitespace-nowrap`}>{fmtDataBr(row.dataEmissao)}</td>
-                    <td className={CELULA_CLASS}>{row.numeroDocumentoFiscal ?? '—'}</td>
-                    <td className={`${CELULA_CLASS} max-w-[220px] truncate`} title={row.produto ?? ''}>
-                      {row.produto ?? '—'}
-                    </td>
-                    <td className={CELULA_CLASS}>{row.grupoProduto}</td>
-                    <td className={CELULA_CLASS}>{row.tipoMovimentacao ?? '—'}</td>
-                    <td className={`${CELULA_CLASS} text-right`}>{nf.format(row.qtde)}</td>
-                    <td className={`${CELULA_CLASS} text-right font-medium`}>{nf.format(row.valorTotal)}</td>
-                  </tr>
-                ))}
+                {notasOrdenadas.map((nota) => {
+                  const aberta = abertos.has(nota.key);
+                  return (
+                    <Fragment key={nota.key}>
+                      <tr
+                        className={`border-t border-slate-100 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/40 ${
+                          aberta ? 'bg-slate-50 dark:bg-slate-700/30' : ''
+                        }`}
+                        onClick={() => toggleNota(nota.key)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleNota(nota.key);
+                          }
+                        }}
+                        tabIndex={0}
+                        aria-expanded={aberta}
+                      >
+                        <td className={`${CELULA_CLASS} text-center text-xs`} aria-hidden>
+                          {aberta ? '▼' : '▶'}
+                        </td>
+                        <td className={`${CELULA_CLASS} whitespace-nowrap`}>{fmtDataBr(nota.dataEmissao)}</td>
+                        <td className={CELULA_CLASS}>
+                          <div className="font-medium">{nota.nfPrincipal}</div>
+                          {nota.documento ? (
+                            <div className="text-xs text-black/60" title="Documento Nomus">
+                              {nota.documento}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className={`${CELULA_CLASS} whitespace-nowrap`}>{nota.pedido}</td>
+                        <td className={`${CELULA_CLASS} max-w-[220px] truncate`} title={nota.cliente}>
+                          {nota.cliente}
+                        </td>
+                        <td className={`${CELULA_CLASS} max-w-[240px] truncate`} title={nota.tipoMovimentacao}>
+                          {nota.tipoMovimentacao}
+                        </td>
+                        <td className={`${CELULA_CLASS} text-right font-medium whitespace-nowrap`}>
+                          {nf.format(nota.valorTotal)}
+                        </td>
+                      </tr>
+                      {aberta ? (
+                        <tr className="border-t border-slate-100 dark:border-slate-700">
+                          <td colSpan={7} className="bg-slate-50 px-3 py-2 dark:bg-slate-900/40">
+                            <table className="w-full border-collapse">
+                              <thead>
+                                <tr className="text-left text-xs text-black/70">
+                                  <th className="px-2 py-1 font-semibold">Produto</th>
+                                  <th className="px-2 py-1 font-semibold">Grupo</th>
+                                  <th className="px-2 py-1 text-right font-semibold">Qtde</th>
+                                  <th className="px-2 py-1 text-right font-semibold">Valor</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {nota.itens.map((item) => (
+                                  <tr key={item.idItemDocumentoEstoque} className="border-t border-slate-200/80">
+                                    <td className={`${CELULA_CLASS} max-w-[280px] truncate`} title={item.produto ?? ''}>
+                                      {item.produto ?? '—'}
+                                    </td>
+                                    <td className={CELULA_CLASS}>{item.grupoProduto}</td>
+                                    <td className={`${CELULA_CLASS} text-right`}>{nf.format(item.qtde)}</td>
+                                    <td className={`${CELULA_CLASS} text-right font-medium`}>{nf.format(item.valorTotal)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -250,7 +397,7 @@ export default function DreDevolucoesDetalheModal({
         <div className="shrink-0 border-t border-slate-200 dark:border-slate-600 px-4 py-3 bg-slate-50 dark:bg-slate-900/40">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-black">
             <span>
-              {linhasFiltradas.length} item(ns)
+              {notas.length} nota(s) · {linhasFiltradas.length} produto(s)
               {truncado ? ' · exibindo até 8.000 (há mais no período)' : ''}
             </span>
             <span className="font-semibold">Total devoluções: {nf.format(totalDetalhe)}</span>

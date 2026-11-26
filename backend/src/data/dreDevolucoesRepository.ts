@@ -31,9 +31,13 @@ export type DreDevolucoesLinha = {
 
 export type DreDevolucoesDetalheLinha = {
   idItemDocumentoEstoque: number;
+  idDocumentoEstoque: number;
   idEmpresaEntrada: number;
   dataEmissao: string | null;
-  numeroDocumentoFiscal: number | null;
+  /** Código do documento no Nomus (ex.: DE39486). */
+  numeroDocumentoFiscal: string | null;
+  /** Número da NF-e autorizada, quando houver. */
+  numeroNfe: string | null;
   tipoMovimentacao: string | null;
   idProduto: number | null;
   produto: string | null;
@@ -41,6 +45,10 @@ export type DreDevolucoesDetalheLinha = {
   qtde: number;
   valorUnitario: number;
   valorTotal: number;
+  /** Pedido de venda de origem da devolução (pd.nome). */
+  pedido: string | null;
+  /** Cliente do documento de devolução (parceiro). */
+  cliente: string | null;
 };
 
 function toNum(v: unknown): number {
@@ -52,6 +60,12 @@ function toNum(v: unknown): number {
 function toInt(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
+function toStr(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s || null;
 }
 
 function toDateYmd(v: unknown): string | null {
@@ -147,16 +161,20 @@ export async function queryDreDevolucoesDetalhe(params: {
     const slice = truncado ? list.slice(0, cap) : list;
     const detalhes = slice.map((r) => ({
       idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
+      idDocumentoEstoque: toInt(r.idDocumentoEstoque),
       idEmpresaEntrada: toInt(r.idEmpresaEntrada),
       dataEmissao: toDateYmd(r.dataEmissao),
-      numeroDocumentoFiscal: r.numeroDocumentoFiscal != null ? toInt(r.numeroDocumentoFiscal) : null,
-      tipoMovimentacao: r.tipoMovimentacao != null ? String(r.tipoMovimentacao) : null,
+      numeroDocumentoFiscal: toStr(r.numeroDocumentoFiscal),
+      numeroNfe: toStr(r.numeroNfe),
+      tipoMovimentacao: toStr(r.tipoMovimentacao),
       idProduto: r.idProduto != null ? toInt(r.idProduto) : null,
-      produto: r.produto != null ? String(r.produto) : null,
+      produto: toStr(r.produto),
       grupoProduto: String(r.grupoProduto ?? 'Outros').trim() || 'Outros',
       qtde: toNum(r.qtde),
       valorUnitario: toNum(r.valorUnitario),
       valorTotal: toNum(r.valorTotal),
+      pedido: toStr(r.pedido),
+      cliente: toStr(r.cliente),
     }));
     return { detalhes, truncado: truncado || undefined };
   } catch (e) {
