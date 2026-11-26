@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCircle2, CircleHelp, Copy, Eye, Link2, MessageSquarePlus, Paperclip, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, CircleHelp, Copy, Eye, Link2, MessageSquarePlus, Paperclip, Ticket, X, XCircle } from 'lucide-react';
 import {
   abrirDoubleCheckInFormularioDivergencia,
   addDoubleCheckInComparativoObservacao,
@@ -566,6 +566,16 @@ export default function DoubleCheckInComparativoPcTab({
   const [numeroOtimizaSemVinculo, setNumeroOtimizaSemVinculo] = useState('');
   const [salvandoOtimizaSemVinculo, setSalvandoOtimizaSemVinculo] = useState(false);
   const [erroOtimizaSemVinculo, setErroOtimizaSemVinculo] = useState<string | null>(null);
+  const [chamadoAlvo, setChamadoAlvo] = useState<DraftObs | null>(null);
+  const [numeroChamado, setNumeroChamado] = useState('');
+  const [numeroChamadoGravado, setNumeroChamadoGravado] = useState<number | null>(null);
+  const [statusChamado, setStatusChamado] = useState<'in_progress' | 'completed' | 'cancelled' | null>(
+    null
+  );
+  const [avisoChamado, setAvisoChamado] = useState<string | null>(null);
+  const [erroChamado, setErroChamado] = useState<string | null>(null);
+  const [salvandoChamado, setSalvandoChamado] = useState(false);
+  const [aplicouChamadoNasDemais, setAplicouChamadoNasDemais] = useState(false);
 
   const totaisVinculos = useMemo(() => {
     const base = linhas[0];
@@ -770,13 +780,14 @@ export default function DoubleCheckInComparativoPcTab({
       chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
     );
     const benigna = linha.naturezaDivergencias?.[campo] === 'benigna';
-    const solicitacaoJaConcluida =
+    const chamadoFinalizado =
       salva?.status === 'completed' || salva?.status === 'cancelled';
+    if (!benigna && !chamadoFinalizado) return;
     setDraft({ linha, campo, decisao });
     setOpcaoId(existente?.justificativaOpcaoId ?? '');
     setObs(existente?.observacao ?? '');
     setQuerInserirOtimiza(
-      decisao === 'aceita' && benigna && solicitacaoJaConcluida ? true : null
+      decisao === 'aceita' && benigna && chamadoFinalizado ? true : null
     );
     setNumeroOtimiza(salva != null ? String(salva.numero) : '');
     setNumeroGravado(salva?.numero ?? null);
@@ -821,18 +832,16 @@ export default function DoubleCheckInComparativoPcTab({
   const observacaoObrigatoria =
     (draft?.decisao === 'aceita' && !divergenciaBenigna) || justificativaOutros;
 
-  const outrasDivergenciasAbertas = useMemo(() => {
-    if (!draft || draft.decisao !== 'aceita') return 0;
-    const atual = chaveDecisao(
-      draft.linha.idItemDocumentoEstoque,
-      draft.linha.idItemPedidoCompra,
-      draft.campo
-    );
+  const contarOutrasAbertas = (
+    linha: DoubleCheckInComparativoLinha,
+    campo: DoubleCheckInCampoComparativo
+  ) => {
+    const atual = chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo);
     let total = 0;
-    for (const linha of linhas) {
+    for (const item of linhas) {
       for (const c of CAMPOS) {
-        if (!linha[c.divergKey]) continue;
-        const chave = chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, c.id);
+        if (!item[c.divergKey]) continue;
+        const chave = chaveDecisao(item.idItemDocumentoEstoque, item.idItemPedidoCompra, c.id);
         if (chave === atual) continue;
         const dec = decisaoMap.get(chave);
         if (dec && dec.vigente !== false) continue;
@@ -840,45 +849,76 @@ export default function DoubleCheckInComparativoPcTab({
       }
     }
     return total;
+  };
+
+  const outrasDivergenciasAbertas = useMemo(() => {
+    if (!draft || draft.decisao !== 'aceita') return 0;
+    return contarOutrasAbertas(draft.linha, draft.campo);
   }, [draft, linhas, decisaoMap]);
+
+  const outrasDoChamado = useMemo(() => {
+    if (!chamadoAlvo) return 0;
+    return contarOutrasAbertas(chamadoAlvo.linha, chamadoAlvo.campo);
+  }, [chamadoAlvo, linhas, decisaoMap]);
+
+  const enviarNumeroOtimiza = async (params: {
+    linha: DoubleCheckInComparativoLinha;
+    campo: DoubleCheckInCampoComparativo;
+    numeroTexto: string;
+    aplicarNasDemais?: boolean;
+  }) => {
+    if (!/^\d+$/.test(params.numeroTexto.trim())) {
+      return { ok: false as const, erro: 'Informe o número inteiro da solicitação no Otimiza.' };
+    }
+    const numero = Number(params.numeroTexto.trim());
+    if (!Number.isInteger(numero) || numero <= 0) {
+      return { ok: false as const, erro: 'Informe o número inteiro da solicitação no Otimiza.' };
+    }
+    const r = await saveDoubleCheckInSolicitacaoOtimiza({
+      idDocumento,
+      idItemDocumentoEstoque: params.linha.idItemDocumentoEstoque,
+      idItemPedidoCompra: params.linha.idItemPedidoCompra,
+      campo: params.campo,
+      numero,
+      aplicarNasDemais: params.aplicarNasDemais,
+    });
+    if (r.erro || !r.solicitacao) {
+      return { ok: false as const, erro: r.erro ?? 'Não foi possível gravar a solicitação.' };
+    }
+    const aplicadas = [r.solicitacao, ...(r.replicadas ?? [])];
+    const keys = new Set(
+      aplicadas.map((s) => chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
+    );
+    onSolicitacoesChange([
+      ...solicitacoesOtimiza.filter(
+        (s) => !keys.has(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
+      ),
+      ...aplicadas,
+    ]);
+    return {
+      ok: true as const,
+      solicitacao: r.solicitacao,
+      concluida: r.concluida === true,
+      mensagem: r.mensagem ?? null,
+    };
+  };
 
   const gravarNumeroOtimiza = async (aplicarNasDemais = false) => {
     if (!draft || draft.decisao !== 'aceita') return;
-    if (!/^\d+$/.test(numeroOtimiza.trim())) {
-      setJustErro('Informe o número inteiro da solicitação no Otimiza.');
-      return;
-    }
-    const numero = Number(numeroOtimiza.trim());
-    if (!Number.isInteger(numero) || numero <= 0) {
-      setJustErro('Informe o número inteiro da solicitação no Otimiza.');
-      return;
-    }
     setSalvandoNumero(true);
     setJustErro(null);
     setAvisoOtimiza(null);
     try {
-      const r = await saveDoubleCheckInSolicitacaoOtimiza({
-        idDocumento,
-        idItemDocumentoEstoque: draft.linha.idItemDocumentoEstoque,
-        idItemPedidoCompra: draft.linha.idItemPedidoCompra,
+      const r = await enviarNumeroOtimiza({
+        linha: draft.linha,
         campo: draft.campo,
-        numero,
+        numeroTexto: numeroOtimiza,
         aplicarNasDemais,
       });
-      if (r.erro || !r.solicitacao) {
-        setJustErro(r.erro ?? 'Não foi possível gravar a solicitação.');
+      if (!r.ok) {
+        setJustErro(r.erro);
         return;
       }
-      const aplicadas = [r.solicitacao, ...(r.replicadas ?? [])];
-      const keys = new Set(
-        aplicadas.map((s) => chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
-      );
-      onSolicitacoesChange([
-        ...solicitacoesOtimiza.filter(
-          (s) => !keys.has(chaveDecisao(s.idItemDocumentoEstoque, s.idItemPedidoCompra, s.campo))
-        ),
-        ...aplicadas,
-      ]);
       setNumeroGravado(r.solicitacao.numero);
       setNumeroOtimiza(String(r.solicitacao.numero));
       setStatusGravado(r.solicitacao.status ?? null);
@@ -891,6 +931,57 @@ export default function DoubleCheckInComparativoPcTab({
       }
     } finally {
       setSalvandoNumero(false);
+    }
+  };
+
+  const abrirChamadoOtimiza = (
+    linha: DoubleCheckInComparativoLinha,
+    campo: DoubleCheckInCampoComparativo
+  ) => {
+    const salva = solicitacaoMap.get(
+      chaveDecisao(linha.idItemDocumentoEstoque, linha.idItemPedidoCompra, campo)
+    );
+    setChamadoAlvo({ linha, campo });
+    setNumeroChamado(salva != null ? String(salva.numero) : '');
+    setNumeroChamadoGravado(salva?.numero ?? null);
+    setStatusChamado(salva?.status ?? null);
+    setAplicouChamadoNasDemais(false);
+    setErroChamado(null);
+    setAvisoChamado(
+      salva?.status === 'in_progress'
+        ? `A solicitação ${salva.numero} do Otimiza ainda está em andamento. O número permanece nesta divergência e o aceite continua pendente.`
+        : null
+    );
+  };
+
+  const gravarChamadoOtimiza = async (aplicarNasDemais = false) => {
+    if (!chamadoAlvo) return;
+    setSalvandoChamado(true);
+    setErroChamado(null);
+    setAvisoChamado(null);
+    try {
+      const r = await enviarNumeroOtimiza({
+        linha: chamadoAlvo.linha,
+        campo: chamadoAlvo.campo,
+        numeroTexto: numeroChamado,
+        aplicarNasDemais,
+      });
+      if (!r.ok) {
+        setErroChamado(r.erro);
+        return;
+      }
+      setNumeroChamadoGravado(r.solicitacao.numero);
+      setNumeroChamado(String(r.solicitacao.numero));
+      setStatusChamado(r.solicitacao.status ?? null);
+      setAplicouChamadoNasDemais(aplicarNasDemais);
+      if (!r.concluida) {
+        setAvisoChamado(
+          r.mensagem ??
+            `A solicitação ${r.solicitacao.numero} do Otimiza ainda está em andamento. O número ficou registrado nesta divergência e o aceite continua pendente.`
+        );
+      }
+    } finally {
+      setSalvandoChamado(false);
     }
   };
 
@@ -1065,6 +1156,14 @@ export default function DoubleCheckInComparativoPcTab({
     const numeroSolicitacaoOtimiza =
       dec?.numeroSolicitacaoOtimiza ?? solicitacaoCampo?.numero ?? null;
     const otimizaEmAndamento = !decVigente && solicitacaoCampo?.status === 'in_progress';
+    const cardConferido = Boolean(decVigente);
+    const divergenciaReal = diverg && linha.naturezaDivergencias?.[c.id] !== 'benigna';
+    const chamadoFinalizado =
+      solicitacaoCampo?.status === 'completed' || solicitacaoCampo?.status === 'cancelled';
+    const podeInserirChamado =
+      divergenciaReal && !somenteLeitura && !evidencia && !cardConferido && !chamadoFinalizado;
+    const podeDecidir =
+      !somenteLeitura && !cardConferido && (!divergenciaReal || chamadoFinalizado);
     return (
       <div
         key={c.id}
@@ -1121,10 +1220,21 @@ export default function DoubleCheckInComparativoPcTab({
           </div>
           {!diverg ? (
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Igual" />
-          ) : decVigente?.decisao === 'aceita' ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-label="Aceita" />
-          ) : decVigente?.decisao === 'recusa' ? (
-            <XCircle className="h-3.5 w-3.5 text-rose-600" aria-label="Recusada" />
+          ) : cardConferido && decVigente ? (
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                decVigente.decisao === 'aceita'
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
+                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-200'
+              }`}
+            >
+              {decVigente.decisao === 'aceita' ? (
+                <CheckCircle2 className="h-3 w-3" aria-hidden />
+              ) : (
+                <XCircle className="h-3 w-3" aria-hidden />
+              )}
+              Conferido
+            </span>
           ) : (
             evidencia ? null : (
             <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
@@ -1229,7 +1339,7 @@ export default function DoubleCheckInComparativoPcTab({
                   ? `${dec.vigente === false ? 'Anterior' : dec.decisao === 'aceita' ? 'Aceita' : 'Recusada'}: ${dec.justificativaLabel}`
                   : 'Divergente'}
               </span>
-              {!somenteLeitura && (!conferido || !decVigente) && (
+              {podeDecidir && (
                 <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
@@ -1254,6 +1364,16 @@ export default function DoubleCheckInComparativoPcTab({
                 </div>
               )}
             </div>
+            {podeInserirChamado && (
+              <button
+                type="button"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-sky-400 bg-sky-50 px-2 py-1.5 text-[11px] font-semibold text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-950"
+                onClick={() => abrirChamadoOtimiza(linha, c.id)}
+              >
+                <Ticket className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Inserir chamado do otimiza
+              </button>
+            )}
             {hist.length > 0 && (
               <div className="space-y-1 rounded-md bg-slate-100/80 px-1.5 py-1 dark:bg-slate-800/80">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -1949,6 +2069,112 @@ export default function DoubleCheckInComparativoPcTab({
                   onClick={() => void salvarJustificativa()}
                 >
                   {salvando ? 'Salvando…' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {chamadoAlvo &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10075] flex items-center justify-center bg-slate-900/55 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Inserir chamado do otimiza"
+            onClick={() => !salvandoChamado && setChamadoAlvo(null)}
+          >
+            <div
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-sky-300 bg-white shadow-xl dark:border-sky-700 dark:bg-slate-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-sky-700 px-5 py-4 text-white dark:bg-sky-800">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-100">
+                  Divergência real · ainda não conferida
+                </p>
+                <h3 className="mt-1 text-lg font-semibold">Inserir chamado do otimiza</h3>
+                <p className="mt-1 text-sm text-sky-100">
+                  {contextoDivergencia(chamadoAlvo.linha, chamadoAlvo.campo)}
+                </p>
+              </div>
+              <div className="space-y-3 px-5 py-4">
+                <div>
+                  <label className={labelClass} htmlFor="chamado-otimiza-numero">
+                    Nº da solicitação no Otimiza
+                  </label>
+                  <input
+                    id="chamado-otimiza-numero"
+                    className={inputClass}
+                    inputMode="numeric"
+                    value={numeroChamado}
+                    autoFocus
+                    placeholder="Número inteiro"
+                    onChange={(e) => setNumeroChamado(e.target.value.replace(/[^\d]/g, ''))}
+                  />
+                </div>
+                {avisoChamado ? (
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                    {avisoChamado}
+                  </p>
+                ) : statusChamado === 'completed' || statusChamado === 'cancelled' ? (
+                  <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                    {aplicouChamadoNasDemais
+                      ? `Solicitação ${numeroChamadoGravado} concluída no Otimiza e gravada nesta e nas outras divergências em aberto.`
+                      : `Solicitação ${numeroChamadoGravado} concluída no Otimiza. O aceite desta divergência já pode ser feito.`}
+                  </p>
+                ) : (
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    O número é consultado no Otimiza. Se a solicitação ainda estiver em andamento, ele
+                    fica neste card e o aceite continua pendente. A justificativa do aceite fica no
+                    botão de aceitar.
+                  </p>
+                )}
+                {outrasDoChamado > 0 && (
+                  <button
+                    type="button"
+                    className={`${btnSecondary} w-full`}
+                    disabled={salvandoChamado || !numeroChamado.trim()}
+                    onClick={() => void gravarChamadoOtimiza(true)}
+                  >
+                    {salvandoChamado
+                      ? 'Consultando…'
+                      : `Vale para as demais divergências (${outrasDoChamado})`}
+                  </button>
+                )}
+                {erroChamado && <p className="text-sm text-rose-600">{erroChamado}</p>}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  disabled={salvandoChamado}
+                  onClick={() => setChamadoAlvo(null)}
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  disabled={
+                    salvandoChamado ||
+                    !numeroChamado.trim() ||
+                    (numeroChamadoGravado != null &&
+                      numeroChamado.trim() === String(numeroChamadoGravado) &&
+                      (statusChamado === 'completed' || statusChamado === 'cancelled'))
+                  }
+                  onClick={() => void gravarChamadoOtimiza(false)}
+                >
+                  {salvandoChamado
+                    ? 'Consultando…'
+                    : numeroChamadoGravado != null &&
+                        numeroChamado.trim() === String(numeroChamadoGravado) &&
+                        statusChamado === 'in_progress'
+                      ? 'Consultar novamente'
+                      : numeroChamadoGravado
+                        ? 'Atualizar'
+                        : 'Gravar chamado'}
                 </button>
               </div>
             </div>
