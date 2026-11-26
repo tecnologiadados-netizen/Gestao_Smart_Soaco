@@ -191,19 +191,6 @@ function mesclarAgregadosSaidas(
   };
 }
 
-function mesclarIdsPorPathKey(
-  nomus: Record<string, number[]>,
-  shop9: Record<string, number[]>,
-): Record<string, number[]> {
-  const out: Record<string, number[]> = { ...nomus };
-  for (const [pk, ids] of Object.entries(shop9)) {
-    const cur = new Set(out[pk] ?? []);
-    for (const id of ids) cur.add(id);
-    if (cur.size > 0) out[pk] = [...cur].sort((a, b) => a - b);
-  }
-  return out;
-}
-
 async function carregarSaidasNomusSoAcoDre(params: {
   dataInicio: string;
   dataFim: string;
@@ -493,7 +480,7 @@ export async function carregarSaidasSoAcoDre(params: {
     linhas: linhasRateadas,
     erro: erros.length > 0 ? erros.join('; ') : undefined,
     fonteSaidas,
-    idsPorPathKey: mesclarIdsPorPathKey(mapaIdsContaPorPathKeyDre(), idsShop9),
+    idsPorPathKey: mapaIdsContaPorPathKeyDre(),
     idsPorPathKeyShop9: idsShop9,
     shop9OrdensCatalogoPorPathKey,
     simplesNacionalFilial6PorPeriodo,

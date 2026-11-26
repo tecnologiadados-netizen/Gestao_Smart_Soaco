@@ -40,6 +40,16 @@ const SECOES: SecaoAjuda[] = [
       'Quanto maior a dedução em relação ao faturamento, menor a receita que realmente fica disponível. Acompanhe devoluções e descontos por período para ver se o problema é comercial, operacional ou fiscal.',
     detalhes: [
       {
+        titulo: 'ICMS',
+        texto:
+          'ICMS s/ vendas, substituição tributária e guia de antecipação ficam no grupo 4.1 ICMS. O valor do grupo é a soma das três. Clique nele para abrir os lançamentos juntos; expanda se quiser ver cada parte. ICMS Difal continua em linha própria.',
+      },
+      {
+        titulo: 'Detalhe de lançamentos',
+        texto:
+          'O modal de uma despesa lista os lançamentos Nomus e Shop9 daquela conta e daquele mês. O total, sem filtro na grade do modal, deve bater com o valor da célula. O rodapé mostra o valor da grade para conferir.',
+      },
+      {
         titulo: 'Detalhe de devoluções',
         texto:
           'Clique na célula de devoluções para abrir uma linha por nota: data, NF (número da NF-e e, abaixo, o documento Nomus), pedido de origem, cliente, movimentação e valor. Clique na nota para expandir os produtos, com grupo, quantidade e valor. A soma dos valores da nota é a soma dos produtos, e o total do modal continua igual à célula da grade.',

@@ -137,7 +137,7 @@ const ALIASES_NOMUS_PARA_DRE: Record<string, string> = {
   'pis importacao': 'PIS Importação',
   'pis sobre importacao': 'PIS Importação',
   'icms substituicao tributaria': 'ICMS Substituição Tributária',
-  'icms st': 'ICMS ST',
+  'icms st': 'ICMS Substituição Tributária',
   'impostos retencao': 'Impostos Retenção',
   'impostos retencao na fonte': 'Impostos Retenção',
   'diferenciais': '(-) Diferenciais',
@@ -145,18 +145,18 @@ const ALIASES_NOMUS_PARA_DRE: Record<string, string> = {
 
 /** Classificação Nomus (1.3.x impostos s/ vendas) → código analítico DRE (4.x). */
 const NOMUS_CLASS_IMPOSTOS_PARA_DRE_CODIGO: Record<string, string> = {
-  '1.3.1': '4.1',
-  '1.3.2': '4.1',
-  '1.3.3': '4.1',
+  '1.3.1': '4.1.1',
+  '1.3.2': '4.1.1',
+  '1.3.3': '4.1.1',
   '1.3.4': '4.14',
-  '1.3.5': '4.4',
-  '1.3.6': '4.3',
+  '1.3.5': '4.1.3',
+  '1.3.6': '4.1.2',
   '1.3.7': '4.5',
   '1.3.8': '4.8',
   '1.3.9': '4.7',
   '1.3.10': '4.11',
   '1.3.11': '4.10',
-  '1.3.12': '4.1',
+  '1.3.12': '4.1.1',
 };
 
 export function normalizarNomePlano(s: string): string {
@@ -254,13 +254,12 @@ function resolverPathKeyImpostosPorPalavra(nomeNorm: string): string | null {
   if (nomeNorm.includes('ipi')) return hit('4.11');
   if (nomeNorm.includes('retenc')) return hit('4.15');
   if (nomeNorm.includes('diferencial') || nomeNorm === 'diferenciais') return hit('4.16');
-  if (nomeNorm.includes('substitu') || (nomeNorm.includes('icms') && nomeNorm.includes('st'))) {
-    if (nomeNorm.includes('substitu')) return hit('4.3');
-    if (/\bicms\s+st\b/.test(nomeNorm) || nomeNorm.endsWith(' icms st')) return hit('4.2');
+  if (nomeNorm.includes('substitu') || /\bicms\s+st\b/.test(nomeNorm) || nomeNorm.endsWith(' icms st')) {
+    return hit('4.1.2');
   }
-  if (nomeNorm.includes('antecip') || nomeNorm.includes('guia')) return hit('4.4');
+  if (nomeNorm.includes('antecip') || nomeNorm.includes('guia')) return hit('4.1.3');
   if (nomeNorm.includes('difal') || nomeNorm.includes('difer')) return hit('4.5');
-  if (nomeNorm.includes('icms')) return hit('4.1');
+  if (nomeNorm.includes('icms')) return hit('4.1.1');
   return null;
 }
 

@@ -44,18 +44,19 @@ function fmtDataBr(ymd: string | null): string {
   return ymd;
 }
 
-/** Evita linhas repetidas quando Nomus e Shop9 retornam o mesmo código (fc.Ordem / agendamento). */
+/** Evita a mesma linha duas vezes. Nomus e Shop9 têm sequências de id próprias, então a chave inclui a origem. */
 function deduplicarDetalhePorCodigo(linhas: DfcAgendamentoDetalheLinha[]): DfcAgendamentoDetalheLinha[] {
-  const byId = new Map<number, DfcAgendamentoDetalheLinha>();
+  const byKey = new Map<string, DfcAgendamentoDetalheLinha>();
   const semId: DfcAgendamentoDetalheLinha[] = [];
   for (const d of linhas) {
     if (d.id > 0) {
-      if (!byId.has(d.id)) byId.set(d.id, d);
+      const key = `${d.origem ?? 'Nomus'}#${d.tipoRef}#${d.id}`;
+      if (!byKey.has(key)) byKey.set(key, d);
     } else {
       semId.push(d);
     }
   }
-  return byId.size > 0 ? [...byId.values(), ...semId] : linhas;
+  return byKey.size > 0 ? [...byKey.values(), ...semId] : linhas;
 }
 
 function dataCompetenciaLinha(row: DfcAgendamentoDetalheLinha): string | null {
@@ -392,6 +393,11 @@ export default function DfcDetalheLancamentosModal({
     [linhasExibidas],
   );
 
+  const somaCarregada = useMemo(
+    () => linhasRateioEmpresas.reduce((s, r) => s + r.valorBaixado, 0),
+    [linhasRateioEmpresas],
+  );
+
   const somaRateioFiltrada = useMemo(() => {
     if (!comRateioSimples) return null;
     const empresas = idEmpresasRateioSimples ?? idEmpresas;
@@ -426,6 +432,10 @@ export default function DfcDetalheLancamentosModal({
     idEmpresas,
     filtroPorCompetencia,
   ]);
+
+  const gradeAbs = valorEsperadoGrade != null ? Math.abs(valorEsperadoGrade) : null;
+  const somaConferencia = somaRateioFiltrada != null ? somaRateioFiltrada.exibido : somaCarregada;
+  const diffGrade = gradeAbs != null ? somaConferencia - gradeAbs : null;
 
   const temFiltroGrade = grade.temFiltrosOuOrdem;
 
@@ -637,6 +647,18 @@ export default function DfcDetalheLancamentosModal({
               <span>Total{temFiltroGrade ? ' (filtrado)' : ''}</span>
               <span className="font-semibold tabular-nums">{nf.format(somaFiltrada)}</span>
             </div>
+            {gradeAbs != null && gradeAbs !== 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-primary-500/40 pt-1.5 text-xs text-primary-100">
+                <span>
+                  Valor na grade: {nf.format(valorEsperadoGrade ?? 0)}
+                  {temFiltroGrade
+                    ? ''
+                    : diffGrade != null && Math.abs(diffGrade) >= 0.01
+                      ? ` · diferença ${diffGrade > 0 ? '+' : ''}${nf.format(diffGrade)}`
+                      : ' · confere com a grade'}
+                </span>
+              </div>
+            ) : null}
             {somaRateioFiltrada ? (
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-primary-500/40 pt-1.5 text-xs text-primary-100">
                 <span>

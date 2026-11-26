@@ -38,7 +38,6 @@ import {
 import { criarMatcherTextoLivre } from '../../../utils/textoLivreBusca';
 import type { DreCpvMoveisDiretoLinha, DreDevolucoesLinha, DreReceitaMoveisDiretoLinha } from '../../../api/financeiro';
 import {
-  coletarIdsContaParaNo,
   coletarPathKeysSaidasParaNo,
   mapaIdsPorPathKeyFromRecord,
   noPermiteDetalheSaidas,
@@ -184,39 +183,16 @@ type DetalheRateioOpts = {
   pathKeysConta?: string[];
 };
 
-function separarIdsDetalheNomusShop9(
-  uniq: number[],
-  shop9IdSet: Set<number>,
-  shop9OrdensCatalogoPorPathKey: Record<string, number[]>,
-  opts: DetalheRateioOpts,
-): { idsNomus: number[]; idsShop9: number[] } {
-  const catalogOrdens =
-    opts.buscaTodasEmpresas && opts.pathKeysConta?.length
-      ? [
-          ...new Set(
-            opts.pathKeysConta.flatMap((pk) => shop9OrdensCatalogoPorPathKey[pk] ?? []),
-          ),
-        ].filter((n) => Number.isFinite(n) && n > 0)
-      : [];
-  const catalogSet = new Set(catalogOrdens);
+function idsPositivosUnicos(ids: number[]): number[] {
+  return [...new Set(ids.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
+}
 
-  if (opts.buscaTodasEmpresas && catalogOrdens.length > 0) {
-    const idsShop9 = [
-      ...new Set([
-        ...uniq.filter((id) => shop9IdSet.has(id) || catalogSet.has(id)),
-        ...catalogOrdens,
-      ]),
-    ]
-      .filter((n) => Number.isFinite(n) && n > 0)
-      .sort((a, b) => a - b);
-    const idsShop9Set = new Set(idsShop9);
-    const idsNomus = uniq.filter((id) => !idsShop9Set.has(id));
-    return { idsNomus, idsShop9 };
+function juntarIdsPorPathKeys(map: Map<string, number[]>, pathKeys: string[]): number[] {
+  const ids: number[] = [];
+  for (const pk of pathKeys) {
+    for (const id of map.get(pk) ?? []) ids.push(id);
   }
-
-  const idsShop9 = uniq.filter((id) => shop9IdSet.has(id));
-  const idsNomus = uniq.filter((id) => !shop9IdSet.has(id));
-  return { idsNomus, idsShop9 };
+  return idsPositivosUnicos(ids);
 }
 
 function resolverContextoRateioDetalhe(
@@ -453,15 +429,10 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
     () => mapaIdsPorPathKeyFromRecord(idsPorPathKeySaidas),
     [idsPorPathKeySaidas],
   );
-  const shop9IdSet = useMemo(() => {
-    const s = new Set<number>();
-    for (const ids of Object.values(idsPorPathKeyShop9)) {
-      for (const id of ids) {
-        if (Number.isFinite(id) && id > 0) s.add(id);
-      }
-    }
-    return s;
-  }, [idsPorPathKeyShop9]);
+  const idsShop9PorPathKey = useMemo(
+    () => mapaIdsPorPathKeyFromRecord(idsPorPathKeyShop9),
+    [idsPorPathKeyShop9],
+  );
 
   const valoresReceitaPorPathKey = useMemo(() => {
     const direto = receitaVendasLinhas.length
@@ -748,19 +719,18 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
 
   const abrirDetalhe = useCallback(
     (
-      rawIds: number[],
+      idsNomusRaw: number[],
+      idsShop9Raw: number[],
       periodo: string | undefined,
       titulo: string,
       opts: DetalheRateioOpts = {},
     ) => {
-      const uniq = [...new Set(rawIds.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
-      if (!uniq.length && !(opts.buscaTodasEmpresas && opts.pathKeysConta?.length)) return;
-      const { idsNomus, idsShop9 } = separarIdsDetalheNomusShop9(
-        uniq,
-        shop9IdSet,
-        shop9OrdensCatalogoPorPathKey,
-        opts,
-      );
+      const idsNomus = idsPositivosUnicos(idsNomusRaw);
+      const catalogo =
+        opts.buscaTodasEmpresas && opts.pathKeysConta?.length
+          ? opts.pathKeysConta.flatMap((pk) => shop9OrdensCatalogoPorPathKey[pk] ?? [])
+          : [];
+      const idsShop9 = idsPositivosUnicos([...idsShop9Raw, ...catalogo]);
       if (!idsNomus.length && !idsShop9.length) return;
       setDetalheAberto({
         idsNomus,
@@ -775,7 +745,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
         buscaTodasEmpresas: opts.buscaTodasEmpresas,
       });
     },
-    [shop9IdSet, shop9OrdensCatalogoPorPathKey],
+    [shop9OrdensCatalogoPorPathKey],
   );
 
   const abrirDetalheReceita = useCallback(
@@ -806,28 +776,21 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
     [],
   );
 
-  const resolverIdsDetalhe = useCallback(
-    (node: DreEstruturaNo): number[] => {
-      const mapped = coletarIdsContaParaNo(node, idsSaidasPorPathKey);
-      if (mapped.length > 0) return mapped;
+  const pathKeysDetalhe = useCallback(
+    (node: DreEstruturaNo): string[] => {
+      const pks = new Set(coletarPathKeysSaidasParaNo(node));
       if (node.codigo === CODIGO_SIMPLES_NACIONAL) {
-        const pkPai = encontrarPathKeyPorCodigo(roots, CODIGO_SIMPLES_NACIONAL);
-        if (pkPai) {
-          const idsPai = idsSaidasPorPathKey.get(pkPai) ?? [];
-          if (idsPai.length) return idsPai;
-        }
+        const pk = encontrarPathKeyPorCodigo(roots, CODIGO_SIMPLES_NACIONAL);
+        if (pk) pks.add(pk);
       }
       if (ehContaRateioFilha(node.codigo, rateioConfig, roots)) {
         const pkPai = pathKeyPaiRateioFilha(node.codigo, rateioConfig, roots);
-        if (pkPai) {
-          const idsPai = idsSaidasPorPathKey.get(pkPai) ?? [];
-          if (idsPai.length) return idsPai;
-        }
+        if (pkPai) pks.add(pkPai);
       }
-      const legacy = idsPorPathKey.get(node.pathKey) ?? (node.id != null && node.id > 0 ? [node.id] : []);
-      return legacy;
+      if (pks.size === 0 && node.pathKey) pks.add(node.pathKey);
+      return [...pks];
     },
-    [idsPorPathKey, idsSaidasPorPathKey, roots, rateioConfig],
+    [roots, rateioConfig],
   );
 
   return (
@@ -1075,7 +1038,13 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
               const pad = depth * 16;
               const temFilhos = (node.children?.length ?? 0) > 0;
               const aberto = filtroAtivo && temFilhos ? true : expanded.has(node.pathKey);
-              const ids = resolverIdsDetalhe(node);
+              const pksDetalhe = pathKeysDetalhe(node);
+              const idsNomusDetalhe = juntarIdsPorPathKeys(idsSaidasPorPathKey, pksDetalhe);
+              const idsShop9Detalhe = juntarIdsPorPathKeys(idsShop9PorPathKey, pksDetalhe);
+              const idsNomusAbertura =
+                idsNomusDetalhe.length > 0 || idsShop9Detalhe.length > 0
+                  ? idsNomusDetalhe
+                  : idsPorPathKey.get(node.pathKey) ?? (node.id != null && node.id > 0 ? [node.id] : []);
               const bg = corFundoLinha(node, rowIdx);
               const stickyBg = stickyBgLinha(node, rowIdx);
               const isTotal = node.tipo === 'T';
@@ -1089,7 +1058,10 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
               const ctxReceita = contextoDetalheReceitaVendas(node);
               const provisaoCalculada = isProvisaoCalculadaDre(node.codigo);
               const podeDetalheReceita = receitaNomusCarregada && ctxReceita != null && !isTotal;
-              const podeDetalhePlano = ids.length > 0 && !isTotal && noPermiteDetalheSaidas(node);
+              const podeDetalhePlano =
+                (idsNomusAbertura.length > 0 || idsShop9Detalhe.length > 0) &&
+                !isTotal &&
+                noPermiteDetalheSaidas(node);
               const podeDetalheDevolucao =
                 empresaDevolucaoNomus(node) != null && devolucoesLinhas.length > 0 && !isTotal;
               const detalheComRateioSimples = node.codigo === CODIGO_SIMPLES_NACIONAL;
@@ -1205,7 +1177,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
                                   : clicavelDevolucao
                                     ? () => abrirDetalheDevolucao(node, p, tituloCel, v)
                                     : clicavelPlano
-                                      ? () => abrirDetalhe(ids, p, tituloCel, optsDetalhePlano(v))
+                                      ? () => abrirDetalhe(idsNomusAbertura, idsShop9Detalhe, p, tituloCel, optsDetalhePlano(v))
                                       : undefined
                               }
                               onKeyDown={
@@ -1215,7 +1187,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
                                         e.preventDefault();
                                         if (clicavelReceita) abrirDetalheReceita(node, p, tituloCel, v);
                                         else if (clicavelDevolucao) abrirDetalheDevolucao(node, p, tituloCel, v);
-                                        else abrirDetalhe(ids, p, tituloCel, optsDetalhePlano(v));
+                                        else abrirDetalhe(idsNomusAbertura, idsShop9Detalhe, p, tituloCel, optsDetalhePlano(v));
                                       }
                                     }
                                   : undefined
@@ -1278,7 +1250,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
                                   totalGeral,
                                 )
                             : podeDetalhePlano
-                              ? () => abrirDetalhe(ids, undefined, `Total · ${node.nome}`, optsDetalhePlano(totalGeral))
+                              ? () => abrirDetalhe(idsNomusAbertura, idsShop9Detalhe, undefined, `Total · ${node.nome}`, optsDetalhePlano(totalGeral))
                               : undefined
                       }
                       onKeyDown={
@@ -1301,7 +1273,7 @@ const ArvoreContasDre = forwardRef<DreArvoreExportHandle, ArvoreContasDreProps>(
                                     totalGeral,
                                   );
                                 } else {
-                                  abrirDetalhe(ids, undefined, `Total · ${node.nome}`, optsDetalhePlano(totalGeral));
+                                  abrirDetalhe(idsNomusAbertura, idsShop9Detalhe, undefined, `Total · ${node.nome}`, optsDetalhePlano(totalGeral));
                                 }
                               }
                             }
