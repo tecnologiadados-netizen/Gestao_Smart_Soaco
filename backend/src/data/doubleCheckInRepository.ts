@@ -1513,3 +1513,47 @@ export async function queryDoubleCheckInComparativoPc(params: {
   if (erro) return { linhas: [], erro };
   return { linhas: linhasPorDocumento.get(params.idDocumento) ?? [] };
 }
+
+/**
+ * Entradas recentes da empresa 1 que ainda têm item ligado a pedido de compra.
+ * A mais nova vem primeiro. Sem a linha de vínculo, o documento não aparece.
+ */
+export async function listarIdsEntradasRecentesComVinculo(
+  desdeYmd: string,
+  ateYmd: string
+): Promise<{ ids: number[]; erro?: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desdeYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(ateYmd)) {
+    return { ids: [], erro: 'Período inválido para gravar o espelho.' };
+  }
+  if (!isNomusEnabled() || !getNomusPool()) return { ids: [], erro: 'Nomus não configurado.' };
+  const pool = getNomusPool();
+  if (!pool) return { ids: [], erro: 'Nomus não configurado.' };
+  const sql = `
+SELECT de.id AS idDocumento
+FROM documentoestoque de
+INNER JOIN itemdocumentoestoque ide ON ide.idDocumentoEstoque = de.id
+INNER JOIN itemdocumentoestoque_itempedidocompra ideipc ON ideipc.idItemDocumentoEstoque = ide.id
+WHERE DATE(de.dataEntrada) BETWEEN ? AND ?
+  AND de.idEmpresaEntrada = ${PCP_ID_EMPRESA_SO_ACO}
+  AND ide.discriminador = 'ItemDocumentoEntrada'
+  AND de.idTipoMovimentacao IN (${TIPOS_GRADE})
+GROUP BY de.id
+ORDER BY MAX(DATE(de.dataEntrada)) DESC, de.id DESC
+`.trim();
+  try {
+    const [rows] = await nomusQueryWithRetry<Record<string, unknown>[]>(pool, sql, [desdeYmd, ateYmd]);
+    const ids: number[] = [];
+    const vistos = new Set<number>();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const id = toInt(row.idDocumento);
+      if (id <= 0 || vistos.has(id)) continue;
+      vistos.add(id);
+      ids.push(id);
+    }
+    return { ids };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[doubleCheckInRepository] listarIdsEntradasRecentesComVinculo:', msg);
+    return { ids: [], erro: msg };
+  }
+}
