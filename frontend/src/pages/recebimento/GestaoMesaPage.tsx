@@ -26,6 +26,7 @@ import {
   type RecebimentoStatusCodigo,
 } from '../../api/recebimento';
 import { imprimirDocumentoApoioVolumes } from './documentoApoioVolumesPdf';
+import GestaoMesaHistorico from './GestaoMesaHistorico';
 
 const COLUNAS = [
   { id: 'documento', label: 'Documento', align: 'left' as const },
@@ -267,6 +268,7 @@ export default function GestaoMesaPage() {
   const { hasPermission, nome, login } = useAuth();
   const podeMesa = podeAcessarGestaoMesa(hasPermission);
 
+  const [aba, setAba] = useState<'fila' | 'historico'>('fila');
   const [documentos, setDocumentos] = useState<RecebimentoDocumentoGrade[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -595,7 +597,7 @@ export default function GestaoMesaPage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col gap-2">
-      <CarregandoInformacoesOverlay show={loading} mode="contained" />
+      <CarregandoInformacoesOverlay show={aba === 'fila' && loading} mode="contained" />
 
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
         <div>
@@ -603,13 +605,43 @@ export default function GestaoMesaPage() {
             Recebimento · Perfil Mesa
           </p>
           <h1 className="mt-1 text-xl font-semibold text-slate-800 dark:text-slate-100">Gestão Mesa</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Só entra o documento de pré-entrada da SÓ AÇO INDUSTRIAL cuja conferência no Double Check já foi
-            concluída, com ou sem divergência. Entrada que ainda não passou por essa conferência não aparece,
-            inclusive as anteriores a 19/09/2026. Conferência ok fica aguardando a Mesa alterar a movimentação
-            no Nomus. Quando o tipo muda, o documento é concluído e permanece só o histórico.
+          <div
+            className="mt-3 flex gap-1 border-b border-slate-200 dark:border-slate-700"
+            role="tablist"
+            aria-label="Seções da Mesa"
+          >
+            {(
+              [
+                ['fila', 'Fila'],
+                ['historico', 'Histórico'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={aba === id}
+                className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                  aba === id
+                    ? 'border-primary-600 text-primary-700 dark:text-primary-300'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+                onClick={() => {
+                  if (id !== 'fila') fecharModalDocumento();
+                  setAba(id);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {aba === 'historico'
+              ? 'Deliberações já feitas: conferente escolhido, data e quem deliberou. O detalhe mostra as voltas da contagem, como no histórico do conferente.'
+              : 'Só entra o documento de pré-entrada da SÓ AÇO INDUSTRIAL cuja conferência no Double Check já foi concluída, com ou sem divergência. Entrada que ainda não passou por essa conferência não aparece, inclusive as anteriores a 19/09/2026. Conferência ok fica aguardando a Mesa alterar a movimentação no Nomus. Quando o tipo muda, o documento é concluído e permanece no histórico.'}
           </p>
         </div>
+        {aba === 'fila' && (
         <div className="flex flex-wrap items-center gap-2">
           {grade.temFiltrosOuOrdem && (
             <button type="button" className={btnSecondary} onClick={() => grade.limparFiltrosGrade()}>
@@ -627,7 +659,12 @@ export default function GestaoMesaPage() {
             Atualizar
           </button>
         </div>
+        )}
       </div>
+      {aba === 'historico' ? (
+        <GestaoMesaHistorico />
+      ) : (
+      <>
       {erro && (
         <p className="shrink-0 text-sm text-rose-600 dark:text-rose-400" role="alert">
           {erro}
@@ -770,6 +807,8 @@ export default function GestaoMesaPage() {
             COLS_NUMERICAS.has(grade.colunaFiltroAberta as ColId) ? 'Maior para Menor' : undefined
           }
         />
+      )}
+      </>
       )}
 
       {modalDoc &&

@@ -416,6 +416,47 @@ export async function fetchRecebimentoDigitacaoHistorico(): Promise<{
   };
 }
 
+export type RecebimentoMesaDeliberacao = {
+  idDocumento: number;
+  numeroDocumentoFiscal: string | null;
+  numeroNfe: string | null;
+  dataEmissao: string | null;
+  dataEntrada: string | null;
+  nomeParceiro: string | null;
+  tipoMovimentacao: string | null;
+  status: RecebimentoStatusCodigo;
+  statusLabel: string;
+  conferenteNome: string | null;
+  conferenteLogin: string | null;
+  deliberadoEm: string | null;
+  deliberadoPor: string | null;
+};
+
+export async function fetchRecebimentoMesaHistorico(): Promise<{
+  deliberacoes: RecebimentoMesaDeliberacao[];
+  erro?: string;
+}> {
+  const res = await apiFetch('/api/recebimento/mesa/historico');
+  const body = (await res.json().catch(() => ({}))) as {
+    deliberacoes?: RecebimentoMesaDeliberacao[];
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) {
+    return {
+      deliberacoes: body.deliberacoes ?? [],
+      erro: body.error ?? body.erro ?? res.statusText,
+    };
+  }
+  return { deliberacoes: body.deliberacoes ?? [], erro: body.erro };
+}
+
+export async function fetchRecebimentoMesaHistoricoDocumento(
+  idDocumento: number
+): Promise<RecebimentoHistoricoEnvioDetalhe> {
+  return apiJson<RecebimentoHistoricoEnvioDetalhe>(`/api/recebimento/mesa/historico/${idDocumento}`);
+}
+
 export async function fetchRecebimentoDigitacaoHistoricoDocumento(
   idDocumento: number
 ): Promise<RecebimentoHistoricoEnvioDetalhe> {

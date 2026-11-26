@@ -10,6 +10,8 @@ import {
   getRecebimentoDigitacaoPendencias,
   getRecebimentoMesaConferentes,
   getRecebimentoMesaDocumentos,
+  getRecebimentoMesaHistorico,
+  getRecebimentoMesaHistoricoDocumento,
   getRecebimentoMesaItens,
   postRecebimentoDigitacaoDevolver,
   postRecebimentoDigitacaoItem,
@@ -41,6 +43,8 @@ function async503(handler: RequestHandler): RequestHandler {
 }
 
 router.get('/mesa/documentos', verMesa, async503(getRecebimentoMesaDocumentos));
+router.get('/mesa/historico', verMesa, async503(getRecebimentoMesaHistorico));
+router.get('/mesa/historico/:id', verMesa, async503(getRecebimentoMesaHistoricoDocumento));
 router.get('/mesa/documentos/:id/itens', verMesa, async503(getRecebimentoMesaItens));
 router.get('/mesa/conferentes', verMesa, async503(getRecebimentoMesaConferentes));
 router.post(

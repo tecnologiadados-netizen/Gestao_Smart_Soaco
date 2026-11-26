@@ -34,6 +34,7 @@ import {
   obterConferenciaPorDocumento,
   listarCiclosConferencia,
   listarConferenciasEnviadas,
+  listarDeliberacoesMesa,
   qtdeFisicaConfere,
   normalizarJustificativaAceite,
   normalizarMotivoCancelamento,
@@ -981,6 +982,54 @@ function resumoEnvioDto(
     qtdeVoltas: envio.qtdeVoltas,
     emNovaConferencia: envio.emNovaConferencia,
   };
+}
+
+/**
+ * GET /api/recebimento/mesa/historico
+ * Deliberações já feitas: conferente escolhido, com a contagem ainda aberta ou já encerrada.
+ */
+export async function getRecebimentoMesaHistorico(_req: Request, res: Response): Promise<void> {
+  const deliberacoes = await listarDeliberacoesMesa();
+  const ids = deliberacoes.map((item) => item.idDocumentoEstoque);
+  const { documentos: cabecalhos, erro } = await queryCabecalhosDocumentosNomus(ids);
+  const porId = new Map(cabecalhos.map((d) => [d.idDocumento, d]));
+  res.json({
+    deliberacoes: deliberacoes.map((item) => {
+      const cab = porId.get(item.idDocumentoEstoque) ?? null;
+      return {
+        idDocumento: item.idDocumentoEstoque,
+        numeroDocumentoFiscal: cab?.numeroDocumentoFiscal ?? item.numeroDocumento,
+        numeroNfe: cab?.numeroNfe ?? null,
+        dataEmissao: cab?.dataEmissao ?? null,
+        dataEntrada: cab?.dataEntrada ?? null,
+        nomeParceiro: cab?.nomeParceiro ?? null,
+        tipoMovimentacao: cab?.tipoMovimentacao ?? null,
+        status: item.status,
+        statusLabel: RECEBIMENTO_STATUS_LABEL[item.status] ?? item.status,
+        conferenteNome: item.conferenteNome,
+        conferenteLogin: item.conferenteLogin,
+        deliberadoEm: item.atribuidoEm,
+        deliberadoPor: item.atribuidoPorLogin,
+      };
+    }),
+    erro: erro || undefined,
+  });
+}
+
+/**
+ * GET /api/recebimento/mesa/historico/:id
+ * Inclui a volta ainda aberta, quando a deliberação foi feita e a contagem não voltou.
+ */
+export async function getRecebimentoMesaHistoricoDocumento(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const idDocumento = Math.trunc(Number(req.params.id));
+  if (!Number.isFinite(idDocumento) || idDocumento <= 0) {
+    res.status(400).json({ error: 'idDocumento inválido.' });
+    return;
+  }
+  await responderResumoHistoricoConferencia(res, idDocumento, { incluirVoltaAberta: true });
 }
 
 /**

@@ -321,6 +321,15 @@ export type RecebimentoConferenciaEnviadaResumo = RecebimentoConferenciaLocal & 
   emNovaConferencia: boolean;
 };
 
+/** Deliberações da Mesa: o conferente já foi escolhido, esteja a contagem em andamento ou encerrada. */
+export async function listarDeliberacoesMesa(): Promise<RecebimentoConferenciaLocal[]> {
+  const rows = await prisma.recebimentoConferencia.findMany({
+    where: { atribuidoEm: { not: null } },
+    orderBy: [{ atribuidoEm: 'desc' }, { id: 'desc' }],
+  });
+  return rows.map(mapRow);
+}
+
 /** Conferências que já voltaram à Mesa pelo menos uma vez, inclusive as reabertas depois. */
 export async function listarConferenciasEnviadas(): Promise<RecebimentoConferenciaEnviadaResumo[]> {
   const rows = await prisma.recebimentoConferencia.findMany({
