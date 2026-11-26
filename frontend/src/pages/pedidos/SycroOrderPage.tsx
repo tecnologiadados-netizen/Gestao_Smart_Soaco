@@ -43,6 +43,7 @@ import {
 } from '../../utils/disponivelVsConfiavel';
 import {
   canalPermitidoPedido,
+  hojeIsoLocal,
   mensagemCanalDatasPedido,
   validarDatasReprogramacao,
 } from '../../utils/canalReprogramacaoDatas';
@@ -443,6 +444,7 @@ export default function SycroOrderPage() {
   const [notifications, setNotifications] = useState<SycroOrderNotification[]>([]);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [bloqueioDisponivel, setBloqueioDisponivel] = useState<Order | null>(null);
   const [modalEditarResponsavel, setModalEditarResponsavel] = useState<Order | null>(null);
   const [usersResponsavel, setUsersResponsavel] = useState<Array<{ id: number; login: string; nome: string | null }>>([]);
   const [loadingUsersResp, setLoadingUsersResp] = useState(false);
@@ -517,8 +519,7 @@ export default function SycroOrderPage() {
   const acionarTagDisponivel = useCallback(
     async (order: Order, available: boolean) => {
       if (available && order.previsao_nao_confiavel) {
-        setToast(MSG_BLOQUEIO_MARCAR_DISPONIVEL);
-        setTimeout(() => setToast(null), 8000);
+        setBloqueioDisponivel(order);
         return;
       }
       setTagLoadingOrderId(order.id);
@@ -528,8 +529,13 @@ export default function SycroOrderPage() {
         setTimeout(() => setToast(null), 3000);
         await carregar();
       } catch (err) {
-        setToast(err instanceof Error ? err.message : 'Erro ao atualizar a TAG de disponibilidade.');
-        setTimeout(() => setToast(null), 8000);
+        const msg = err instanceof Error ? err.message : 'Erro ao atualizar a TAG de disponibilidade.';
+        if (available && msg.includes('não confiável')) {
+          setBloqueioDisponivel(order);
+        } else {
+          setToast(msg);
+          setTimeout(() => setToast(null), 8000);
+        }
       } finally {
         setTagLoadingOrderId(null);
       }
@@ -908,6 +914,52 @@ export default function SycroOrderPage() {
         </div>
       )}
 
+      {bloqueioDisponivel && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="bloqueio-disponivel-titulo"
+          onClick={() => setBloqueioDisponivel(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border border-red-500/50 bg-white p-6 shadow-2xl dark:bg-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="bloqueio-disponivel-titulo" className="text-base font-semibold text-red-700 dark:text-red-300">
+              Não é possível marcar como disponível
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+              {MSG_BLOQUEIO_MARCAR_DISPONIVEL}
+            </p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Pedido <strong>{bloqueioDisponivel.order_number}</strong>: a previsão está como não confiável.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBloqueioDisponivel(null)}
+                className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const alvo = bloqueioDisponivel;
+                  setBloqueioDisponivel(null);
+                  setModalEditarTagDisponivel(null);
+                  setModalEditar(alvo);
+                }}
+                className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium"
+              >
+                Atualizar previsão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/30 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-slate-500 dark:text-slate-400">Carregando...</div>
@@ -1115,6 +1167,9 @@ export default function SycroOrderPage() {
                       const motivoStr = h.motivo != null && String(h.motivo).trim() !== '' ? String(h.motivo).trim() : '';
                       if (motivoStr) linhasCorpoBoxed.push(`Motivo: ${motivoStr}`);
                       if (h.previsao_confiavel === false) linhasCorpoBoxed.push('Previsão provisória (não confiável).');
+                      else if (h.previsao_confiavel === true && !linhaPrevisao) {
+                        linhasCorpoBoxed.push('Previsão marcada como confiável.');
+                      }
                       if (obsStr) linhasCorpoBoxed.push(obsStr);
                     }
                     return (
@@ -2043,9 +2098,21 @@ function ModalAtualizarPedido({
     SYCRO_ORDER_COMMERCIAL_AUTHOR_LOGINS.has((login ?? '').trim().toLowerCase()) && !isAdminGrupo;
   const autorTimeComercial = isSycroOrderCommercialAuthor(login, isCommercialTeam);
 
-  const [querInformarNovaData, setQuerInformarNovaData] = useState<'sim' | 'nao' | null>(null);
+  const orientarConfiavel = order.previsao_nao_confiavel === true;
+  const [querInformarNovaData, setQuerInformarNovaData] = useState<'sim' | 'nao' | null>(
+    orientarConfiavel ? 'sim' : null
+  );
   // Quando o usuário escolher "Sim", o campo deve aparecer vazio e ser obrigatório.
-  const [new_date, setNew_date] = useState('');
+  // Se a previsão já é hoje ou futura e está não confiável, deixa a data pronta para marcar Sim.
+  const [new_date, setNew_date] = useState(() => {
+    if (!orientarConfiavel) return '';
+    const hojeInicial = hojeIsoLocal();
+    const ger = earliestIsoFromPrevisaoField(order.previsao_atual ?? null, '');
+    const card = normalizeDateKeyForCompare(order.current_promised_date);
+    if (ger >= hojeInicial) return ger;
+    if (card >= hojeInicial) return card;
+    return '';
+  });
   // Opcional e independente da data prometida: vazio = não altera a data de produção.
   const [novaDataProducao, setNovaDataProducao] = useState('');
   const [observation, setObservation] = useState('');
@@ -2132,6 +2199,19 @@ function ModalAtualizarPedido({
     novaDataPreenchida && gerenciadorDateKey !== '' && novaDateKey !== gerenciadorDateKey;
   /** Alteração real se difere do card OU da previsão consolidada do Gerenciador. */
   const dataAlterada = dataAlteradaVsCard || dataAlteradaVsGerenciador;
+  const hoje = hojeIsoLocal();
+  /** Hoje ou dia seguinte: dá para classificar como Confiável e liberar Disponível. */
+  const dataHojeOuFutura = novaDataPreenchida && novaDateKey >= hoje;
+  /**
+   * Previsão já está em hoje/futuro, mas ainda não confiável: permite gravar Sim
+   * sem obrigar uma data diferente.
+   */
+  const confirmaMesmaDataConfiavel =
+    querInformarNovaData === 'sim' &&
+    dataHojeOuFutura &&
+    !dataAlterada &&
+    order.previsao_nao_confiavel === true;
+  const pedeClassificacaoConfiavel = dataAlterada || confirmaMesmaDataConfiavel;
   const datasCardGerenciadorDivergem =
     cardDateKey !== '' && gerenciadorDateKey !== '' && cardDateKey !== gerenciadorDateKey;
   const producaoPreenchida = novaDataProducao.trim() !== '';
@@ -2149,9 +2229,9 @@ function ModalAtualizarPedido({
   }, [limparAnexoAssinatura]);
 
   const motivoSelecionado = motivos.find((m) => m.descricao === motivo);
-  const exigeAnexo = dataAlterada && motivoSelecionado?.abonada === false;
+  const exigeAnexo = pedeClassificacaoConfiavel && motivoSelecionado?.abonada === false;
   /** Campo de PDF: obrigatório se não abonado; opcional (e sempre persistido) se abonado. */
-  const mostrarCampoAnexo = dataAlterada && Boolean(motivo.trim());
+  const mostrarCampoAnexo = pedeClassificacaoConfiavel && Boolean(motivo.trim());
 
   const onChangeMotivo = (valor: string) => {
     setMotivo(valor);
@@ -2182,12 +2262,12 @@ function ModalAtualizarPedido({
   }, []);
 
   useEffect(() => {
-    if (!dataAlterada) {
+    if (!pedeClassificacaoConfiavel) {
       limparCamposAjustePrevisao();
       return;
     }
     carregarMotivos();
-  }, [dataAlterada, carregarMotivos, limparCamposAjustePrevisao]);
+  }, [pedeClassificacaoConfiavel, carregarMotivos, limparCamposAjustePrevisao]);
 
   const handleSalvarClick = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2218,31 +2298,51 @@ function ModalAtualizarPedido({
       return;
     }
 
-    if (querInformarNovaData === 'sim' && novaDataPreenchida && !dataAlterada && !producaoPreenchida) {
+    if (querInformarNovaData === 'sim' && novaDataPreenchida && novaDateKey < hoje) {
+      setErro(
+        'A data de previsão não pode ser anterior à data de hoje. Escolha o dia de hoje ou um dia seguinte para marcar a previsão como Confiável.'
+      );
+      return;
+    }
+
+    if (
+      querInformarNovaData === 'sim' &&
+      novaDataPreenchida &&
+      !dataAlterada &&
+      !producaoPreenchida &&
+      !confirmaMesmaDataConfiavel
+    ) {
       setErro(
         'Informe uma data diferente da previsão atual (card ou Gerenciador) para continuar (ou escolha "Não" se for apenas comentário).'
       );
       return;
     }
 
-    if (dataAlterada && !motivo.trim()) {
+    if (pedeClassificacaoConfiavel && !motivo.trim()) {
       setErro('Selecione um motivo para a nova data prometida.');
       return;
     }
 
-    if (dataAlterada && previsaoConfiavel === null) {
+    if (pedeClassificacaoConfiavel && previsaoConfiavel === null) {
       setErro('Escolha Sim ou Não em Previsão confiável.');
+      return;
+    }
+
+    if (pedeClassificacaoConfiavel && previsaoConfiavel === true && !dataHojeOuFutura) {
+      setErro(
+        'Para classificar como Confiável, a previsão precisa ser o dia de hoje ou um dia seguinte.'
+      );
       return;
     }
 
     const ficaraDisponivel =
       tagDisponivelToSet === true || (tagDisponivelToSet == null && !!order.tag_disponivel);
-    if (dataAlterada && previsaoConfiavel === false && ficaraDisponivel) {
+    if (pedeClassificacaoConfiavel && previsaoConfiavel === false && ficaraDisponivel) {
       setErro(mensagemBloqueioNaoConfiavel([order.order_number]));
       return;
     }
 
-    if (dataAlterada && exigeAnexo && !anexoAssinatura) {
+    if (pedeClassificacaoConfiavel && exigeAnexo && !anexoAssinatura) {
       setErro('Anexe o PDF assinado da justificativa não abonada.');
       return;
     }
@@ -2272,7 +2372,7 @@ function ModalAtualizarPedido({
       }
     }
 
-    if (dataAlterada) {
+    if (pedeClassificacaoConfiavel) {
       const dm = (order.delivery_method ?? '').trim();
       if (isExcludedSqlRotaCategory(dm) || !isCarradaRota(dm)) {
         setDialogStep('todos_itens');
@@ -2320,7 +2420,7 @@ function ModalAtualizarPedido({
     const enviaNovaData =
       !isCommentOnlyUser &&
       querInformarNovaData === 'sim' &&
-      dataAlterada;
+      (dataAlterada || confirmaMesmaDataConfiavel);
     setSaving(true);
     try {
       await updateSycroOrderOrder(order.id, {
@@ -2461,6 +2561,11 @@ function ModalAtualizarPedido({
         {dialogStep === null && (
           <form onSubmit={handleSalvarClick} className="p-4 space-y-4">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200">Atualizar — {order.order_number}</h3>
+            {orientarConfiavel && (
+              <p className="text-sm text-amber-800 dark:text-amber-200 rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-950/40 px-3 py-2">
+                Para marcar este card como disponível, grave a previsão no dia de hoje ou em um dia seguinte e escolha <strong>Sim</strong> em Previsão confiável.
+              </p>
+            )}
             {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
             {!isCommentOnlyUser && (
               <div>
@@ -2502,6 +2607,7 @@ function ModalAtualizarPedido({
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nova data prometida</label>
                     <input
                       type="date"
+                      min={hoje}
                       value={new_date}
                       onChange={(e) => setNew_date(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
@@ -2512,7 +2618,9 @@ function ModalAtualizarPedido({
                       {datasCardGerenciadorDivergem ? ' (divergentes — informe a data desejada e o motivo).' : ''}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      Informe a nova data e o motivo abaixo. Se a rota ou o pedido tiver mais de um item, será pedida uma confirmação de escopo ao salvar.
+                      Informe o dia de hoje ou um dia seguinte e o motivo abaixo. Nessas datas já é possível marcar Previsão confiável como Sim
+                      {order.previsao_nao_confiavel ? ', mesmo que a data continue a mesma' : ''}. Com Sim, o card pode ser marcado como disponível.
+                      Se a rota ou o pedido tiver mais de um item, será pedida uma confirmação de escopo ao salvar.
                     </p>
                   </div>
                 )}
@@ -2530,7 +2638,7 @@ function ModalAtualizarPedido({
                     Deixe em branco para não alterar. Vale para os mesmos itens do Gerenciador que receberem a nova data prometida.
                   </p>
                 </div>
-                {dataAlterada && (
+                {pedeClassificacaoConfiavel && (
                   <div className="mt-3 space-y-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40 p-3">
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
@@ -2579,6 +2687,12 @@ function ModalAtualizarPedido({
                       <TogglePrevisaoConfiavel
                         value={previsaoConfiavel}
                         onChange={(valor) => {
+                          if (valor === true && !dataHojeOuFutura) {
+                            setErro(
+                              'Para classificar como Confiável, a previsão precisa ser o dia de hoje ou um dia seguinte.'
+                            );
+                            return;
+                          }
                           const ficaraDisponivel =
                             tagDisponivelToSet === true ||
                             (tagDisponivelToSet == null && !!order.tag_disponivel);
@@ -2694,7 +2808,7 @@ function ModalAtualizarPedido({
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm">Cancelar</button>
-              <button type="submit" disabled={saving || carradaCheckLoading || (dataAlterada && previsaoConfiavel === null)} className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">
+              <button type="submit" disabled={saving || carradaCheckLoading || (pedeClassificacaoConfiavel && previsaoConfiavel === null)} className="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-50">
                 {carradaCheckLoading ? 'Verificando rota...' : 'Salvar'}
               </button>
             </div>

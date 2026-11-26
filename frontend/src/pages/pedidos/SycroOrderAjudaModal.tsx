@@ -20,7 +20,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Marca o card como disponível para o próximo passo comercial/logístico, movendo-o para a lane “Disponível”.',
     comoLe:
-      'Independe da categoria de rota do Gerenciador. No Gerenciador, “Disponível” aparece no Status como sinal vindo desta comunicação. Não é possível marcar Disponível enquanto a previsão do card estiver como não confiável: primeiro grave uma nova data prometida escolhendo Sim em Previsão confiável.',
+      'Independe da categoria de rota do Gerenciador. No Gerenciador, “Disponível” aparece no Status como sinal vindo desta comunicação. Se a previsão estiver não confiável, o clique abre um aviso no centro da tela: atualize a previsão para hoje ou um dia seguinte e marque Previsão confiável como Sim. Só então o card pode ir para Disponível.',
   },
   {
     id: 'fila',
@@ -57,7 +57,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Previsão confiável',
         texto:
-          'No toggle, escolha Sim ou Não (sempre abre no meio). Não = data provisória na grade do Gerenciador. A alteração de data entra no histórico do card nos dois casos e, quando for Não, o histórico marca a previsão como provisória. Sem escolha no meio, o salvamento é bloqueado. Não é possível escolher Não enquanto o card estiver com a tag Disponível: desmarque Disponível e só então grave a previsão como não confiável. As duas marcas não coexistem.',
+          'No toggle, escolha Sim ou Não (sempre abre no meio). O campo de data aceita o dia de hoje e os seguintes. Nessas datas dá para marcar Sim, inclusive se a data prometida continuar a mesma e a previsão ainda estiver não confiável — Sim grava a previsão como confiável e libera a tag Disponível. Não = data provisória na grade do Gerenciador. A alteração entra no histórico do card nos dois casos e, quando for Não, o histórico marca a previsão como provisória. Sem escolha no meio, o salvamento é bloqueado. Não é possível escolher Não enquanto o card estiver com a tag Disponível: desmarque Disponível e só então grave a previsão como não confiável. As duas marcas não coexistem.',
       },
       {
         titulo: 'Justificativa (PDF)',

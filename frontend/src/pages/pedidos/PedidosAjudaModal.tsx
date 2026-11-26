@@ -107,7 +107,7 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'Sinais vindos da Comunicação Interna (Comunicação PD / Sycro), refletidos na coluna Status do Gerenciador.',
     comoLe:
-      '“Card” e “Disponível” mostram o andamento do diálogo com o cliente/comercial sobre aquele pedido — são independentes do prazo (Atrasado/No prazo) e do Faturado. Disponível e previsão não confiável não coexistem: para marcar Disponível a previsão precisa estar confiável; para gravar Não confiável, desmarque a tag Disponível na Comunicação PD.',
+      '“Card” e “Disponível” mostram o andamento do diálogo com o cliente/comercial sobre aquele pedido — são independentes do prazo (Atrasado/No prazo) e do Faturado. Disponível e previsão não confiável não coexistem: na Comunicação PD, a tentativa de marcar Disponível com previsão não confiável abre um aviso no centro da tela. A previsão precisa estar confiável (data de hoje ou de um dia seguinte, com Sim em Previsão confiável). Para gravar Não confiável, desmarque a tag Disponível na Comunicação PD.',
   },
   {
     id: 'ajuste',

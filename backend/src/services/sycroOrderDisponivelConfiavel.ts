@@ -12,7 +12,7 @@ import {
 } from '../utils/sycroOrderCardRows.js';
 
 export const MSG_BLOQUEIO_MARCAR_DISPONIVEL =
-  'Não é possível marcar como disponível enquanto a previsão estiver como não confiável. Abra Atualizar, grave uma nova data prometida escolhendo Sim em Previsão confiável e só então marque o pedido como disponível.';
+  'Não é possível marcar como disponível enquanto a previsão estiver como não confiável. Atualize a previsão para o dia de hoje ou um dia seguinte, marque Previsão confiável como Sim e só então marque o pedido como disponível.';
 
 export function mensagemBloqueioNaoConfiavel(pds: string[]): string {
   const lista = [...new Set(pds.map((p) => String(p ?? '').trim()).filter(Boolean))];

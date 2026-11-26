@@ -25,7 +25,7 @@ import {
   canalPermitidoPedido,
   mensagemCanalDatasPedido,
 } from '../utils/canalReprogramacaoDatas.js';
-import { validarDatasReprogramacao } from '../utils/validarDatasReprogramacao.js';
+import { hojeIsoLocal, validarDatasReprogramacao } from '../utils/validarDatasReprogramacao.js';
 import { dispararWhatsAppTagDisponivel } from '../services/sycroOrderTagDisponivelWhatsApp.js';
 import {
   MSG_BLOQUEIO_MARCAR_DISPONIVEL,
@@ -1152,7 +1152,17 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
       }
     }
 
-    if (dataPrometidaRealmenteAlterada) {
+    /**
+     * Data de hoje ou seguinte, igual à vigente, com escolha explícita de Confiável.
+     * Permite reclassificar uma previsão já não confiável sem obrigar outra data.
+     */
+    const confirmaConfiavelSemMudarData =
+      newDateProvided &&
+      !dataPrometidaRealmenteAlterada &&
+      nextDateNorm >= hojeIsoLocal() &&
+      (previsao_confiavel === true || previsao_confiavel === false);
+
+    if (dataPrometidaRealmenteAlterada || confirmaConfiavelSemMudarData) {
       const motivoTrim = motivo != null ? String(motivo).trim() : '';
       if (!motivoTrim) {
         res.status(400).json({ error: 'Ao informar Nova data prometida, o motivo é obrigatório (mesmas opções do Gerenciador de Pedidos).' });
@@ -1194,8 +1204,9 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
 
     const ficaraDisponivel =
       tagDesejado === true || (tagDesejado !== false && Number(order.tag_disponivel) === 1);
-    const gravandoNaoConfiavel = dataPrometidaRealmenteAlterada && previsao_confiavel === false;
-    const gravandoConfiavelExplicito = dataPrometidaRealmenteAlterada && previsao_confiavel === true;
+    const gravandoAjustePrevisao = dataPrometidaRealmenteAlterada || confirmaConfiavelSemMudarData;
+    const gravandoNaoConfiavel = gravandoAjustePrevisao && previsao_confiavel === false;
+    const gravandoConfiavelExplicito = gravandoAjustePrevisao && previsao_confiavel === true;
     try {
       if (tagDesejado === true && !gravandoConfiavelExplicito) {
         const naoConfiavel = await cardTemPrevisaoNaoConfiavel({
@@ -1256,7 +1267,9 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
 
     const dateChanged =
       newDateProvided &&
-      (String(nextDate ?? '').trim() !== String(prevDate ?? '').trim() || dataPrometidaRealmenteAlterada);
+      (String(nextDate ?? '').trim() !== String(prevDate ?? '').trim() ||
+        dataPrometidaRealmenteAlterada ||
+        confirmaConfiavelSemMudarData);
 
     if (comentarioVal && typeof aguarda_resposta === 'boolean') {
       const destinoTimeGravado =
@@ -1361,7 +1374,7 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
     }
 
     const ajustaPrevisaoNoGerenciador =
-      dataPrometidaRealmenteAlterada &&
+      gravandoAjustePrevisao &&
       new_date !== undefined &&
       new_date !== null &&
       motivo != null &&
