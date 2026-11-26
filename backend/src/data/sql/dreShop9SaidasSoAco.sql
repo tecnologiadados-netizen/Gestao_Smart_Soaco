@@ -1,5 +1,6 @@
 /* DRE — Saídas Shop9 (Financeiro_Contas), por competência.
    Empresas: Só Aço (filial 1), Só Refrigeração (filial 1 + CC), R N Marques (filial 1 + CC ou filial 6).
+   Situacao R (renegociado) fica de fora: o título original foi substituído pelas contas novas.
    Placeholders: {{DATA_COMPETENCIA_MIN}}, {{DATA_COMPETENCIA_MAX}}, {{ORDEM_FILIAL_IN}} */
 SELECT
   fc.ordem,
@@ -32,4 +33,4 @@ LEFT JOIN Centro_Custo cc ON cc.Ordem = fc.Ordem_Centro_Custo
 WHERE fc.Ordem_Filial IN ({{ORDEM_FILIAL_IN}})
   AND CONVERT(date, fc.Data_Competencia) >= '{{DATA_COMPETENCIA_MIN}}'
   AND CONVERT(date, fc.Data_Competencia) <= '{{DATA_COMPETENCIA_MAX}}'
-  AND fc.Situacao <> 'C'
+  AND fc.Situacao NOT IN ('C', 'R')

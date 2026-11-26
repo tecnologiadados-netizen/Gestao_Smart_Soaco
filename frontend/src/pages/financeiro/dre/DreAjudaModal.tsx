@@ -78,6 +78,13 @@ const SECOES: SecaoAjuda[] = [
       'São os gastos de operação que não estão no CPV/CMV: pessoal, despesas operacionais, administrativas, comerciais, serviços de terceiros e despesas financeiras, entre outros blocos da árvore.',
     comoLe:
       'Leia por grupo (operacional, administrativo, comercial etc.) para ver onde a empresa está gastando. Rateios entre empresas redistribuem alguns custos (por exemplo pró-labore ou fornecedores) conforme a regra configurada no botão Rateio — isso muda o desenho por empresa, não o fato de o gasto ter ocorrido no grupo.',
+    detalhes: [
+      {
+        titulo: 'Conta renegociada no Shop9',
+        texto:
+          'Título marcado como renegociado no Shop9 não entra na DRE. O valor fica nas contas novas que substituíram o título, para o original e as parcelas não serem somados duas vezes.',
+      },
+    ],
   },
   {
     id: 'ebitda',
