@@ -75,15 +75,25 @@ function legendaQtdeNfConvertida(linha: DoubleCheckInComparativoLinha): {
   nfDetalhe?: string;
   nfTitle?: string;
 } | null {
-  if (!unidadeEhTonelada(linha.umNF) || !unidadeEhQuilograma(linha.umPC)) return null;
+  const conv = linha.conversaoUnidadeNF;
+  const toneladaParaKg =
+    !conv?.quantidadeConvertida && unidadeEhTonelada(linha.umNF) && unidadeEhQuilograma(linha.umPC);
+  if (!conv?.quantidadeConvertida && !toneladaParaKg) return null;
   const qtde = nfNum.format(linha.qtdeNF);
-  const umKg = (linha.umPC ?? 'QUILOGRAMA').trim() || 'QUILOGRAMA';
-  const umTon = (linha.umNF ?? 'TONELADA').trim() || 'TONELADA';
+  const destino = (conv?.destino || linha.umPC || 'QUILOGRAMA').trim() || 'QUILOGRAMA';
+  const origem = (conv?.origem || linha.umNF || 'TONELADA').trim() || 'TONELADA';
+  const origemTxt = origem.toLocaleLowerCase('pt-BR');
   return {
-    nf: `${qtde} ${umKg}`.trim(),
-    nfDetalhe: 'convertido de tonelada',
-    nfTitle: `${qtde} ${umKg} · NF original em ${umTon.toLowerCase()}`,
+    nf: `${qtde} ${destino}`.trim(),
+    nfDetalhe: `convertido de ${origemTxt}`,
+    nfTitle: `${qtde} ${destino} · NF original em ${origemTxt}`,
   };
+}
+
+function origemPrecoConvertido(linha: DoubleCheckInComparativoLinha): string | null {
+  if (linha.conversaoUnidadeNF?.precoConvertido) return linha.conversaoUnidadeNF.origem;
+  if (linha.unitarioNfConvertidoTonParaKg) return linha.umNF || 'tonelada';
+  return null;
 }
 
 /** Mesma leitura do backend: 10 casas na comparação, no mínimo 4 no popup. */
@@ -237,7 +247,11 @@ function valoresExibicao(
 } {
   switch (c.id) {
     case 'valor_unitario': {
-      if (linha.entradaPorPeso) {
+      const origemPreco = origemPrecoConvertido(linha);
+      const notaConversao = origemPreco
+        ? `convertido de ${origemPreco.toLocaleLowerCase('pt-BR')}`
+        : null;
+      if (linha.entradaPorPeso || linha.unitarioCasasAltas) {
         const nf = fmtUnitarioLinha(
           linha.valorUnitarioNF,
           linha.valorUnitarioBrutoNF,
@@ -252,19 +266,19 @@ function valoresExibicao(
           linha.qtdePC,
           nfBrl4
         );
-        const convertidaTon = Boolean(linha.unitarioNfConvertidoTonParaKg);
-        const nfDetalhe = [nf.detalhe, convertidaTon ? 'convertido de tonelada' : null]
-          .filter(Boolean)
-          .join(' · ');
+        const nfDetalhe = [nf.detalhe, notaConversao].filter(Boolean).join(' · ');
+        const nfCompleto = textoReaisCasasUtilizadas(linha.valorUnitarioNF);
+        const pcCompleto = textoReaisCasasUtilizadas(linha.valorUnitarioPC);
+        const precoMiudo = Boolean(linha.unitarioCasasAltas && !linha.entradaPorPeso);
         return {
-          nf: nf.principal,
-          pc: pc.principal,
+          nf: precoMiudo ? nfCompleto : nf.principal,
+          pc: precoMiudo ? pcCompleto : pc.principal,
           nfDetalhe: nfDetalhe || null,
           pcDetalhe: pc.detalhe,
-          nfTitle: convertidaTon
-            ? `${textoReaisCasasUtilizadas(linha.valorUnitarioNF)} · NF original em R$/tonelada`
-            : textoReaisCasasUtilizadas(linha.valorUnitarioNF),
-          pcTitle: textoReaisCasasUtilizadas(linha.valorUnitarioPC),
+          nfTitle: notaConversao
+            ? `${nfCompleto} · NF original em R$/${origemPreco!.toLocaleLowerCase('pt-BR')}`
+            : nfCompleto,
+          pcTitle: pcCompleto,
         };
       }
       const nf = fmtUnitarioLinha(
@@ -279,7 +293,13 @@ function valoresExibicao(
         linha.descontoPC,
         linha.qtdePC
       );
-      return { nf: nf.principal, pc: pc.principal, nfDetalhe: nf.detalhe, pcDetalhe: pc.detalhe };
+      const nfDetalhe = [nf.detalhe, notaConversao].filter(Boolean).join(' · ');
+      return {
+        nf: nf.principal,
+        pc: pc.principal,
+        nfDetalhe: nfDetalhe || null,
+        pcDetalhe: pc.detalhe,
+      };
     }
     case 'qtde': {
       const partes = linha.partesQtdePc ?? [];

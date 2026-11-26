@@ -340,6 +340,13 @@ export type LinhaComparativoDia = {
   valorUnitarioNF?: number;
   valorUnitarioPC?: number;
   entradaPorPeso?: boolean;
+  unitarioCasasAltas?: boolean;
+  conversaoUnidadeNF?: {
+    origem: string;
+    destino: string;
+    quantidadeConvertida: boolean;
+    precoConvertido: boolean;
+  } | null;
   valorIpiNF?: number;
   valorIpiPC?: number;
   aliquotaIpiNF?: number;
@@ -445,7 +452,8 @@ export function textoComparativoCampo(
   campo: string
 ): { nf: string; pc: string; detalheNf: string | null; detalhePc: string | null } {
   if (campo === 'qtde') {
-    const umNf = (linha.umNF ?? '').trim();
+    const conv = linha.conversaoUnidadeNF?.quantidadeConvertida ? linha.conversaoUnidadeNF : null;
+    const umNf = (conv?.destino || linha.umNF || '').trim();
     const umPc = (linha.umPC ?? '').trim();
     const partes = linha.partesQtdePc ?? [];
     const qtdePc = partes.length > 1 && linha.qtdePcSoma != null ? linha.qtdePcSoma : num(linha.qtdePC);
@@ -456,7 +464,7 @@ export function textoComparativoCampo(
     return {
       nf: `${nfQtde.format(num(linha.qtdeNF))}${umNf ? ` ${umNf}` : ''}`,
       pc: `${nfQtde.format(qtdePc)}${umPc ? ` ${umPc}` : ''}`,
-      detalheNf: null,
+      detalheNf: conv ? `convertido de ${conv.origem.toLocaleLowerCase('pt-BR')}` : null,
       detalhePc,
     };
   }
@@ -481,17 +489,24 @@ export function textoComparativoCampo(
     const pc = fmtCondicao(linha.condicaoPagamentoPC, linha.regraPagamentoPC, linha.prazosLabelPC);
     return { nf: nf.principal, pc: pc.principal, detalheNf: nf.detalhe, detalhePc: pc.detalhe };
   }
-  if (linha.entradaPorPeso) {
+  const notaConv = linha.conversaoUnidadeNF?.precoConvertido
+    ? `convertido de ${linha.conversaoUnidadeNF.origem.toLocaleLowerCase('pt-BR')}`
+    : null;
+  if (linha.entradaPorPeso || linha.unitarioCasasAltas) {
     const nfValor = num(linha.valorUnitarioNF);
     const pcValor = num(linha.valorUnitarioPC);
     const nfCompleto = textoReaisCasasUtilizadas(nfValor);
     const pcCompleto = textoReaisCasasUtilizadas(pcValor);
     const alemDe4 = (texto: string) => (texto.split(',')[1]?.length ?? 0) > 4;
+    const precoMiudo = Boolean(linha.unitarioCasasAltas && !linha.entradaPorPeso);
+    const detalheNf = [!precoMiudo && alemDe4(nfCompleto) ? nfCompleto : null, notaConv]
+      .filter(Boolean)
+      .join(' · ');
     return {
-      nf: nfBrl4.format(nfValor),
-      pc: nfBrl4.format(pcValor),
-      detalheNf: alemDe4(nfCompleto) ? nfCompleto : null,
-      detalhePc: alemDe4(pcCompleto) ? pcCompleto : null,
+      nf: precoMiudo ? nfCompleto : nfBrl4.format(nfValor),
+      pc: precoMiudo ? pcCompleto : nfBrl4.format(pcValor),
+      detalheNf: detalheNf || null,
+      detalhePc: !precoMiudo && alemDe4(pcCompleto) ? pcCompleto : null,
     };
   }
   const nf = fmtUnitario(
@@ -506,7 +521,8 @@ export function textoComparativoCampo(
     num(linha.descontoPC),
     num(linha.qtdePC)
   );
-  return { nf: nf.principal, pc: pc.principal, detalheNf: nf.detalhe, detalhePc: pc.detalhe };
+  const detalheNf = [nf.detalhe, notaConv].filter(Boolean).join(' · ');
+  return { nf: nf.principal, pc: pc.principal, detalheNf: detalheNf || null, detalhePc: pc.detalhe };
 }
 
 function observacoesDaDecisao(dec: DecisaoDiaGestaoEntrada): ObsDivergenciaEntrada[] {

@@ -196,7 +196,7 @@ function montarCampo(
     detalhe: null as string | null,
     descontoWhatsApp: null as string | null,
   };
-  if (campo === 'valor_unitario' && linha.entradaPorPeso) {
+  if (campo === 'valor_unitario' && (linha.entradaPorPeso || linha.unitarioCasasAltas)) {
     const delta = normalizarUnitarioExato(
       normalizarUnitarioExato(linha.valorUnitarioNF) - normalizarUnitarioExato(linha.valorUnitarioPC)
     );
@@ -207,10 +207,17 @@ function montarCampo(
           ? { texto: `+${textoReaisCasasUtilizadas(delta)}`, sinal: 'pos' as const }
           : { texto: `−${textoReaisCasasUtilizadas(Math.abs(delta))}`, sinal: 'neg' as const };
     const extra = detalhePreco(linha);
-    const convertidaTonParaKg = Boolean(linha.unitarioNfConvertidoTonParaKg);
+    const origemPreco = linha.conversaoUnidadeNF?.precoConvertido
+      ? linha.conversaoUnidadeNF.origem
+      : linha.unitarioNfConvertidoTonParaKg
+        ? 'tonelada'
+        : null;
+    const destinoPreco = linha.conversaoUnidadeNF?.destino || linha.umPC || 'kg';
     const completo = `Valor usado na comparação: NF ${textoReaisCasasUtilizadas(linha.valorUnitarioNF)} · PC ${textoReaisCasasUtilizadas(linha.valorUnitarioPC)}.`;
     const partesDetalhe = [
-      convertidaTonParaKg ? 'Convertido de tonelada (NF, R$/kg).' : null,
+      origemPreco
+        ? `Convertido de ${origemPreco.toLocaleLowerCase('pt-BR')} (NF, R$/${destinoPreco.toLocaleLowerCase('pt-BR')}).`
+        : null,
       extra.detalhe,
       completo,
     ].filter(Boolean);
@@ -227,13 +234,22 @@ function montarCampo(
   if (campo === 'valor_unitario') {
     const dif = diffDinheiro(linha.valorUnitarioNF, linha.valorUnitarioPC);
     const extra = detalhePreco(linha);
+    const origemPreco = linha.conversaoUnidadeNF?.precoConvertido
+      ? linha.conversaoUnidadeNF.origem
+      : null;
+    const detalhe = [
+      origemPreco ? `Convertido de ${origemPreco.toLocaleLowerCase('pt-BR')} (NF).` : null,
+      extra.detalhe,
+    ]
+      .filter(Boolean)
+      .join(' ');
     return {
       ...base,
       nf: fmtBrl(linha.valorUnitarioNF),
       pc: fmtBrl(linha.valorUnitarioPC),
       diferenca: dif.texto,
       sinal: dif.sinal,
-      detalhe: extra.detalhe,
+      detalhe: detalhe || null,
       descontoWhatsApp: extra.descontoWhatsApp,
     };
   }
@@ -241,11 +257,17 @@ function montarCampo(
     const partes = linha.partesQtdePc ?? [];
     const qtdePc = partes.length > 1 && linha.qtdePcSoma != null ? linha.qtdePcSoma : linha.qtdePC;
     const dif = diffQtde(linha.qtdeNF, qtdePc);
-    const convertidaTonParaKg = nfToneladaExibidaEmKg(linha.umNF, linha.umPC);
-    const umNf = convertidaTonParaKg ? linha.umPC || 'QUILOGRAMA' : linha.umNF;
+    const convQtde = linha.conversaoUnidadeNF?.quantidadeConvertida
+      ? linha.conversaoUnidadeNF
+      : nfToneladaExibidaEmKg(linha.umNF, linha.umPC)
+        ? { origem: linha.umNF || 'TONELADA', destino: linha.umPC || 'QUILOGRAMA' }
+        : null;
+    const umNf = convQtde ? convQtde.destino || linha.umPC : linha.umNF;
     const um = umNf || linha.umPC ? ` ${umNf ?? linha.umPC}` : '';
     const detalhePartes: string[] = [];
-    if (convertidaTonParaKg) detalhePartes.push('Convertido de tonelada (NF).');
+    if (convQtde) {
+      detalhePartes.push(`Convertido de ${convQtde.origem.toLocaleLowerCase('pt-BR')} (NF).`);
+    }
     if (partes.length > 1) {
       detalhePartes.push(
         `Soma de ${partes.length} linhas do pedido: ${partes.map((parte) => fmtNum(parte.qtde)).join(' + ')}.`

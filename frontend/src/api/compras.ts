@@ -1809,6 +1809,17 @@ export type DoubleCheckInComparativoLinha = {
   valorUnitarioPC: number;
   /** Unitário da NF estava em R$/t e foi dividido por 1000 para comparar com o PC em R$/kg. */
   unitarioNfConvertidoTonParaKg?: boolean;
+  /** Quantidade já está na unidade do pedido; o preço pode ter sido trazido para essa unidade. */
+  conversaoUnidadeNF?: {
+    origem: string;
+    destino: string;
+    fator: number;
+    qtdeInformada: number | null;
+    quantidadeConvertida: boolean;
+    precoConvertido: boolean;
+  } | null;
+  /** Preço abaixo de meio centavo: o card mostra as casas, para não aparecer R$ 0,00. */
+  unitarioCasasAltas?: boolean;
   /** Quantidade em massa: unitário exato, card com 4 casas e popup com o valor completo. */
   entradaPorPeso?: boolean;
   valorIpiNF: number;
