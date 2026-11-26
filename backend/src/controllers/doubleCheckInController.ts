@@ -495,8 +495,9 @@ async function enriquecerNotasComConferencia(
 }
 
 /**
- * Documentos cuja conferência no Double Check já libera a Mesa.
- * Entrada anterior a 19/09/2026 entra no conjunto: essa etapa não se aplica.
+ * Documentos cuja conferência no Double Check já foi concluída de fato.
+ * Sem o registro da conferência, a Mesa não lista o documento — inclusive
+ * entrada anterior a 19/09/2026, em que essa etapa não se aplica.
  */
 export async function listarIdsConferenciaDoubleCheckConcluida(
   docs: Array<{ idDocumento: number; dataEntrada: string | null }>

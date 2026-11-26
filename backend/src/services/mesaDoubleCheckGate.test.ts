@@ -2,11 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { conferenciaDoubleCheckLiberadaParaMesa } from './mesaDoubleCheckGate.js';
 
 describe('conferenciaDoubleCheckLiberadaParaMesa', () => {
-  it('libera entrada antiga em que a conferência não se aplica', () => {
+  it('não libera entrada antiga sem conferência gravada no Double Check', () => {
     expect(
       conferenciaDoubleCheckLiberadaParaMesa({
         regime: 'nao_aplicada',
         possuiConferenciaValida: false,
+        pendenciasSemDecisao: 0,
+      })
+    ).toBe(false);
+  });
+
+  it('libera entrada antiga só quando existe conferência gravada', () => {
+    expect(
+      conferenciaDoubleCheckLiberadaParaMesa({
+        regime: 'nao_aplicada',
+        possuiConferenciaValida: true,
         pendenciasSemDecisao: 0,
       })
     ).toBe(true);

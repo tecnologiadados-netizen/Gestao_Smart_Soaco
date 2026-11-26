@@ -604,10 +604,10 @@ export default function GestaoMesaPage() {
           </p>
           <h1 className="mt-1 text-xl font-semibold text-slate-800 dark:text-slate-100">Gestão Mesa</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Documentos de pré-entrada da SÓ AÇO INDUSTRIAL. O andamento só libera o conferente depois que a
-            conferência no Double Check estiver concluída, com ou sem divergência. Conferência ok fica
-            aguardando a Mesa alterar a movimentação no Nomus. Quando o tipo muda, o documento é concluído e
-            permanece só o histórico.
+            Só entra o documento de pré-entrada da SÓ AÇO INDUSTRIAL cuja conferência no Double Check já foi
+            concluída, com ou sem divergência. Entrada que ainda não passou por essa conferência não aparece,
+            inclusive as anteriores a 19/09/2026. Conferência ok fica aguardando a Mesa alterar a movimentação
+            no Nomus. Quando o tipo muda, o documento é concluído e permanece só o histórico.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -687,7 +687,7 @@ export default function GestaoMesaPage() {
                   {loading
                     ? 'Carregando…'
                     : documentos.length === 0
-                      ? 'Nenhum documento de pré-entrada da SÓ AÇO INDUSTRIAL.'
+                      ? 'Nenhum documento com a conferência do Double Check concluída.'
                       : 'Nenhum documento com os filtros da grade. Ajuste ou limpe os filtros por coluna.'}
                 </td>
               </tr>

@@ -166,12 +166,12 @@ export async function getRecebimentoMesaDocumentos(_req: Request, res: Response)
       if (sincronizado) locais.set(d.idDocumento, sincronizado);
     })
   );
-  const semConferenciaLocal = documentos.filter((d) => !locais.get(d.idDocumento));
   const liberadosDoubleCheck = await idsMesaLiberadosPeloDoubleCheck(
-    semConferenciaLocal.map((d) => ({ idDocumento: d.idDocumento, dataEntrada: d.dataEntrada }))
+    documentos.map((d) => ({ idDocumento: d.idDocumento, dataEntrada: d.dataEntrada }))
   );
   const lista = documentos
     .filter((d) => locais.get(d.idDocumento)?.status !== RECEBIMENTO_STATUS.CANCELADO)
+    .filter((d) => liberadosDoubleCheck.has(d.idDocumento))
     .map((d) => {
     const local = locais.get(d.idDocumento);
     const codigo =
@@ -405,6 +405,23 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
     return;
   }
 
+  const { documentos: cabecalhosGate, erro: erroGate } = await queryCabecalhosDocumentosNomus([
+    idDocumento,
+  ]);
+  if (erroGate) {
+    res.status(503).json({ error: erroGate });
+    return;
+  }
+  const liberadosGate = await idsMesaLiberadosPeloDoubleCheck([
+    { idDocumento, dataEntrada: cabecalhosGate[0]?.dataEntrada ?? null },
+  ]);
+  if (!liberadosGate.has(idDocumento)) {
+    res.status(409).json({
+      error: 'Conclua a conferência no Double Check antes de deliberar o conferente.',
+    });
+    return;
+  }
+
   const conferenciaAtual = await obterConferenciaPorDocumento(idDocumento);
   if (conferenciaAtual?.status === RECEBIMENTO_STATUS.CONFERIDO) {
     res.status(409).json({
@@ -417,23 +434,6 @@ export async function postRecebimentoMesaDeliberar(req: Request, res: Response):
     res.status(409).json({ error: 'Este documento já foi concluído.' });
     return;
   }
-  if (!conferenciaAtual) {
-    const { documentos, erro: erroCabecalho } = await queryCabecalhosDocumentosNomus([idDocumento]);
-    if (erroCabecalho) {
-      res.status(503).json({ error: erroCabecalho });
-      return;
-    }
-    const liberados = await idsMesaLiberadosPeloDoubleCheck([
-      { idDocumento, dataEntrada: documentos[0]?.dataEntrada ?? null },
-    ]);
-    if (!liberados.has(idDocumento)) {
-      res.status(409).json({
-        error: 'Conclua a conferência no Double Check antes de deliberar o conferente.',
-      });
-      return;
-    }
-  }
-
   try {
     const local = await deliberarConferente({
       idDocumentoEstoque: idDocumento,
