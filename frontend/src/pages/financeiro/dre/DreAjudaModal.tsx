@@ -77,8 +77,13 @@ const SECOES: SecaoAjuda[] = [
     oQueE:
       'São os gastos de operação que não estão no CPV/CMV: pessoal, despesas operacionais, administrativas, comerciais, serviços de terceiros e despesas financeiras, entre outros blocos da árvore.',
     comoLe:
-      'Leia por grupo (operacional, administrativo, comercial etc.) para ver onde a empresa está gastando. Rateios entre empresas redistribuem alguns custos (por exemplo pró-labore ou fornecedores) conforme a regra configurada no botão Rateio — isso muda o desenho por empresa, não o fato de o gasto ter ocorrido no grupo.',
+      'Leia por grupo (operacional, administrativo, comercial etc.) para ver onde a empresa está gastando. Rateios entre empresas redistribuem alguns custos (por exemplo pró-labore ou fornecedores) conforme a regra configurada no botão Rateio — isso muda a fatia de cada empresa, e o gasto do grupo continua o mesmo.',
     detalhes: [
+      {
+        titulo: 'Rateio de fornecedores na mesma conta',
+        texto:
+          'Em contas sem filial na árvore (como 13.1.1 Salários), o rateio não cria despesa. Com todas as empresas que têm percentual na regra selecionadas, a célula é a soma dos lançamentos da competência. Com só algumas empresas, a célula tira esses fornecedores do físico e recoloca a fatia configurada. O modal usa a mesma conta: sem filtro na grade do modal, o total tem de bater com a célula.',
+      },
       {
         titulo: 'Conta renegociada no Shop9',
         texto:

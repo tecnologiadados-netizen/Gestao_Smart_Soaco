@@ -1123,7 +1123,11 @@ export async function fetchDreRateioFornecedorTotais(params: {
   idEmpresas?: number[];
   /** Pool completo (todas filiais) para calcular fatia de rateio. */
   poolRateio?: boolean;
-}): Promise<{ totaisPorPeriodo: Record<string, number>; erro?: string }> {
+}): Promise<{
+  totaisPorPeriodo: Record<string, number>;
+  totaisFiltroPorPeriodo: Record<string, number>;
+  erro?: string;
+}> {
   const sp = new URLSearchParams();
   sp.set('dataInicio', params.dataInicio);
   sp.set('dataFim', params.dataFim);
@@ -1138,14 +1142,16 @@ export async function fetchDreRateioFornecedorTotais(params: {
   const res = await apiFetch(`/api/financeiro/dre/saidas-soaco/rateio-fornecedores?${sp.toString()}`);
   const body = (await res.json().catch(() => ({}))) as {
     totaisPorPeriodo?: Record<string, number>;
+    totaisFiltroPorPeriodo?: Record<string, number>;
     erro?: string;
     error?: string;
   };
   if (!res.ok) {
-    return { totaisPorPeriodo: {}, erro: body.error ?? body.erro ?? res.statusText };
+    return { totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {}, erro: body.error ?? body.erro ?? res.statusText };
   }
   return {
     totaisPorPeriodo: body.totaisPorPeriodo ?? {},
+    totaisFiltroPorPeriodo: body.totaisFiltroPorPeriodo ?? {},
     erro: body.erro ?? body.error,
   };
 }

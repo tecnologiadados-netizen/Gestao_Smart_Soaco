@@ -1703,7 +1703,7 @@ export async function getDreRateioFornecedorTotais(req: Request, res: Response):
     return;
   }
 
-  const { totaisPorPeriodo, erro } = await queryDreRateioFornecedorTotais({
+  const { totaisPorPeriodo, totaisFiltroPorPeriodo, erro } = await queryDreRateioFornecedorTotais({
     dataInicio,
     dataFim,
     granularidade,
@@ -1712,11 +1712,20 @@ export async function getDreRateioFornecedorTotais(req: Request, res: Response):
     nomesFornecedor,
     poolRateio,
   });
-  if (erro && Object.keys(totaisPorPeriodo).length === 0) {
-    res.status(503).json({ totaisPorPeriodo: {}, erro, error: erro });
+  if (erro && Object.keys(totaisPorPeriodo).length === 0 && Object.keys(totaisFiltroPorPeriodo).length === 0) {
+    res.status(503).json({ totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {}, erro, error: erro });
     return;
   }
-  res.json({ totaisPorPeriodo, dataInicio, dataFim, pathKey, nomesFornecedor, granularidade, erro });
+  res.json({
+    totaisPorPeriodo,
+    totaisFiltroPorPeriodo,
+    dataInicio,
+    dataFim,
+    pathKey,
+    nomesFornecedor,
+    granularidade,
+    erro,
+  });
 }
 
 /**

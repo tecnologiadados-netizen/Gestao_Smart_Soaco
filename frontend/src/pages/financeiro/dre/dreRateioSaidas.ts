@@ -155,6 +155,30 @@ function aplicarRateioFornecedores(
   return saidasMap;
 }
 
+/**
+ * A seleção cobre todo o peso da regra (rateio só redistribui).
+ * Sem recorte de empresa, ou com todas as empresas que têm percentual, a fatia
+ * soma o valor inteiro — a célula consolidada tem de permanecer o físico.
+ */
+export function regraRateioCobreEmpresasSelecionadas(
+  percentuais: DreRateioProLaborePct,
+  idEmpresas: number[],
+): boolean {
+  if (idEmpresas.length === 0) return true;
+  const selecionadas = new Set(idEmpresas);
+  let soma = 0;
+  let coberto = 0;
+  for (const [chave, bruto] of Object.entries(percentuais)) {
+    const peso = Math.max(0, Number(bruto) || 0);
+    if (peso <= 0) continue;
+    soma += peso;
+    const id = Math.trunc(Number(chave));
+    if (selecionadas.has(id)) coberto += peso;
+  }
+  if (soma <= 0) return true;
+  return coberto >= soma - 0.01;
+}
+
 function aplicarRegraRateio(
   saidasMap: Map<string, Record<string, number>>,
   roots: DreEstruturaNo[],
@@ -209,8 +233,10 @@ export function aplicarRateioNasSaidas(
     out = aplicarRegraRateio(out, roots, periodos, regra, idEmpresas, totais, saidasPoolPlanoContas);
   }
 
-  // Contas com rateio por fornecedor em linha única:
+  // Contas com rateio por fornecedor em linha única (sem filha por empresa):
   // demais (físico do filtro − fornecedores rateados no filtro) + fatias de todos os rateados.
+  // Com o peso inteiro coberto, o líquido é zero: a célula fica no físico.
+  // Isso impede que um total de filtro menor que o pool reponha o mesmo lançamento.
   const regrasPorPathKey = new Map<string, DreRateioRegra[]>();
   for (const regra of config.regras) {
     if (regra.origem.tipo !== 'fornecedores' || regra.origem.nomes.length === 0) continue;
@@ -234,6 +260,15 @@ export function aplicarRateioNasSaidas(
       let ratedFiltroSum = 0;
       for (const regra of regrasPk) {
         ratedFiltroSum += fornecedorTotaisFiltroPorRegraId?.[regra.id]?.[p] ?? 0;
+      }
+
+      const cobreIntegral = regrasPk.every((regra) =>
+        regraRateioCobreEmpresasSelecionadas(regra.percentuais, idEmpresas),
+      );
+      if (cobreIntegral) {
+        const total = Math.round(base * 100) / 100;
+        if (Math.abs(total) >= 0.005) merged[p] = total;
+        continue;
       }
 
       const negativo = base <= 0;

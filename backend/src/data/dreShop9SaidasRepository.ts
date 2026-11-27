@@ -235,42 +235,53 @@ export async function queryDreShop9RateioFornecedorTotais(params: {
   pathKey: string;
   nomesFornecedor: string[];
   poolRateio?: boolean;
-}): Promise<{ totaisPorPeriodo: Record<string, number>; erro?: string }> {
+}): Promise<{
+  totaisPorPeriodo: Record<string, number>;
+  totaisFiltroPorPeriodo: Record<string, number>;
+  erro?: string;
+}> {
+  const vazio = { totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {} };
   const nomes = [...new Set(params.nomesFornecedor.map((n) => n.trim()).filter(Boolean))];
-  if (nomes.length === 0) return { totaisPorPeriodo: {} };
+  if (nomes.length === 0) return vazio;
 
   const pathKey = params.pathKey.trim();
-  if (!pathKey) return { totaisPorPeriodo: {} };
+  if (!pathKey) return vazio;
 
-  const idEmpresasShop9 = params.poolRateio
-    ? [...DRE_SHOP9_SAIDAS_EMPRESAS]
-    : empresasComSaidasShop9Dre(params.idEmpresas ?? [...DRE_SHOP9_SAIDAS_EMPRESAS]);
-  if (!idEmpresasShop9.length) return { totaisPorPeriodo: {} };
+  const empresasPool = [...DRE_SHOP9_SAIDAS_EMPRESAS];
+  const empresasFiltro = new Set(
+    empresasComSaidasShop9Dre(params.idEmpresas?.length ? params.idEmpresas : empresasPool),
+  );
+  if (!empresasPool.length) return vazio;
 
   if (!isShop9Enabled()) {
-    return { totaisPorPeriodo: {}, erro: 'Shop9: SHOP9_DB_* não configurado' };
+    return { ...vazio, erro: 'Shop9: SHOP9_DB_* não configurado' };
   }
 
-  const filiais = filiaisShop9SaidasDre(idEmpresasShop9);
-  if (!filiais.length) return { totaisPorPeriodo: {} };
+  const filiais = filiaisShop9SaidasDre(empresasPool);
+  if (!filiais.length) return vazio;
 
   const pool = await getShop9Pool();
   if (!pool) {
-    return { totaisPorPeriodo: {}, erro: 'Shop9: falha ao conectar' };
+    return { ...vazio, erro: 'Shop9: falha ao conectar' };
   }
 
   try {
     const result = await pool.query(aplicarSql(params.dataInicio, params.dataFim, filiais));
     const list = Array.isArray(result.recordset) ? result.recordset : [];
     const rowsBrutas = list.map((r) => mapRawRow(r as Record<string, unknown>));
-    const rowsFiltradas = params.poolRateio
-      ? rowsBrutas
-      : filtrarPorEmpresasSaidasShop9Dre(rowsBrutas, idEmpresasShop9);
-    const rows = deduplicarLinhasShop9SaidasDre(rowsFiltradas);
+    // Mesmo recorte da grade: empresa resolvida. Linha sem empresa não entra no pool
+    // (antes o pool somava a linha crua e o filtro descartava — a grade recolocava o valor).
+    const rows = deduplicarLinhasShop9SaidasDre(
+      filtrarPorEmpresasSaidasShop9Dre(rowsBrutas, empresasPool),
+    );
 
-    const totais = new Map<string, number>();
+    const totaisPool = new Map<string, number>();
+    const totaisFiltro = new Map<string, number>();
     for (const row of rows) {
-      const pk = resolverPathKeyDreSaidasShop9(row.ordemPlanoContas3, row.nomePlanoContas);
+      const nomePlano = row.nomePlanoContas.trim();
+      const pk =
+        resolverPathKeyInssPoolAgregacao(nomePlano, row.ordemPlanoContas3) ??
+        resolverPathKeyDreSaidasShop9(row.ordemPlanoContas3, nomePlano);
       if (pk !== pathKey) continue;
 
       if (!linhaPassaFornecedoresRateio(row.nomeCliFor, nomes)) continue;
@@ -282,17 +293,27 @@ export async function queryDreShop9RateioFornecedorTotais(params: {
       if (!ymd || ymd < params.dataInicio || ymd > params.dataFim) continue;
 
       const periodo = periodoFromYmd(ymd, params.granularidade);
-      totais.set(periodo, (totais.get(periodo) ?? 0) + valor);
+      totaisPool.set(periodo, (totaisPool.get(periodo) ?? 0) + valor);
+      const idEmpresa = resolverIdEmpresaShop9SaidasDre(row) ?? 0;
+      if (empresasFiltro.has(idEmpresa)) {
+        totaisFiltro.set(periodo, (totaisFiltro.get(periodo) ?? 0) + valor);
+      }
     }
 
-    const totaisPorPeriodo: Record<string, number> = {};
-    for (const [p, v] of totais.entries()) {
-      totaisPorPeriodo[p] = Math.round(v * 100) / 100;
-    }
-    return { totaisPorPeriodo };
+    const arredondar = (map: Map<string, number>) => {
+      const out: Record<string, number> = {};
+      for (const [p, v] of map) out[p] = Math.round(v * 100) / 100;
+      return out;
+    };
+    const totaisFiltroPorPeriodo = arredondar(totaisFiltro);
+    const poolArredondado = arredondar(totaisPool);
+    return {
+      totaisPorPeriodo: params.poolRateio ? poolArredondado : totaisFiltroPorPeriodo,
+      totaisFiltroPorPeriodo,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { totaisPorPeriodo: {}, erro: msg };
+    return { ...vazio, erro: msg };
   }
 }
 

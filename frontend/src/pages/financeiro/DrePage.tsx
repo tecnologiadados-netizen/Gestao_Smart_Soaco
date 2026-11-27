@@ -373,16 +373,7 @@ export default function DrePage() {
               idEmpresas: idEmpresasDevolucoes,
             })
           : Promise.resolve({ linhas: [] as DreDevolucoesLinha[], erro: undefined }),
-        ...regrasFf.flatMap((regra) => [
-          fetchDreRateioFornecedorTotais({
-            dataInicio: f.dataInicio,
-            dataFim: f.dataFim,
-            granularidade: f.granularidade,
-            pathKey: regra.origem.tipo === 'fornecedores' ? regra.origem.pathKeyConta : '',
-            nomesFornecedor: regra.origem.tipo === 'fornecedores' ? regra.origem.nomes : [],
-            idEmpresas: [...DFC_EMPRESAS_TODAS],
-            poolRateio: true,
-          }),
+        ...regrasFf.map((regra) =>
           fetchDreRateioFornecedorTotais({
             dataInicio: f.dataInicio,
             dataFim: f.dataFim,
@@ -390,9 +381,9 @@ export default function DrePage() {
             pathKey: regra.origem.tipo === 'fornecedores' ? regra.origem.pathKeyConta : '',
             nomesFornecedor: regra.origem.tipo === 'fornecedores' ? regra.origem.nomes : [],
             idEmpresas: f.idEmpresas,
-            poolRateio: false,
+            poolRateio: true,
           }),
-        ]),
+        ),
       ]);
       if (seq !== carregarSeqRef.current) return;
       setAplicadoIdEmpresas(f.idEmpresas);
@@ -453,14 +444,11 @@ export default function DrePage() {
       const totaisPorRegra: Record<string, Record<string, number>> = {};
       const totaisFiltroPorRegra: Record<string, Record<string, number>> = {};
       regrasFf.forEach((regra, i) => {
-        const resTodas = rateioFornecResList[i * 2] as
-          | { totaisPorPeriodo?: Record<string, number> }
+        const res = rateioFornecResList[i] as
+          | { totaisPorPeriodo?: Record<string, number>; totaisFiltroPorPeriodo?: Record<string, number> }
           | undefined;
-        const resFiltro = rateioFornecResList[i * 2 + 1] as
-          | { totaisPorPeriodo?: Record<string, number> }
-          | undefined;
-        totaisPorRegra[regra.id] = resTodas?.totaisPorPeriodo ?? {};
-        totaisFiltroPorRegra[regra.id] = resFiltro?.totaisPorPeriodo ?? {};
+        totaisPorRegra[regra.id] = res?.totaisPorPeriodo ?? {};
+        totaisFiltroPorRegra[regra.id] = res?.totaisFiltroPorPeriodo ?? {};
       });
       setRateioFornecedorTotaisPorRegraId(totaisPorRegra);
       setRateioFornecedorTotaisFiltroPorRegraId(totaisFiltroPorRegra);

@@ -91,6 +91,30 @@ function extrairValorLinha(row: Record<string, unknown>): number {
   return Math.abs(toNum(row.valorBaixado ?? row.valor));
 }
 
+/** Mesma chave do detalhe (A#id / L#id): a grade não pode contar o lançamento duas vezes. */
+function deduplicarLinhasNomusSaidas(list: unknown[], prefixo: 'A' | 'L'): unknown[] {
+  const vistos = new Set<string>();
+  const out: unknown[] = [];
+  for (const item of list) {
+    const row = item as Record<string, unknown>;
+    const id = Math.trunc(toNum(row.id));
+    if (!id) continue;
+    const chave = `${prefixo}#${id}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    out.push(item);
+  }
+  return out;
+}
+
+function arredondarTotaisPeriodo(map: Map<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [periodo, valor] of map) {
+    out[periodo] = Math.round(valor * 100) / 100;
+  }
+  return out;
+}
+
 function agregarLinhasSaidas(
   list: unknown[],
   granularidade: 'dia' | 'mes',
@@ -226,8 +250,8 @@ async function carregarSaidasNomusSoAcoDre(params: {
       pool.query(sqlAgendamentos),
       pool.query(sqlLancamentosLp),
     ]);
-    const listAg = Array.isArray(rawAg) ? rawAg : [];
-    const listLp = Array.isArray(rawLp) ? rawLp : [];
+    const listAg = deduplicarLinhasNomusSaidas(Array.isArray(rawAg) ? rawAg : [], 'A');
+    const listLp = deduplicarLinhasNomusSaidas(Array.isArray(rawLp) ? rawLp : [], 'L');
     return agregarLinhasSaidas([...listAg, ...listLp], granularidade);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -576,7 +600,11 @@ export async function queryDreFornecedorOpcoes(params: {
   return { nomes, erro: erros.length > 0 ? erros.join('; ') : undefined };
 }
 
-/** Soma por período dos lançamentos dos fornecedores selecionados em uma conta DRE (Nomus + Shop9). */
+/**
+ * Soma por período dos lançamentos dos fornecedores selecionados em uma conta DRE (Nomus + Shop9).
+ * Pool e filtro saem da mesma varredura: um lançamento que está no grupo não pode sumir do filtro
+ * da empresa em que foi lançado (isso fazia a grade somar a pessoa de novo).
+ */
 export async function queryDreRateioFornecedorTotais(params: {
   dataInicio: string;
   dataFim: string;
@@ -586,30 +614,41 @@ export async function queryDreRateioFornecedorTotais(params: {
   nomesFornecedor: string[];
   /** Pool completo para fatia de rateio (todas filiais Shop9/Nomus, sem recorte de empresa). */
   poolRateio?: boolean;
-}): Promise<{ totaisPorPeriodo: Record<string, number>; erro?: string }> {
+}): Promise<{
+  totaisPorPeriodo: Record<string, number>;
+  totaisFiltroPorPeriodo: Record<string, number>;
+  erro?: string;
+}> {
   const nomes = [...new Set(params.nomesFornecedor.map((n) => n.trim()).filter(Boolean))];
-  if (nomes.length === 0) return { totaisPorPeriodo: {} };
+  if (nomes.length === 0) return { totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {} };
 
   const pathKey = params.pathKey.trim();
-  if (!pathKey) return { totaisPorPeriodo: {}, erro: 'Informe pathKey da conta DRE.' };
+  if (!pathKey) {
+    return { totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {}, erro: 'Informe pathKey da conta DRE.' };
+  }
 
   const erros: string[] = [];
-  const totais = new Map<string, number>();
+  const poolMap = new Map<string, number>();
+  const filtroMap = new Map<string, number>();
+  const idEmpresasPool = [...DRE_SAIDAS_SOACO_EMPRESAS_PADRAO];
+  const idEmpresasFiltro = new Set(
+    normalizarIdsEmpresa(params.idEmpresas?.length ? params.idEmpresas : idEmpresasPool),
+  );
 
-  const acumularPeriodo = (periodo: string, valor: number) => {
+  const acumular = (periodo: string, valor: number, idEmpresa: number) => {
     if (!periodo || valor <= 0) return;
-    totais.set(periodo, (totais.get(periodo) ?? 0) + valor);
+    poolMap.set(periodo, (poolMap.get(periodo) ?? 0) + valor);
+    if (idEmpresasFiltro.has(idEmpresa)) {
+      filtroMap.set(periodo, (filtroMap.get(periodo) ?? 0) + valor);
+    }
   };
 
   const idsConta = listarIdsContaPorPathKeyDre(pathKey);
   const idsSet = new Set(idsConta);
-  const idEmpresasEff = params.poolRateio
-    ? [...DRE_SAIDAS_SOACO_EMPRESAS_PADRAO]
-    : (params.idEmpresas ?? [...DRE_SAIDAS_SOACO_EMPRESAS_PADRAO]);
 
   if (idsConta.length > 0) {
     const { listAg, listLp, erro } = await carregarLinhasNomusSaidasBrutas({
-      idEmpresas: idEmpresasEff,
+      idEmpresas: idEmpresasPool,
       dataInicio: params.dataInicio,
       dataFim: params.dataFim,
     });
@@ -628,11 +667,16 @@ export async function queryDreRateioFornecedorTotais(params: {
         const ymd = formatYmd(row.dataCompetencia as Date | string);
         if (!ymd || ymd < params.dataInicio || ymd > params.dataFim) return;
         const periodo = params.granularidade === 'mes' ? ymd.slice(0, 7) : ymd;
-        acumularPeriodo(periodo, valor);
+        const idEmpresa = Math.trunc(toNum(row.idEmpresa)) || 0;
+        acumular(periodo, valor, idEmpresa);
       };
 
-      for (const r of listAg) acumularNomus(r as Record<string, unknown>);
-      for (const r of listLp) acumularNomus(r as Record<string, unknown>);
+      for (const r of deduplicarLinhasNomusSaidas(listAg, 'A')) {
+        acumularNomus(r as Record<string, unknown>);
+      }
+      for (const r of deduplicarLinhasNomusSaidas(listLp, 'L')) {
+        acumularNomus(r as Record<string, unknown>);
+      }
     }
   }
 
@@ -640,23 +684,29 @@ export async function queryDreRateioFornecedorTotais(params: {
     dataInicio: params.dataInicio,
     dataFim: params.dataFim,
     granularidade: params.granularidade,
-    idEmpresas: idEmpresasEff,
+    idEmpresas: [...idEmpresasFiltro],
     pathKey,
     nomesFornecedor: nomes,
-    poolRateio: params.poolRateio,
+    poolRateio: true,
   });
   if (shop9.erro) erros.push(shop9.erro);
   for (const [periodo, valor] of Object.entries(shop9.totaisPorPeriodo)) {
-    acumularPeriodo(periodo, valor);
+    poolMap.set(periodo, (poolMap.get(periodo) ?? 0) + valor);
+  }
+  for (const [periodo, valor] of Object.entries(shop9.totaisFiltroPorPeriodo ?? {})) {
+    filtroMap.set(periodo, (filtroMap.get(periodo) ?? 0) + valor);
   }
 
-  const totaisPorPeriodo: Record<string, number> = {};
-  for (const [p, v] of totais.entries()) {
-    totaisPorPeriodo[p] = Math.round(v * 100) / 100;
-  }
+  const pool = arredondarTotaisPeriodo(poolMap);
+  const filtro = arredondarTotaisPeriodo(filtroMap);
+  const totaisPorPeriodo = params.poolRateio ? pool : filtro;
 
-  if (Object.keys(totaisPorPeriodo).length === 0 && erros.length > 0) {
-    return { totaisPorPeriodo: {}, erro: erros.join('; ') };
+  if (Object.keys(totaisPorPeriodo).length === 0 && Object.keys(filtro).length === 0 && erros.length > 0) {
+    return { totaisPorPeriodo: {}, totaisFiltroPorPeriodo: {}, erro: erros.join('; ') };
   }
-  return { totaisPorPeriodo, erro: erros.length > 0 ? erros.join('; ') : undefined };
+  return {
+    totaisPorPeriodo,
+    totaisFiltroPorPeriodo: filtro,
+    erro: erros.length > 0 ? erros.join('; ') : undefined,
+  };
 }
