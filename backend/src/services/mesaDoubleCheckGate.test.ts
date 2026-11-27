@@ -52,6 +52,17 @@ describe('conferenciaDoubleCheckLiberadaParaMesa', () => {
     ).toBe(false);
   });
 
+  it('não libera a conferência completa enquanto houver item da nota sem pedido', () => {
+    expect(
+      conferenciaDoubleCheckLiberadaParaMesa({
+        regime: 'completa',
+        possuiConferenciaValida: true,
+        pendenciasSemDecisao: 0,
+        itensSemVinculoPedido: 1,
+      })
+    ).toBe(false);
+  });
+
   it('libera a conferência simples assim que o documento foi confirmado', () => {
     expect(
       conferenciaDoubleCheckLiberadaParaMesa({

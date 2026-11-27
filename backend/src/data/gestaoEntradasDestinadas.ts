@@ -1,5 +1,5 @@
 /**
- * Gestão entradas — situação de cada NF destinada à Só Aço.
+ * Gestão entradas — situação de cada NF destinada à Só Aço Industrial.
  * A grade nasce da nota destinada. Documento, Otimiza, Double Check e Mesa
  * entram em cima dela, com a mesma regra nos cards e nas linhas.
  */
@@ -26,6 +26,29 @@ export const SITUACOES_DESTINADA = [
 ] as const;
 
 export type SituacaoDestinada = (typeof SITUACOES_DESTINADA)[number];
+
+export const ETAPAS_DESTINADA = [
+  'sem_documento',
+  'pre_entrada',
+  'verificar_double_check',
+  'double_check_otimiza',
+  'aguardando_material',
+  'conferencia_fisica',
+  'aguardando_mesa',
+  'efetivado',
+  'nao_e_compra',
+] as const;
+
+export type EtapaDestinada = (typeof ETAPAS_DESTINADA)[number];
+
+export const ETAPAS_PRE_ENTRADA_ABERTA: readonly EtapaDestinada[] = [
+  'pre_entrada',
+  'verificar_double_check',
+  'double_check_otimiza',
+  'aguardando_material',
+  'conferencia_fisica',
+  'aguardando_mesa',
+];
 
 export type StatusChamadoDestinada = 'in_progress' | 'completed' | 'cancelled' | null;
 
@@ -97,6 +120,8 @@ export type LinhaDestinada = {
   statusNomus: number | null;
   manifestacao: number | null;
   finalidade: number | null;
+  idEmpresa: number | null;
+  nomeEmpresa: string | null;
   idDocumento: number | null;
   numeroDocumento: string | null;
   idTipoMovimentacao: number | null;
@@ -108,12 +133,30 @@ export type LinhaDestinada = {
   fisica: ConferenciaFisicaDestinada;
   chamados: ChamadoDestinada[];
   situacao: SituacaoDestinada;
+  etapa: EtapaDestinada;
+  /** Documento tipo 46 ligado à nota, mesmo quando a grade já mostra a entrada efetivada. */
+  preEntradaCriada: boolean;
 };
+
+export const AVISO_OTIMIZA_LIMITADO =
+  'O Otimiza limitou as consultas nesta leitura. A grade mostra o número e o status já gravados no Double Check, sem quem está com o chamado — esse nome não fica salvo aqui. Aguarde cerca de um minuto e filtre de novo.';
+
+export const AVISO_OTIMIZA_INDISPONIVEL =
+  'A consulta ao vivo no Otimiza não completou. A grade mostra o número e o status já gravados no Double Check, sem quem está com o chamado — esse nome não fica salvo aqui.';
+
+/** Texto do aviso amarelo. O 429 do Otimiza não é silêncio: a API recusou por limite. */
+export function avisoConsultaOtimizaDestinadas(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/limitou as consultas/i.test(msg)) return AVISO_OTIMIZA_LIMITADO;
+  return AVISO_OTIMIZA_INDISPONIVEL;
+}
 
 export type GradeDestinadas = {
   dataInicio: string;
   dataFim: string;
   otimizaIndisponivel: boolean;
+  /** Preenchido só quando a consulta ao vivo falha. */
+  otimizaAviso: string | null;
   linhas: LinhaDestinada[];
 };
 
@@ -270,8 +313,48 @@ export function preferirFisicaDestinada(
   return origem;
 }
 
-function chamadoEmAndamento(chamado: ChamadoDestinada): boolean {
+export function chamadoEmAndamento(chamado: ChamadoDestinada): boolean {
   return chamado.status === 'in_progress' || chamado.status == null;
+}
+
+/**
+ * Etapa da grade. Pré-entrada ainda sem a Mesa olha a conferência e o chamado em andamento.
+ * Chamado aberto significa que o Double Check e o Otimiza seguem pendentes, mesmo com
+ * conferência já gravada. Material a caminho só quando a conferência está vigente e
+ * não há chamado em andamento. Sem chamado e sem conferência, falta só o Double Check.
+ */
+export function etapaNotaDestinada(params: {
+  idDocumento: number | null;
+  efetivado: boolean;
+  conferencia: ConferenciaDoubleCheckDestinada;
+  fisica: ConferenciaFisicaDestinada;
+  manifestacao: number | null;
+  chamados: ChamadoDestinada[];
+}): EtapaDestinada {
+  if (params.efetivado) return 'efetivado';
+  if (params.idDocumento != null && params.idDocumento > 0) {
+    if (FISICA_EM_ANDAMENTO.has(params.fisica)) return 'conferencia_fisica';
+    if (params.fisica === 'aguardando_movimentacao' || params.fisica === 'finalizada') {
+      return 'aguardando_mesa';
+    }
+    const otimizaAberto = params.chamados.some(chamadoEmAndamento);
+    if (
+      otimizaAberto &&
+      (params.conferencia === 'pendente' || params.conferencia === 'conferida')
+    ) {
+      return 'double_check_otimiza';
+    }
+    if (params.conferencia === 'conferida') return 'aguardando_material';
+    if (params.conferencia === 'pendente') return 'verificar_double_check';
+    return 'pre_entrada';
+  }
+  if (params.manifestacao === 3 || params.manifestacao === 4) return 'nao_e_compra';
+  const temAndamento = params.chamados.some(chamadoEmAndamento);
+  const temConcluido = params.chamados.some((chamado) => chamado.status === 'completed');
+  if (!temAndamento && !temConcluido && params.chamados.some((chamado) => chamado.status === 'cancelled')) {
+    return 'nao_e_compra';
+  }
+  return 'sem_documento';
 }
 
 export function situacaoNotaDestinada(params: {
@@ -309,6 +392,8 @@ export function montarLinhaDestinada(params: {
   statusNomus: number | null;
   manifestacao: number | null;
   finalidade: number | null;
+  idEmpresa: number | null;
+  nomeEmpresa: string | null;
   origem: DocDestinadaOrigem;
   irmao: DocDestinadaEfetivado | null;
   pedidosOrigem: PedidoDestinada[];
@@ -337,6 +422,8 @@ export function montarLinhaDestinada(params: {
     statusNomus: params.statusNomus,
     manifestacao: params.manifestacao,
     finalidade: params.finalidade,
+    idEmpresa: params.idEmpresa,
+    nomeEmpresa: params.nomeEmpresa,
     idDocumento: exibido.idDocumento,
     numeroDocumento: exibido.numeroDocumentoFiscal,
     idTipoMovimentacao: exibido.idTipoMovimentacao,
@@ -347,6 +434,15 @@ export function montarLinhaDestinada(params: {
     conferidoPor: params.conferido ? params.conferidoPor : null,
     fisica: params.fisica,
     chamados,
+    preEntradaCriada: params.origem.idTipoMovimentacao === RECEBIMENTO_ID_TIPO_PRE_ENTRADA,
+    etapa: etapaNotaDestinada({
+      idDocumento: exibido.idDocumento,
+      efetivado: exibido.efetivado,
+      conferencia,
+      fisica: params.fisica,
+      manifestacao: params.manifestacao,
+      chamados,
+    }),
     situacao: situacaoNotaDestinada({
       idDocumento: exibido.idDocumento,
       efetivado: exibido.efetivado,

@@ -81,3 +81,19 @@ export function contarPendentesComparativoLogica(
   }
   return pendentes.size;
 }
+
+/**
+ * Itens da nota sem pedido, só quando o documento também tem item vinculado.
+ * Documento inteiro sem pedido continua no fluxo do espelho, sem esta pendência.
+ */
+export function contarItensSemVinculoPedido(
+  linhas: Array<{ semVinculoPedido?: boolean }>
+): number {
+  let semPedido = 0;
+  let comPedido = 0;
+  for (const linha of linhas) {
+    if (linha.semVinculoPedido) semPedido += 1;
+    else comPedido += 1;
+  }
+  return comPedido > 0 ? semPedido : 0;
+}

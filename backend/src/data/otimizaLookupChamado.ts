@@ -136,6 +136,16 @@ async function postLookup(
     });
     throw new Error('Não foi possível consultar os chamados no Otimiza.');
   }
+  if (res.status === 429) {
+    const retry = res.headers.get('retry-after');
+    const segundos = retry && /^\d+$/.test(retry) ? Number(retry) : null;
+    console.error('[otimiza] lote limitado', { status: 429, qtde: keywords.length, retryAfter: segundos });
+    throw new Error(
+      segundos != null
+        ? `O Otimiza limitou as consultas. Aguarde ${segundos} segundos e tente de novo.`
+        : 'O Otimiza limitou as consultas. Aguarde um momento e tente de novo.'
+    );
+  }
   if (res.status === 401 || res.status === 403) {
     console.error('[otimiza] lote recusado', { status: res.status });
     throw new Error('A consulta ao Otimiza foi recusada.');

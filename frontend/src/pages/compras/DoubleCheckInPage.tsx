@@ -37,7 +37,11 @@ import {
 } from '../../api/compras';
 import { PERMISSOES } from '../../config/permissoes';
 import { PLACEHOLDER_BUSCA_TEXTO_LIVRE, criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
-import { MENSAGEM_DOUBLE_CHECK_SEM_VINCULO } from './doubleCheckInSemVinculo';
+import {
+  MENSAGEM_DOUBLE_CHECK_SEM_VINCULO,
+  MENSAGEM_ITEM_SEM_PEDIDO,
+} from './doubleCheckInSemVinculo';
+import { contarItensSemVinculoPedido } from '../../utils/doubleCheckInPendencias';
 
 const POLL_MS = 120_000;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -994,6 +998,10 @@ export default function DoubleCheckInPage() {
       );
       return;
     }
+    if (regimeConferencia === 'completa' && contarItensSemVinculoPedido(linhas) > 0) {
+      setCompBloqueioMsg(MENSAGEM_ITEM_SEM_PEDIDO);
+      return;
+    }
 
     setSenhaDraft('');
     setSenhaAberto(true);
@@ -1772,6 +1780,10 @@ export default function DoubleCheckInPage() {
                     <span>
                       Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.
                     </span>
+                  ) : regimeDaNota(modalNota) === 'completa' &&
+                    !compLoading &&
+                    contarItensSemVinculoPedido(compLinhas) > 0 ? (
+                    <span>{MENSAGEM_ITEM_SEM_PEDIDO}</span>
                   ) : modalNota.conferenciaReaberta ? (
                     <span>
                       {compDecisoes.some((decisao) => decisao.vigente === false)
@@ -1812,6 +1824,7 @@ export default function DoubleCheckInPage() {
                       faturaXmlBloqueiaConferencia(compLinhas, compCriterios, compCamposLancados) ||
                       (regimeDaNota(modalNota) === 'completa' &&
                         (compSemVinculo ||
+                          contarItensSemVinculoPedido(compLinhas) > 0 ||
                           comparativoCacheRef.current.get(modalNota.idDocumento)?.linhas.length === 0))
                     }
                     onClick={() => void abrirSenhaConferir()}
@@ -1821,7 +1834,10 @@ export default function DoubleCheckInPage() {
                       ? 'Não aplicada'
                       : modalNota.conferido
                         ? 'Já conferida'
-                        : 'Confirmar conferência'}
+                        : regimeDaNota(modalNota) === 'completa' &&
+                            contarItensSemVinculoPedido(compLinhas) > 0
+                          ? 'Conferência pendente'
+                          : 'Confirmar conferência'}
                   </button>
                 </div>
               </div>

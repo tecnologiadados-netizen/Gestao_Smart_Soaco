@@ -534,7 +534,7 @@ export default function GestaoEntradasPage() {
                 : guia === 'pre-entrada'
                   ? 'Pré-entradas em aberto e a comunicação do Otimiza que ainda está em andamento'
                   : guia === 'destinadas'
-                    ? 'Notas destinadas à Só Aço e a situação de cada uma'
+                    ? 'Notas destinadas à Só Aço Industrial, a etapa do documento e o status do Otimiza'
                     : 'Acuracidade das notas de entrada por data de entrada'}
             </p>
             <div className="mt-2 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-black/25">

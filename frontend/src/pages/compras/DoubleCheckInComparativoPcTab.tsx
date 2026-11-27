@@ -17,7 +17,10 @@ import {
   type DoubleCheckInJustificativaOpcao,
   type DoubleCheckInSolicitacaoOtimiza,
 } from '../../api/compras';
-import { contarPendentesComparativoLogica } from '../../utils/doubleCheckInPendencias';
+import {
+  contarItensSemVinculoPedido,
+  contarPendentesComparativoLogica,
+} from '../../utils/doubleCheckInPendencias';
 import PagamentoXmlPreEntradaPanel from './PagamentoXmlPreEntradaPanel';
 import { MENSAGEM_DOUBLE_CHECK_SEM_VINCULO } from './doubleCheckInSemVinculo';
 
@@ -579,7 +582,7 @@ export default function DoubleCheckInComparativoPcTab({
   const [aplicouChamadoNasDemais, setAplicouChamadoNasDemais] = useState(false);
 
   const totaisVinculos = useMemo(() => {
-    const base = linhas[0];
+    const base = linhas.find((linha) => !linha.semVinculoPedido) ?? linhas[0];
     if (!base) return null;
     if (base.totalVinculosNF == null || base.totalVinculosPC == null) return null;
     const totalNF = Number(base.totalRealNF ?? base.totalVinculosNF);
@@ -683,7 +686,7 @@ export default function DoubleCheckInComparativoPcTab({
   const gruposPagamento = useMemo(() => {
     const porPc = new Map<string, DoubleCheckInComparativoLinha[]>();
     for (const linha of linhas) {
-      if (linha.comparaCondicaoPagamento === false) continue;
+      if (linha.semVinculoPedido || linha.comparaCondicaoPagamento === false) continue;
       const key = String(linha.idPedidoCompra ?? 'sem-pc');
       const lista = porPc.get(key) ?? [];
       lista.push(linha);
@@ -728,6 +731,7 @@ export default function DoubleCheckInComparativoPcTab({
     const frases: string[] = [];
     const pagamentoVisto = new Set<string>();
     for (const linha of linhas) {
+      if (linha.semVinculoPedido) continue;
       for (const campo of CAMPOS_ITEM) {
         if (!campoVisivel(campo.id)) continue;
         const frase = fraseDivergencia(linha, campo.id);
@@ -1525,8 +1529,13 @@ export default function DoubleCheckInComparativoPcTab({
       {semVinculo ? painelSemVinculo : null}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-          {linhas.length} vínculo(s)
+          {linhas.filter((linha) => !linha.semVinculoPedido).length} vínculo(s)
         </span>
+        {contarItensSemVinculoPedido(linhas) > 0 ? (
+          <span className="rounded-full bg-rose-100 px-2.5 py-1 font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+            {contarItensSemVinculoPedido(linhas)} sem pedido
+          </span>
+        ) : null}
         {pagamentoXmlPendente ? (
           <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
             Fatura da NF pendente
@@ -1760,6 +1769,51 @@ export default function DoubleCheckInComparativoPcTab({
 
       <div className="space-y-3">
         {linhas.map((linha) => {
+          if (linha.semVinculoPedido) {
+            const ipi =
+              linha.conferenciaIpi === 'percentual'
+                ? fmtAliquotaIpi(linha.aliquotaIpiNF)
+                : nfBrl.format(linha.valorIpiNF);
+            return (
+              <div
+                key={`sem-pedido-${linha.idItemDocumentoEstoque}`}
+                className="rounded-xl border border-rose-300 bg-rose-50/70 px-3 py-3 dark:border-rose-700 dark:bg-rose-950/30"
+              >
+                <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-800 dark:text-slate-100">
+                      {linha.codigoProduto ?? linha.idProduto ?? '—'}
+                    </div>
+                    <div className="text-xs text-slate-500 line-clamp-2">
+                      {linha.descricaoProduto ?? '—'}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-rose-700 dark:text-rose-300">
+                    <div className="font-semibold">Não vinculado a nenhum pedido</div>
+                    <div>Item NF #{linha.idItemDocumentoEstoque}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border border-rose-200 bg-white/80 px-2.5 py-2 dark:border-rose-800 dark:bg-slate-900/50">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Quantidade NF</p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {nfNum.format(linha.qtdeNF)} {linha.umNF ?? ''}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-rose-200 bg-white/80 px-2.5 py-2 dark:border-rose-800 dark:bg-slate-900/50">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Valor unitário NF</p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {nfBrl.format(linha.valorUnitarioNF)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-rose-200 bg-white/80 px-2.5 py-2 dark:border-rose-800 dark:bg-slate-900/50">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">IPI NF</p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">{ipi}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           const divergenciaDoItem =
             linha.divergValorUnitario || linha.divergQtde || linha.divergIpi;
           // Link de evidência: esconde itens e campos iguais (sem divergência).

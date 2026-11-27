@@ -5,11 +5,9 @@ import CarregandoInformacoesOverlay from '../../components/CarregandoInformacoes
 import { useGradeFiltrosExcel } from '../../hooks/useGradeFiltrosExcel';
 import {
   fetchGestaoEntradasDestinadas,
-  type ConferenciaDoubleCheckDestinada,
-  type ConferenciaFisicaDestinada,
+  type EtapaDestinada,
   type GradeDestinadas,
   type LinhaDestinada,
-  type SituacaoDestinada,
 } from '../../api/gestaoEntradas';
 import { criarMatcherTextoLivre } from '../../utils/textoLivreBusca';
 
@@ -24,32 +22,35 @@ const btnPrimary =
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50';
 
-const SITUACOES: Array<{ id: SituacaoDestinada; label: string }> = [
-  { id: 'aguardando_confirmacao', label: 'Aguardando confirmação' },
-  { id: 'em_confirmacao', label: 'Em confirmação' },
-  { id: 'confirmada_sem_documento', label: 'Confirmada, sem pré-entrada' },
+const ETAPAS: Array<{ id: EtapaDestinada; label: string }> = [
+  { id: 'sem_documento', label: 'Sem documento' },
+  { id: 'pre_entrada', label: 'Pré-entrada' },
+  { id: 'verificar_double_check', label: 'Verificar Double Check' },
+  { id: 'double_check_otimiza', label: 'Pendente Double Check e Otimiza' },
+  { id: 'aguardando_material', label: 'Aguardando material' },
+  { id: 'conferencia_fisica', label: 'Conferência física' },
+  { id: 'aguardando_mesa', label: 'Aguardando a Mesa' },
+  { id: 'efetivado', label: 'Efetivado' },
   { id: 'nao_e_compra', label: 'Não é compra nossa' },
-  { id: 'pre_entrada_pendente', label: 'Pré-entrada, Double Check pendente' },
-  { id: 'divergencia_responsavel', label: 'Divergência com o responsável' },
-  { id: 'aguardando_mesa', label: 'Conferida, aguardando a Mesa' },
-  { id: 'em_conferencia_fisica', label: 'Em conferência física' },
-  { id: 'documento_lancado', label: 'Documento lançado' },
 ];
+
+const ETAPAS_PRE_ENTRADA = new Set<EtapaDestinada>([
+  'pre_entrada',
+  'verificar_double_check',
+  'double_check_otimiza',
+  'aguardando_material',
+  'conferencia_fisica',
+  'aguardando_mesa',
+]);
 
 const COLUNAS = [
   { id: 'nf', label: 'NF' },
   { id: 'fornecedor', label: 'Fornecedor' },
   { id: 'emissao', label: 'Emissão' },
   { id: 'valor', label: 'Valor' },
-  { id: 'nomus', label: 'No Nomus' },
-  { id: 'manifestacao', label: 'Manifestação' },
-  { id: 'otimiza', label: 'Otimiza' },
   { id: 'documento', label: 'Documento' },
-  { id: 'movimentacao', label: 'Movimentação' },
-  { id: 'pedido', label: 'Pedido' },
-  { id: 'doublecheck', label: 'Double Check' },
-  { id: 'fisica', label: 'Conferência física' },
-  { id: 'situacao', label: 'Situação' },
+  { id: 'etapa', label: 'Etapa' },
+  { id: 'otimiza', label: 'Otimiza' },
 ];
 
 const COL_IDS = COLUNAS.map((coluna) => coluna.id);
@@ -77,24 +78,8 @@ function fmtValor(valor: number | null): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function labelSituacao(valor: SituacaoDestinada): string {
-  return SITUACOES.find((item) => item.id === valor)?.label ?? valor;
-}
-
-function labelNomus(status: number | null): string {
-  if (status === 1) return 'Autorizada';
-  if (status === 2) return 'Importada';
-  if (status == null) return '—';
-  return `Status ${status}`;
-}
-
-function labelManifestacao(codigo: number | null): string {
-  if (codigo == null) return 'Sem manifestação';
-  if (codigo === 1) return 'Ciência';
-  if (codigo === 2) return 'Confirmação';
-  if (codigo === 3) return 'Desconhecimento';
-  if (codigo === 4) return 'Operação não realizada';
-  return `Manifestação ${codigo}`;
+function labelEtapa(valor: EtapaDestinada): string {
+  return ETAPAS.find((item) => item.id === valor)?.label ?? valor;
 }
 
 function labelFinalidade(codigo: number | null): string | null {
@@ -105,41 +90,32 @@ function labelFinalidade(codigo: number | null): string | null {
   return `Finalidade ${codigo}`;
 }
 
-function labelConferencia(valor: ConferenciaDoubleCheckDestinada): string {
-  if (valor === 'conferida') return 'Conferida';
-  if (valor === 'nao_aplicada') return 'Não aplicada';
-  if (valor === 'pendente') return 'Pendente';
-  return '—';
+type ChamadoDestinadaLinha = LinhaDestinada['chamados'][number];
+
+function chamadoEmAndamento(item: ChamadoDestinadaLinha): boolean {
+  return item.status === 'in_progress' || item.status == null;
 }
 
-function labelFisica(valor: ConferenciaFisicaDestinada): string {
-  if (valor === 'aguardando_double_check') return 'Aguardando Double Check';
-  if (valor === 'aguardando_conferente') return 'Aguardando conferente';
-  if (valor === 'em_conferencia') return 'Em conferência';
-  if (valor === 'divergencia') return 'Divergência física';
-  if (valor === 'tratamento_compras') return 'Tratamento compras';
-  if (valor === 'aguardando_devolucao') return 'Aguardando devolução';
-  if (valor === 'devolucao_vinculada') return 'Devolução vinculada';
-  if (valor === 'aguardando_movimentacao') return 'Aguardando movimentação';
-  if (valor === 'finalizada') return 'Finalizada';
-  if (valor === 'cancelada') return 'Cancelada';
-  return '—';
+function chamadosEmAndamento(linha: LinhaDestinada): LinhaDestinada['chamados'] {
+  return linha.chamados.filter(chamadoEmAndamento);
 }
 
-function labelStatusOtimiza(status: LinhaDestinada['chamados'][number]['status']): string {
-  if (status === 'in_progress') return 'em andamento';
-  if (status === 'completed') return 'concluída';
-  if (status === 'cancelled') return 'cancelada';
-  return 'status não consultado';
+function labelStatusOtimiza(status: ChamadoDestinadaLinha['status']): string {
+  if (status === 'completed') return 'Concluído';
+  if (status === 'cancelled') return 'Cancelado';
+  return 'Em andamento';
 }
 
-function textoOtimizaItem(item: LinhaDestinada['chamados'][number]): string {
-  const base = `${item.numero} · ${labelStatusOtimiza(item.status)}`;
-  return item.responsavel ? `${base} · ${item.responsavel}` : base;
+function tomStatusOtimiza(status: ChamadoDestinadaLinha['status']): 'amber' | 'emerald' | 'rose' {
+  if (status === 'completed') return 'emerald';
+  if (status === 'cancelled') return 'rose';
+  return 'amber';
 }
 
-function textoPedidos(linha: LinhaDestinada): string {
-  return linha.pedidos.map((pedido) => pedido.nome).join(', ');
+function textoOtimizaChamado(item: ChamadoDestinadaLinha): string {
+  const responsavel = item.responsavel?.trim();
+  const base = responsavel ? `${item.numero} · ${responsavel}` : String(item.numero);
+  return `${base} ${labelStatusOtimiza(item.status)}`;
 }
 
 function textoBusca(linha: LinhaDestinada): string {
@@ -150,14 +126,8 @@ function textoBusca(linha: LinhaDestinada): string {
     linha.nomeFornecedor,
     linha.numeroDocumento,
     linha.nomeTipo,
-    textoPedidos(linha),
-    linha.chamados.map(textoOtimizaItem).join(' '),
-    labelNomus(linha.statusNomus),
-    labelManifestacao(linha.manifestacao),
-    labelConferencia(linha.conferencia),
-    labelFisica(linha.fisica),
-    labelSituacao(linha.situacao),
-    linha.conferidoPor,
+    labelEtapa(linha.etapa),
+    ...linha.chamados.map(textoOtimizaChamado),
   ]
     .filter(Boolean)
     .join(' ');
@@ -168,25 +138,72 @@ function textoCelula(linha: LinhaDestinada, coluna: string): string {
   if (coluna === 'fornecedor') return linha.nomeFornecedor || '—';
   if (coluna === 'emissao') return fmtDataBr(linha.dataEmissao);
   if (coluna === 'valor') return fmtValor(linha.valor);
-  if (coluna === 'nomus') return labelNomus(linha.statusNomus);
-  if (coluna === 'manifestacao') return labelManifestacao(linha.manifestacao);
-  if (coluna === 'otimiza') return linha.chamados.map(textoOtimizaItem).join(', ') || '—';
-  if (coluna === 'documento') return linha.numeroDocumento || '—';
-  if (coluna === 'movimentacao') return linha.nomeTipo || '—';
-  if (coluna === 'pedido') return textoPedidos(linha) || '—';
-  if (coluna === 'doublecheck') return labelConferencia(linha.conferencia);
-  if (coluna === 'fisica') return labelFisica(linha.fisica);
-  return labelSituacao(linha.situacao);
+  if (coluna === 'documento') {
+    if (!linha.numeroDocumento && !linha.nomeTipo) return '—';
+    return [linha.numeroDocumento, linha.nomeTipo].filter(Boolean).join(' ');
+  }
+  if (coluna === 'etapa') return labelEtapa(linha.etapa);
+  return linha.chamados.length > 0 ? linha.chamados.map(textoOtimizaChamado).join(', ') : '—';
 }
 
 function valoresFiltro(linha: LinhaDestinada, coluna: string): string[] | null {
+  if (coluna !== 'otimiza') return null;
+  return linha.chamados.length > 0 ? linha.chamados.map(textoOtimizaChamado) : ['—'];
+}
+
+function renderCelulaDestinada(linha: LinhaDestinada, coluna: string) {
+  if (coluna === 'nf') {
+    const finalidade = labelFinalidade(linha.finalidade);
+    return (
+      <>
+        <p className="font-medium text-slate-900 dark:text-white">{linha.numero}</p>
+        <p className="text-xs text-slate-500">
+          Série {linha.serie || '—'}
+          {finalidade ? ` · ${finalidade}` : ''}
+        </p>
+      </>
+    );
+  }
+  if (coluna === 'documento') {
+    if (!linha.numeroDocumento && !linha.nomeTipo) return '—';
+    return (
+      <>
+        <p className="font-medium text-slate-900 dark:text-white">{linha.numeroDocumento || '—'}</p>
+        {linha.nomeTipo ? <p className="max-w-[16rem] text-xs text-slate-500">{linha.nomeTipo}</p> : null}
+      </>
+    );
+  }
+  if (coluna === 'etapa') {
+    return (
+      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classeSelo(tomEtapa(linha.etapa))}`}>
+        {labelEtapa(linha.etapa)}
+      </span>
+    );
+  }
   if (coluna === 'otimiza') {
-    return linha.chamados.length > 0 ? linha.chamados.map(textoOtimizaItem) : ['—'];
+    if (linha.chamados.length === 0) return '—';
+    return (
+      <ul className="space-y-1">
+        {linha.chamados.map((item) => {
+          const responsavel = item.responsavel?.trim();
+          return (
+            <li
+              key={`${item.numero}-${item.status ?? 'aberto'}`}
+              className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5"
+            >
+              <span>{responsavel ? `${item.numero} · ${responsavel}` : item.numero}</span>
+              <span
+                className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4 ${classeSelo(tomStatusOtimiza(item.status))}`}
+              >
+                {labelStatusOtimiza(item.status)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
   }
-  if (coluna === 'pedido') {
-    return linha.pedidos.length > 0 ? linha.pedidos.map((pedido) => pedido.nome) : ['—'];
-  }
-  return null;
+  return textoCelula(linha, coluna);
 }
 
 function valorOrdenacao(linha: LinhaDestinada, coluna: string): string | number {
@@ -205,12 +222,29 @@ function classeSelo(tom: 'amber' | 'emerald' | 'slate' | 'violet' | 'cyan' | 'ro
   return 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300';
 }
 
-function tomSituacao(valor: SituacaoDestinada): 'amber' | 'emerald' | 'slate' | 'violet' | 'cyan' | 'rose' {
-  if (valor === 'documento_lancado') return 'emerald';
+type FiltroIndicador = 'destinadas' | 'efetivados' | 'pre-entrada' | 'nao-reconhecidas';
+
+function emPreEntrada(linha: LinhaDestinada): boolean {
+  return ETAPAS_PRE_ENTRADA.has(linha.etapa);
+}
+
+function passaFiltroIndicador(linha: LinhaDestinada, filtro: FiltroIndicador | null): boolean {
+  if (!filtro || filtro === 'destinadas') return true;
+  if (filtro === 'pre-entrada') return emPreEntrada(linha);
+  if (filtro === 'efetivados') return linha.etapa === 'efetivado';
+  return linha.etapa === 'nao_e_compra';
+}
+
+function tomEtapa(valor: EtapaDestinada): 'amber' | 'emerald' | 'slate' | 'violet' | 'cyan' | 'rose' {
+  if (valor === 'efetivado') return 'emerald';
   if (valor === 'nao_e_compra') return 'rose';
-  if (valor === 'divergencia_responsavel' || valor === 'em_confirmacao') return 'amber';
-  if (valor === 'aguardando_confirmacao' || valor === 'confirmada_sem_documento') return 'violet';
-  if (valor === 'em_conferencia_fisica' || valor === 'aguardando_mesa') return 'cyan';
+  if (valor === 'pre_entrada' || valor === 'verificar_double_check' || valor === 'double_check_otimiza') {
+    return 'amber';
+  }
+  if (valor === 'conferencia_fisica' || valor === 'aguardando_mesa' || valor === 'aguardando_material') {
+    return 'cyan';
+  }
+  if (valor === 'sem_documento') return 'violet';
   return 'slate';
 }
 
@@ -218,7 +252,7 @@ export default function GestaoEntradasDestinadasPanel() {
   const [dataInicio, setDataInicio] = useState(inicioMesYmd);
   const [dataFim, setDataFim] = useState(hojeYmd);
   const [busca, setBusca] = useState('');
-  const [situacaoFiltro, setSituacaoFiltro] = useState<SituacaoDestinada | null>(null);
+  const [filtroIndicador, setFiltroIndicador] = useState<FiltroIndicador | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [dados, setDados] = useState<GradeDestinadas | null>(null);
@@ -226,7 +260,7 @@ export default function GestaoEntradasDestinadasPanel() {
   const carregar = useCallback(async (di: string, df: string) => {
     setLoading(true);
     setErro(null);
-    setSituacaoFiltro(null);
+    setFiltroIndicador(null);
     try {
       const r = await fetchGestaoEntradasDestinadas({ dataInicio: di, dataFim: df });
       if (r.erro || !r.data) {
@@ -247,21 +281,72 @@ export default function GestaoEntradasDestinadasPanel() {
     void carregar(inicioMesYmd(), hojeYmd());
   }, [carregar]);
 
+  const indicadores = useMemo(() => {
+    const periodo = dados?.linhas ?? [];
+    const preEntradas = periodo.filter((linha) => emPreEntrada(linha));
+    const cards: Array<{
+      id: FiltroIndicador;
+      titulo: string;
+      detalhe: string;
+      valor: number;
+      sublegenda: string | null;
+      barra: string;
+      anel: string;
+      numero: string;
+    }> = [
+      {
+        id: 'destinadas',
+        titulo: 'Notas destinadas',
+        detalhe: 'No período',
+        valor: periodo.length,
+        sublegenda: null,
+        barra: 'bg-sky-500',
+        anel: 'ring-sky-500',
+        numero: 'text-sky-700 dark:text-sky-200',
+      },
+      {
+        id: 'efetivados',
+        titulo: 'Efetivados',
+        detalhe: 'Entradas efetivadas',
+        valor: periodo.filter((linha) => linha.etapa === 'efetivado').length,
+        sublegenda: null,
+        barra: 'bg-emerald-500',
+        anel: 'ring-emerald-500',
+        numero: 'text-emerald-700 dark:text-emerald-200',
+      },
+      {
+        id: 'pre-entrada',
+        titulo: 'Pré-entradas',
+        detalhe: 'Documento ainda não efetivado',
+        valor: preEntradas.length,
+        sublegenda: `${preEntradas.filter((linha) => chamadosEmAndamento(linha).length > 0).length} com Otimiza em andamento`,
+        barra: 'bg-amber-500',
+        anel: 'ring-amber-500',
+        numero: 'text-amber-700 dark:text-amber-200',
+      },
+      {
+        id: 'nao-reconhecidas',
+        titulo: 'Não reconhecidas',
+        detalhe: 'Não é compra nossa',
+        valor: periodo.filter((linha) => linha.etapa === 'nao_e_compra').length,
+        sublegenda: null,
+        barra: 'bg-rose-500',
+        anel: 'ring-rose-500',
+        numero: 'text-rose-700 dark:text-rose-200',
+      },
+    ];
+    return cards;
+  }, [dados]);
+
   const match = useMemo(() => criarMatcherTextoLivre(busca), [busca]);
-  const buscadas = useMemo(
-    () => (dados?.linhas ?? []).filter((linha) => match(textoBusca(linha))),
-    [dados, match],
-  );
-  const contagem = useMemo(() => {
-    const mapa = new Map<SituacaoDestinada, number>();
-    for (const item of SITUACOES) mapa.set(item.id, 0);
-    for (const linha of buscadas) mapa.set(linha.situacao, (mapa.get(linha.situacao) ?? 0) + 1);
-    return mapa;
-  }, [buscadas]);
   const linhas = useMemo(
-    () => (situacaoFiltro ? buscadas.filter((linha) => linha.situacao === situacaoFiltro) : buscadas),
-    [buscadas, situacaoFiltro],
+    () =>
+      (dados?.linhas ?? []).filter(
+        (linha) => passaFiltroIndicador(linha, filtroIndicador) && match(textoBusca(linha)),
+      ),
+    [dados, filtroIndicador, match],
   );
+  const filtroAtivo = indicadores.find((item) => item.id === filtroIndicador) ?? null;
 
   const getCellText = useCallback((linha: LinhaDestinada, coluna: string) => textoCelula(linha, coluna), []);
   const getCellFilterValues = useCallback(
@@ -362,28 +447,36 @@ export default function GestaoEntradasDestinadasPanel() {
       ) : null}
       {dados?.otimizaIndisponivel ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100" role="status">
-          O Otimiza não respondeu nesta consulta. A grade mostra o número já gravado no Double Check.
+          {dados.otimizaAviso ||
+            'A consulta ao vivo no Otimiza não completou. A grade mostra o número e o status já gravados no Double Check, sem quem está com o chamado — esse nome não fica salvo aqui.'}
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-        {SITUACOES.map((item) => {
-          const ativo = situacaoFiltro === item.id;
-          const qtde = contagem.get(item.id) ?? 0;
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        {indicadores.map((item) => {
+          const ativo = item.id === 'destinadas' ? filtroIndicador == null : filtroIndicador === item.id;
           return (
             <button
               key={item.id}
               type="button"
               aria-pressed={ativo}
-              className={`rounded-2xl border px-3 py-3 text-left ${panelSurface} ${
-                ativo ? 'ring-2 ring-primary-500' : ''
+              className={`relative overflow-hidden px-4 py-4 text-left ${panelSurface} ${
+                ativo ? `ring-2 ${item.anel}` : 'hover:brightness-110'
               }`}
-              onClick={() => setSituacaoFiltro((atual) => (atual === item.id ? null : item.id))}
+              onClick={() =>
+                setFiltroIndicador((atual) => {
+                  if (item.id === 'destinadas') return null;
+                  return atual === item.id ? null : item.id;
+                })
+              }
             >
-              <p className="line-clamp-2 text-[11px] font-semibold uppercase leading-snug tracking-wide text-slate-500 dark:text-slate-400">
-                {item.label}
-              </p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{qtde}</p>
+              <span className={`absolute inset-y-0 left-0 w-1 ${item.barra}`} aria-hidden />
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.titulo}</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{item.detalhe}</p>
+              <p className={`mt-3 text-3xl font-semibold tabular-nums leading-none ${item.numero}`}>{item.valor}</p>
+              {item.sublegenda ? (
+                <p className="mt-2 text-xs font-medium text-violet-700 dark:text-violet-200">{item.sublegenda}</p>
+              ) : null}
             </button>
           );
         })}
@@ -392,23 +485,23 @@ export default function GestaoEntradasDestinadasPanel() {
       <div className={`overflow-hidden ${panelSurface}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 px-4 py-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
           <p>
-            {buscadas.length} {buscadas.length === 1 ? 'nota destinada' : 'notas destinadas'}
-            {situacaoFiltro ? ` · ${labelSituacao(situacaoFiltro)}` : ''}
+            {linhas.length} {linhas.length === 1 ? 'nota destinada' : 'notas destinadas'}
+            {filtroAtivo ? ` · ${filtroAtivo.titulo}` : ''}
           </p>
           <p>
             {exibidas.length} {exibidas.length === 1 ? 'linha' : 'linhas'}
             {exibidas.length !== linhas.length ? ' na seleção' : ''}
           </p>
         </div>
-        {!loading && !erro && buscadas.length === 0 ? (
+        {!loading && !erro && (dados?.linhas.length ?? 0) === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhuma nota destinada neste período.</p>
         ) : null}
-        {!loading && !erro && buscadas.length > 0 && linhas.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhuma nota nesta situação.</p>
+        {!loading && !erro && (dados?.linhas.length ?? 0) > 0 && linhas.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhuma nota neste indicador.</p>
         ) : null}
         {linhas.length > 0 ? (
           <div ref={grade.tableScrollRef} className="overflow-auto">
-            <table className="w-full min-w-[1680px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-white">
                 <tr className="bg-primary-600">
                   {COLUNAS.map((coluna) => {
@@ -441,69 +534,14 @@ export default function GestaoEntradasDestinadasPanel() {
                 ) : (
                   exibidas.map((linha, indice) => {
                     const faixa = indice % 2 === 0 ? 'bg-white dark:bg-[#161822]' : 'bg-slate-100 dark:bg-[#232838]';
-                    const finalidade = labelFinalidade(linha.finalidade);
+                    const celula = 'border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200';
                     return (
                       <tr key={linha.idDestinada} className={faixa}>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-white/10">
-                          <p className="font-medium text-slate-900 dark:text-white">{linha.numero}</p>
-                          <p className="text-xs text-slate-500">
-                            Série {linha.serie || '—'}
-                            {finalidade ? ` · ${finalidade}` : ''}
-                          </p>
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {linha.nomeFornecedor || '—'}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top tabular-nums text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {fmtDataBr(linha.dataEmissao)}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top tabular-nums text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {fmtValor(linha.valor)}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {labelNomus(linha.statusNomus)}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {labelManifestacao(linha.manifestacao)}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {linha.chamados.length === 0 ? (
-                            '—'
-                          ) : (
-                            <ul className="space-y-1">
-                              {linha.chamados.map((item) => (
-                                <li key={item.numero} title={item.processo || undefined}>
-                                  {textoOtimizaItem(item)}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {linha.numeroDocumento || '—'}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {linha.nomeTipo || '—'}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {textoPedidos(linha) || '—'}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-white/10">
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classeSelo(linha.conferencia === 'conferida' ? 'emerald' : linha.conferencia === 'pendente' ? 'amber' : 'slate')}`}>
-                            {labelConferencia(linha.conferencia)}
-                          </span>
-                          {linha.conferidoPor ? (
-                            <p className="mt-1 text-xs text-slate-500">{linha.conferidoPor}</p>
-                          ) : null}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top text-slate-700 dark:border-white/10 dark:text-slate-200">
-                          {labelFisica(linha.fisica)}
-                        </td>
-                        <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-white/10">
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classeSelo(tomSituacao(linha.situacao))}`}>
-                            {labelSituacao(linha.situacao)}
-                          </span>
-                        </td>
+                        {COLUNAS.map((coluna) => (
+                          <td key={coluna.id} className={coluna.id === 'emissao' || coluna.id === 'valor' ? `${celula} tabular-nums` : celula}>
+                            {renderCelulaDestinada(linha, coluna.id)}
+                          </td>
+                        ))}
                       </tr>
                     );
                   })

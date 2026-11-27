@@ -1,5 +1,5 @@
 /**
- * Gestão entradas — notas destinadas à Só Aço no Nomus, com documento,
+ * Gestão entradas — notas destinadas à Só Aço Industrial no Nomus, com documento,
  * Otimiza, Double Check e conferência física.
  */
 
@@ -16,6 +16,7 @@ import {
   fundirChamadosDestinada,
   preferirFisicaDestinada,
   montarLinhaDestinada,
+  avisoConsultaOtimizaDestinadas,
   palavrasDaNota,
   type ChamadoDestinada,
   type DocDestinadaEfetivado,
@@ -47,6 +48,8 @@ SELECT
   n.status AS statusNomus,
   n.manifestacao AS manifestacao,
   n.finalidade AS finalidade,
+  n.idEmpresa AS idEmpresa,
+  NULLIF(TRIM(e.nome), '') AS nomeEmpresa,
   de.id AS idDocumento,
   NULLIF(TRIM(de.numeroDocumentoFiscal), '') AS numeroDocumentoFiscal,
   de.idTipoMovimentacao AS idTipoMovimentacao,
@@ -54,6 +57,7 @@ SELECT
   DATE(de.dataEntrada) AS dataEntrada,
   de.idParceiro AS idParceiro
 FROM nfedestinadaimportada n
+LEFT JOIN empresa e ON e.id = n.idEmpresa
 LEFT JOIN documentoestoque de ON de.id = n.idDocumentoEntrada
 LEFT JOIN tipomovimentacao tm ON tm.id = de.idTipoMovimentacao
 WHERE n.idEmpresa = ${RECEBIMENTO_ID_EMPRESA_SO_ACO}
@@ -68,6 +72,7 @@ SELECT
   NULLIF(TRIM(de.numeroDocumentoFiscal), '') AS numeroDocumentoFiscal,
   de.idParceiro AS idParceiro,
   de.idTipoMovimentacao AS idTipoMovimentacao,
+  de.idEmpresaEntrada AS idEmpresa,
   NULLIF(TRIM(tm.nome), '') AS nomeTipo,
   DATE(de.dataEntrada) AS dataEntrada
 FROM documentoestoque de
@@ -100,6 +105,8 @@ type NotaBruta = {
   statusNomus: number | null;
   manifestacao: number | null;
   finalidade: number | null;
+  idEmpresa: number | null;
+  nomeEmpresa: string | null;
   origem: DocDestinadaOrigem;
 };
 
@@ -161,6 +168,8 @@ function mapNota(r: Record<string, unknown>): NotaBruta | null {
     statusNomus: toIntOrNull(r.statusNomus),
     manifestacao: toIntOrNull(r.manifestacao),
     finalidade: toIntOrNull(r.finalidade),
+    idEmpresa: toIntOrNull(r.idEmpresa),
+    nomeEmpresa: strOrNull(r.nomeEmpresa),
     origem: {
       idDocumento: idDocumento != null && idDocumento > 0 ? idDocumento : null,
       numeroDocumentoFiscal: strOrNull(r.numeroDocumentoFiscal),
@@ -172,8 +181,8 @@ function mapNota(r: Record<string, unknown>): NotaBruta | null {
   };
 }
 
-function chaveFiscal(numero: string | null, idParceiro: number | null): string {
-  return `${(numero ?? '').trim().toUpperCase()}|${idParceiro ?? 0}`;
+function chaveFiscal(numero: string | null, idParceiro: number | null, idEmpresa: number | null): string {
+  return `${(numero ?? '').trim().toUpperCase()}|${idParceiro ?? 0}|${idEmpresa ?? 0}`;
 }
 
 async function queryNotas(
@@ -221,7 +230,7 @@ async function queryEfetivados(numeros: string[]): Promise<Map<string, DocDestin
         nomeTipo: strOrNull(row.nomeTipo),
         dataEntrada: formatSqlDateYmd(row.dataEntrada),
       };
-      const chave = chaveFiscal(numeroDocumentoFiscal, efetivado.idParceiro);
+      const chave = chaveFiscal(numeroDocumentoFiscal, efetivado.idParceiro, toIntOrNull(row.idEmpresa));
       const atual = mapa.get(chave);
       if (!atual || atual.idDocumento < idDocumento) mapa.set(chave, efetivado);
     }
@@ -280,7 +289,7 @@ export async function queryGestaoEntradasDestinadas(params: {
   const ids = new Set<number>();
   for (const nota of notas) {
     const irmao = nota.origem.numeroDocumentoFiscal
-      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro)) ?? null
+      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro, nota.idEmpresa)) ?? null
       : null;
     const exibido = documentoExibidoDestinada(nota.origem, irmao && irmao.idDocumento !== nota.origem.idDocumento ? irmao : null);
     if (nota.origem.idDocumento) ids.add(nota.origem.idDocumento);
@@ -332,7 +341,7 @@ export async function queryGestaoEntradasDestinadas(params: {
 
   const palavras = notas.flatMap((nota) => {
     const irmao = nota.origem.numeroDocumentoFiscal
-      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro)) ?? null
+      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro, nota.idEmpresa)) ?? null
       : null;
     const exibido = documentoExibidoDestinada(
       nota.origem,
@@ -343,6 +352,7 @@ export async function queryGestaoEntradasDestinadas(params: {
 
   let porPalavra = new Map<string, ChamadoDestinada[]>();
   let otimizaIndisponivel = false;
+  let otimizaAviso: string | null = null;
   try {
     const consulta = await consultarChamadosPorPalavra(palavras);
     const exclusivos = chamadosExclusivosPorPalavra(consulta);
@@ -351,6 +361,7 @@ export async function queryGestaoEntradasDestinadas(params: {
     );
   } catch (err) {
     otimizaIndisponivel = true;
+    otimizaAviso = avisoConsultaOtimizaDestinadas(err);
     console.error(
       '[gestaoEntradasDestinadas] otimiza:',
       err instanceof Error ? err.message : String(err)
@@ -371,7 +382,7 @@ export async function queryGestaoEntradasDestinadas(params: {
 
   const linhas: LinhaDestinada[] = notas.map((nota) => {
     const irmaoBruto = nota.origem.numeroDocumentoFiscal
-      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro)) ?? null
+      ? efetivados.get(chaveFiscal(nota.origem.numeroDocumentoFiscal, nota.origem.idParceiro, nota.idEmpresa)) ?? null
       : null;
     const irmao =
       irmaoBruto && irmaoBruto.idDocumento !== nota.origem.idDocumento ? irmaoBruto : null;
@@ -401,6 +412,8 @@ export async function queryGestaoEntradasDestinadas(params: {
       statusNomus: nota.statusNomus,
       manifestacao: nota.manifestacao,
       finalidade: nota.finalidade,
+      idEmpresa: nota.idEmpresa,
+      nomeEmpresa: nota.nomeEmpresa,
       origem: nota.origem,
       irmao,
       pedidosOrigem: nota.origem.idDocumento ? pedidos.get(nota.origem.idDocumento) ?? [] : [],
@@ -422,6 +435,7 @@ export async function queryGestaoEntradasDestinadas(params: {
       dataInicio: params.dataInicio,
       dataFim: params.dataFim,
       otimizaIndisponivel,
+      otimizaAviso,
       linhas,
     },
   };

@@ -367,6 +367,17 @@ export async function fetchGestaoEntradasPreEntradasImpressao(params: {
   return { data: body };
 }
 
+export type EtapaDestinada =
+  | 'sem_documento'
+  | 'pre_entrada'
+  | 'verificar_double_check'
+  | 'double_check_otimiza'
+  | 'aguardando_material'
+  | 'conferencia_fisica'
+  | 'aguardando_mesa'
+  | 'efetivado'
+  | 'nao_e_compra';
+
 export type SituacaoDestinada =
   | 'aguardando_confirmacao'
   | 'em_confirmacao'
@@ -403,6 +414,8 @@ export type LinhaDestinada = {
   statusNomus: number | null;
   manifestacao: number | null;
   finalidade: number | null;
+  idEmpresa: number | null;
+  nomeEmpresa: string | null;
   idDocumento: number | null;
   numeroDocumento: string | null;
   idTipoMovimentacao: number | null;
@@ -419,12 +432,15 @@ export type LinhaDestinada = {
     processo: string | null;
   }>;
   situacao: SituacaoDestinada;
+  etapa: EtapaDestinada;
+  preEntradaCriada: boolean;
 };
 
 export type GradeDestinadas = {
   dataInicio: string;
   dataFim: string;
   otimizaIndisponivel: boolean;
+  otimizaAviso?: string | null;
   linhas: LinhaDestinada[];
 };
 

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  avisoConsultaOtimizaDestinadas,
+  AVISO_OTIMIZA_INDISPONIVEL,
+  AVISO_OTIMIZA_LIMITADO,
   chamadosExclusivosPorPalavra,
   documentoExibidoDestinada,
   erroPeriodoDestinadas,
   fundirChamadosDestinada,
+  etapaNotaDestinada,
   montarLinhaDestinada,
   palavrasDaNota,
   situacaoNotaDestinada,
@@ -28,6 +32,19 @@ const origemVazia: DocDestinadaOrigem = {
   dataEntrada: null,
   idParceiro: null,
 };
+
+describe('aviso quando o Otimiza não entrega o chamado', () => {
+  it('distingue limite de consultas de falha genérica', () => {
+    expect(
+      avisoConsultaOtimizaDestinadas(
+        new Error('O Otimiza limitou as consultas. Aguarde 60 segundos e tente de novo.')
+      )
+    ).toBe(AVISO_OTIMIZA_LIMITADO);
+    expect(avisoConsultaOtimizaDestinadas(new Error('Não foi possível consultar os chamados no Otimiza.'))).toBe(
+      AVISO_OTIMIZA_INDISPONIVEL
+    );
+  });
+});
 
 describe('situação da nota destinada', () => {
   it('recusa período maior que 62 dias', () => {
@@ -137,6 +154,8 @@ describe('situação da nota destinada', () => {
       statusNomus: 2,
       manifestacao: 1,
       finalidade: 1,
+      idEmpresa: 1,
+      nomeEmpresa: 'SÓ AÇO INDUSTRIAL',
       pedidosOrigem: [{ idPedido: 7, nome: 'PC 7' }],
       pedidosAtual: [],
       conferidoPor: 'Ana',
@@ -157,6 +176,8 @@ describe('situação da nota destinada', () => {
       chamados: [],
     });
     expect(pendente.situacao).toBe('pre_entrada_pendente');
+    expect(pendente.etapa).toBe('verificar_double_check');
+    expect(pendente.preEntradaCriada).toBe(true);
     expect(pendente.conferencia).toBe('pendente');
     expect(pendente.pedidos).toEqual([{ idPedido: 7, nome: 'PC 7' }]);
 
@@ -177,6 +198,43 @@ describe('situação da nota destinada', () => {
       chamados: [chamado({ numero: 80, responsavel: 'Compras' })],
     });
     expect(divergencia.situacao).toBe('divergencia_responsavel');
+    expect(divergencia.etapa).toBe('double_check_otimiza');
+
+    const material = montarLinhaDestinada({
+      ...base,
+      origem: {
+        idDocumento: 10,
+        numeroDocumentoFiscal: 'DE10',
+        idTipoMovimentacao: 46,
+        nomeTipo: 'PRÉ ENTRADA',
+        dataEntrada: '2026-11-26',
+        idParceiro: 3,
+      },
+      conferido: true,
+      fisica: 'sem_registro',
+      chamados: [chamado({ numero: 81, responsavel: 'Compras' })],
+    });
+    expect(material.etapa).toBe('double_check_otimiza');
+    expect(
+      etapaNotaDestinada({
+        idDocumento: 10,
+        efetivado: false,
+        conferencia: 'conferida',
+        fisica: 'sem_registro',
+        manifestacao: null,
+        chamados: [],
+      })
+    ).toBe('aguardando_material');
+    expect(
+      etapaNotaDestinada({
+        idDocumento: 10,
+        efetivado: false,
+        conferencia: 'pendente',
+        fisica: 'aguardando_movimentacao',
+        manifestacao: null,
+        chamados: [],
+      })
+    ).toBe('aguardando_mesa');
 
     const mesa = montarLinhaDestinada({
       ...base,
@@ -193,6 +251,7 @@ describe('situação da nota destinada', () => {
       chamados: [],
     });
     expect(mesa.situacao).toBe('em_conferencia_fisica');
+    expect(mesa.etapa).toBe('conferencia_fisica');
     expect(mesa.conferidoPor).toBe('Ana');
 
     const lancada = montarLinhaDestinada({
@@ -219,8 +278,37 @@ describe('situação da nota destinada', () => {
       pedidosAtual: [{ idPedido: 8, nome: 'PC 8' }],
     });
     expect(lancada.situacao).toBe('documento_lancado');
+    expect(lancada.etapa).toBe('efetivado');
+    expect(lancada.preEntradaCriada).toBe(true);
     expect(lancada.numeroDocumento).toBe('DE20');
     expect(lancada.nomeTipo).toBe('Compra');
     expect(lancada.pedidos).toEqual([{ idPedido: 8, nome: 'PC 8' }]);
+  });
+
+  it('classifica nota sem documento pela manifestação e pelo chamado', () => {
+    const base = {
+      idDocumento: null,
+      efetivado: false,
+      conferencia: 'sem_documento' as const,
+      fisica: 'sem_registro' as const,
+    };
+    expect(etapaNotaDestinada({ ...base, manifestacao: null, chamados: [] })).toBe('sem_documento');
+    expect(
+      etapaNotaDestinada({ ...base, manifestacao: 3, chamados: [chamado({ numero: 1 })] }),
+    ).toBe('nao_e_compra');
+    expect(
+      etapaNotaDestinada({
+        ...base,
+        manifestacao: null,
+        chamados: [chamado({ numero: 2, status: 'cancelled' })],
+      }),
+    ).toBe('nao_e_compra');
+    expect(
+      etapaNotaDestinada({
+        ...base,
+        manifestacao: null,
+        chamados: [chamado({ numero: 3, status: 'completed' })],
+      }),
+    ).toBe('sem_documento');
   });
 });

@@ -1094,7 +1094,9 @@ export async function carregarHistoricoDoubleCheck(
       natureza: snap.natureza,
       apontadoEm: snap.apontadoEm.toISOString(),
     }));
-    const linhasAtuais: LinhaAtualHistorico[] = comparativo.linhas ?? [];
+    const linhasAtuais: LinhaAtualHistorico[] = (comparativo.linhas ?? []).filter(
+      (linha) => !linha.semVinculoPedido
+    );
     const relato = lerRelatoConferencia(paginaConferencia?.payloadJson ?? null);
     const vinculosRefeitos = await detectarVinculosRefeitos(pool, idDocumento, itensBrutos, snapshotsRaw);
     const decisoes: DecisaoHistorico[] = decisoesRaw.map((decisao) => ({

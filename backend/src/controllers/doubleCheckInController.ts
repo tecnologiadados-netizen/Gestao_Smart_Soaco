@@ -88,7 +88,10 @@ import {
   saveDoubleCheckInFormulario,
 } from '../utils/doubleCheckInFormularioUpload.js';
 import { enviarNotificacaoPorTipo } from '../services/whatsappNotificacaoService.js';
-import { contarPendentesComparativoLogica } from '../utils/doubleCheckInPendencias.js';
+import {
+  contarItensSemVinculoPedido,
+  contarPendentesComparativoLogica,
+} from '../utils/doubleCheckInPendencias.js';
 import { pagamentoXmlPendenteEfetivo } from '../utils/doubleCheckInFaturaConferencia.js';
 import {
   regimeConferenciaPorDataEntrada,
@@ -253,7 +256,11 @@ type ResumoDivergenciasAtuais = {
   temReal: boolean;
   temBenigna: boolean;
   pendencias: number;
+  itensSemVinculoPedido: number;
 };
+
+const MENSAGEM_ITEM_SEM_PEDIDO =
+  'Não é possível confirmar a conferência do documento: há item da nota sem vínculo com pedido de compra. Aceite ou recuse as demais divergências; o documento só fecha quando esse item for vinculado a um pedido.';
 
 async function carregarResumosDivergenciasAtuais(
   ids: number[]
@@ -310,6 +317,7 @@ async function carregarResumosDivergenciasAtuais(
         linhas,
         decisoesPorDocumento.get(id) ?? []
       ),
+      itensSemVinculoPedido: contarItensSemVinculoPedido(linhas),
     });
   }
   return resumos;
@@ -442,15 +450,17 @@ async function enriquecerNotasComConferencia(
     const c = map.get(n.idDocumento);
     const atual = resumosAtuais.get(n.idDocumento);
     const pendencias = Number(atual?.pendencias ?? 0);
+    const itensSemVinculoPedido = Number(atual?.itensSemVinculoPedido ?? 0);
     const conferenciaReaberta =
       regimeConferencia !== 'nao_aplicada' &&
       Boolean(c) &&
       regimeConferencia === 'completa' &&
-      pendencias > 0;
+      (pendencias > 0 || itensSemVinculoPedido > 0);
     const conferido = conferenciaDoubleCheckLiberadaParaMesa({
       regime: regimeConferencia,
       possuiConferenciaValida: Boolean(c),
       pendenciasSemDecisao: pendencias,
+      itensSemVinculoPedido,
     }) && regimeConferencia !== 'nao_aplicada';
     return {
       ...n,
@@ -519,6 +529,7 @@ export async function listarIdsConferenciaDoubleCheckConcluida(
       regime,
       possuiConferenciaValida: conferidos.has(doc.idDocumento),
       pendenciasSemDecisao: resumos.get(doc.idDocumento)?.pendencias ?? 0,
+      itensSemVinculoPedido: resumos.get(doc.idDocumento)?.itensSemVinculoPedido ?? 0,
     });
     if (ok) liberados.add(doc.idDocumento);
   }
@@ -576,7 +587,8 @@ export async function carregarComparativoVisivel(idDocumento: number): Promise<{
 }> {
   const { linhas, erro } = await queryDoubleCheckInComparativoPc({ idDocumento });
   if (erro) return { linhas: [], semVinculo: false, erro };
-  if (linhas.length > 0) {
+  const vinculadas = linhas.filter((linha) => !linha.semVinculoPedido);
+  if (vinculadas.length > 0) {
     await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
     await sincronizarEspelhosLeitura(idDocumento, linhas);
     return { linhas: linhasComNatureza(linhas, []), semVinculo: false };
@@ -681,14 +693,15 @@ export async function getDoubleCheckInComparativoPc(req: Request, res: Response)
     const consultadosOtimiza = await refrescarStatusOtimiza(solicitacoesOtimiza);
     const solicitacoesAtuais = comStatusOtimizaAtual(solicitacoesOtimiza, consultadosOtimiza);
     const regime = regimeConferenciaPorDataEntrada(dataDocumento.dataEntrada);
-    if (linhas.length > 0) {
+    const vinculadas = linhas.filter((linha) => !linha.semVinculoPedido);
+    if (vinculadas.length > 0) {
       await registrarEspelhoPrimeiraLeitura(new Map([[idDocumento, linhas]]));
       await sincronizarEspelhosLeitura(idDocumento, linhas);
       if (regime === 'completa') {
         await registrarDivergenciasApontadas(new Map([[idDocumento, linhas]]));
       }
     }
-    if (linhas.length === 0) {
+    if (vinculadas.length === 0) {
       await sincronizarEspelhosLeitura(idDocumento, []);
       const espelho = await carregarEspelhoPrimeiraLeitura(idDocumento);
       res.json({
@@ -1820,7 +1833,8 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
       res.status(503).json({ error: consulta.erro });
       return;
     }
-    if (consulta.linhas.length === 0 && (!ja || reconferenciaSolicitada)) {
+    const vinculadas = consulta.linhas.filter((linha) => !linha.semVinculoPedido);
+    if (vinculadas.length === 0 && (!ja || reconferenciaSolicitada)) {
       res.status(400).json({
         error:
           'Não é possível conferir: nenhum item da nota está vinculado a um pedido de compra.',
@@ -1833,6 +1847,10 @@ export async function postDoubleCheckInConferir(req: Request, res: Response): Pr
     const validacao = validarDecisoesCompletas(linhas, decisoes);
     if (!validacao.ok) {
       res.status(400).json({ error: validacao.error, pendentes: validacao.pendentes });
+      return;
+    }
+    if (contarItensSemVinculoPedido(linhas) > 0) {
+      res.status(400).json({ error: MENSAGEM_ITEM_SEM_PEDIDO });
       return;
     }
 

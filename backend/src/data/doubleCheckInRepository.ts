@@ -876,6 +876,12 @@ export type DoubleCheckInComparativoLinha = {
   /** Forma escolhida no lançamento completo (boleto externo). */
   formaPagamentoNF?: string | null;
   temDivergencia: boolean;
+  /**
+   * Item da nota sem linha em `itemdocumentoestoque_itempedidocompra`.
+   * Não entra na comparação NF × PC nem nos totais dos vínculos.
+   * Enquanto existir junto com item vinculado, a conferência do documento não fecha.
+   */
+  semVinculoPedido?: boolean;
 };
 
 export type DoubleCheckInParcelaPrazo = {
@@ -1148,9 +1154,49 @@ WHERE de.id IN (__IDS__)
 ORDER BY de.id ASC, ide.id ASC, ipc.id ASC
 `.trim();
 
+const SQL_ITENS_SEM_PEDIDO = `
+SELECT
+  de.id AS idDocumento,
+  ide.id AS idItemDocumentoEstoque,
+  ide.idProduto AS idProduto,
+  p.nome AS codigoProduto,
+  p.descricao AS descricaoProduto,
+  ide.qtde AS qtdeNF,
+  umide.nome AS umNF,
+  ide.valorUnitario AS valorUnitarioBrutoNF,
+  IFNULL(ide.valorDesconto, 0) AS descontoNF,
+  ide.valorTotalComDesconto AS valorTotalComDescontoNF,
+  IFNULL(tde.valorIPI, 0) AS valorIpiNF,
+  IFNULL(tde.vICMSST, 0) + IFNULL(tde.vFCPST, 0) AS valorStNF,
+  IFNULL(tde.aliquotaIPI, 0) AS aliquotaIpiNF,
+  DATE(de.dataEntrada) AS dataEntradaDocumento,
+  IFNULL(de.geraAgendamentoFinanceiro, 1) AS geraAgendamentoFinanceiro,
+  de.idTipoMovimentacao AS idTipoMovimentacao,
+  tp.nome AS tipoMovimentacao
+FROM itemdocumentoestoque ide
+INNER JOIN documentoestoque de ON de.id = ide.idDocumentoEstoque
+LEFT JOIN tipomovimentacao tp ON tp.id = de.idTipoMovimentacao
+LEFT JOIN produto p ON p.id = ide.idProduto
+LEFT JOIN unidademedida umide ON umide.id = ide.idUnidadeMedida
+LEFT JOIN tributacao tde ON tde.idItemDocumentoEstoque = ide.id
+WHERE de.id IN (__IDS__)
+  AND ide.discriminador = 'ItemDocumentoEntrada'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM itemdocumentoestoque_itempedidocompra ideipc
+    WHERE ideipc.idItemDocumentoEstoque = ide.id
+  )
+ORDER BY de.id ASC, ide.id ASC
+`.trim();
+
 function sqlComparativoPorIds(qtde: number): string {
   const ph = Array.from({ length: qtde }, () => '?').join(', ');
   return SQL_COMPARATIVO_PC.replace('__IDS__', ph);
+}
+
+function sqlItensSemPedidoPorIds(qtde: number): string {
+  const ph = Array.from({ length: qtde }, () => '?').join(', ');
+  return SQL_ITENS_SEM_PEDIDO.replace('__IDS__', ph);
 }
 
 async function carregarPrazosParcelasLote(params: {
@@ -1419,6 +1465,88 @@ function montarLinhaComparativo(
     valorNfXml: preEntrada?.valorNf ?? null,
     formaPagamentoNF: preEntrada?.formaPagamento ?? null,
     temDivergencia: divergValorUnitario || divergQtde || divergIpi || divergCondicaoPagamento,
+    semVinculoPedido: false,
+  };
+}
+
+/** Item da NF que o Nomus ainda não ligou a nenhum item de pedido de compra. */
+function montarLinhaSemVinculoPedido(r: Record<string, unknown>): DoubleCheckInComparativoLinha {
+  const qtdeNF = toNum(r.qtdeNF);
+  const valorUnitarioBrutoNF = toNum(r.valorUnitarioBrutoNF);
+  const descontoNF = toNum(r.descontoNF);
+  const totalDescNF =
+    r.valorTotalComDescontoNF != null
+      ? toNum(r.valorTotalComDescontoNF)
+      : valorUnitarioBrutoNF * qtdeNF - descontoNF;
+  const valorUnitarioNF = unitarioLiquidoComDesconto({
+    unitarioBruto: valorUnitarioBrutoNF,
+    qtde: qtdeNF,
+    desconto: descontoNF,
+    totalComDesconto: totalDescNF,
+  });
+  const umNF = strOrNull(r.umNF);
+  const porPeso = entradaPorPeso(umNF, null);
+  const casasAltas = !porPeso && unitarioPrecisaCasasAltas(valorUnitarioNF, valorUnitarioNF);
+  return {
+    idItemDocumentoEstoque: toInt(r.idItemDocumentoEstoque),
+    idItemPedidoCompra: 0,
+    idPedidoCompra: null,
+    nomePedidoCompra: null,
+    idProduto: r.idProduto != null ? toInt(r.idProduto) : null,
+    codigoProduto: strOrNull(r.codigoProduto),
+    descricaoProduto: strOrNull(r.descricaoProduto),
+    qtdeNF: arredondarComparativo(qtdeNF, 4),
+    umNF,
+    qtdePC: 0,
+    umPC: null,
+    valorUnitarioBrutoNF: arredondarComparativo(valorUnitarioBrutoNF, casasAltas ? 8 : 2),
+    valorUnitarioBrutoPC: 0,
+    descontoNF: arredondarComparativo(descontoNF, 2),
+    descontoPC: 0,
+    valorTotalComDescontoNF: arredondarComparativo(totalDescNF, 2),
+    valorTotalComDescontoPC: 0,
+    descontoDocumentoNF: 0,
+    valorStNF: arredondarComparativo(toNum(r.valorStNF), 2),
+    valorStPC: 0,
+    acrescimosCabecalhoNF: 0,
+    valorStCabecalhoNF: 0,
+    valorNfOficial: 0,
+    valorProdutosNf: 0,
+    valorUnitarioNF: porPeso
+      ? normalizarUnitarioExato(valorUnitarioNF)
+      : arredondarComparativo(valorUnitarioNF, casasAltas ? 8 : 2),
+    valorUnitarioPC: 0,
+    entradaPorPeso: porPeso,
+    valorIpiNF: arredondarComparativo(toNum(r.valorIpiNF), 2),
+    valorIpiPC: 0,
+    aliquotaIpiNF: toNum(r.aliquotaIpiNF),
+    aliquotaIpiPC: 0,
+    conferenciaIpi: conferenciaIpiPorDataEntrada(formatSqlDateYmd(r.dataEntradaDocumento)),
+    condicaoPagamentoNF: null,
+    regraPagamentoNF: null,
+    condicaoPagamentoPC: null,
+    regraPagamentoPC: null,
+    dataBaseParcelasNF: null,
+    dataBaseParcelasPC: null,
+    parcelasNF: [],
+    parcelasPC: [],
+    prazosDiasNF: [],
+    prazosDiasPC: [],
+    prazosLabelNF: null,
+    prazosLabelPC: null,
+    divergValorUnitario: false,
+    divergQtde: false,
+    divergIpi: false,
+    divergCondicaoPagamento: false,
+    naoGeraContasPagar: toInt(r.geraAgendamentoFinanceiro) === 0,
+    idTipoMovimentacao: r.idTipoMovimentacao != null ? toInt(r.idTipoMovimentacao) : null,
+    tipoMovimentacao: strOrNull(r.tipoMovimentacao),
+    comparaCondicaoPagamento: false,
+    origemParcelasNF: 'nomus',
+    pagamentoXmlPendente: false,
+    valorNfXml: null,
+    temDivergencia: false,
+    semVinculoPedido: true,
   };
 }
 
@@ -1500,12 +1628,25 @@ async function carregarLinhasComparativoPorDocumentos(
         arr.push(linha);
         linhasPorDocumento.set(idDoc, arr);
       }
+      const [semPedidoRows] = await nomusQueryWithRetry<Record<string, unknown>[]>(
+        pool,
+        sqlItensSemPedidoPorIds(parte.length),
+        parte
+      );
+      for (const r of Array.isArray(semPedidoRows) ? semPedidoRows : []) {
+        const idDoc = toInt(r.idDocumento);
+        const arr = linhasPorDocumento.get(idDoc) ?? [];
+        arr.push(montarLinhaSemVinculoPedido(r));
+        linhasPorDocumento.set(idDoc, arr);
+      }
     }
     for (const [idDoc, linhas] of linhasPorDocumento) {
-      linhasPorDocumento.set(
-        idDoc,
-        aplicarTotaisVinculosDocumento(aplicarSomaQtdeMesmoItem(linhas))
-      );
+      const vinculadas = linhas.filter((linha) => !linha.semVinculoPedido);
+      const semPedido = linhas.filter((linha) => linha.semVinculoPedido);
+      linhasPorDocumento.set(idDoc, [
+        ...aplicarTotaisVinculosDocumento(aplicarSomaQtdeMesmoItem(vinculadas)),
+        ...semPedido,
+      ]);
     }
     return { linhasPorDocumento };
   } catch (err) {

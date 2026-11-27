@@ -1861,6 +1861,8 @@ export type DoubleCheckInComparativoLinha = {
   origemParcelasNF?: 'nomus' | 'xml' | 'ja_paga' | 'boleto_externo' | 'pendente' | 'sem_xml';
   /** Sem fatura no XML e sem resposta. A conferência não fecha. */
   pagamentoXmlPendente?: boolean;
+  /** Item da nota ainda sem pedido de compra. Não compara NF × PC e impede fechar o documento. */
+  semVinculoPedido?: boolean;
   /** Total da NF no XML. */
   valorNfXml?: number | null;
   /** Forma de pagamento lançada quando há boleto a vencer. */
