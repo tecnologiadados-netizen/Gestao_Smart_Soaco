@@ -356,9 +356,10 @@ function nomeItemLinha(linha: DoubleCheckInComparativoLinha): string {
   return 'item';
 }
 
+/** Divergência real não manda ajustar o pedido: nem sempre dá para igualar o PC ao documento. */
 function pedidoDaAcao(natureza: 'real' | 'benigna' | undefined, ajuste: string): string {
   if (natureza === 'benigna') return `Conferir ${ajuste}.`;
-  return `Ajustar ${ajuste}.`;
+  return 'Verificar o que houve.';
 }
 
 /** "12/15" → "2 parcelas para 12 e 15 dias". "0" → "1 parcela para 0 dias". */
