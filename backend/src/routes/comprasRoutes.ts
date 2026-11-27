@@ -12,6 +12,7 @@ import {
   getConferenciaFisicaDocumento,
   getConferenciaFisicaPainel,
   getGestaoEntradasComprador,
+  getGestaoEntradasDestinadas,
   getGestaoEntradasDia,
   getGestaoEntradasPainel,
   getGestaoEntradasPreEntradas,
@@ -655,6 +656,11 @@ router.get(
   '/double-checkin/dashboard',
   requirePermission(PERMISSOES.COMPRAS_DOUBLE_CHECKIN),
   async503(getDoubleCheckInDashboard)
+);
+router.get(
+  '/gestao-entradas/destinadas',
+  requirePermission(...PERMISSOES_ACESSO_PAINEL_GESTAO_ENTRADAS),
+  async503(getGestaoEntradasDestinadas)
 );
 router.get(
   '/gestao-entradas/pre-entradas/impressao',

@@ -367,6 +367,83 @@ export async function fetchGestaoEntradasPreEntradasImpressao(params: {
   return { data: body };
 }
 
+export type SituacaoDestinada =
+  | 'aguardando_confirmacao'
+  | 'em_confirmacao'
+  | 'confirmada_sem_documento'
+  | 'nao_e_compra'
+  | 'pre_entrada_pendente'
+  | 'divergencia_responsavel'
+  | 'aguardando_mesa'
+  | 'em_conferencia_fisica'
+  | 'documento_lancado';
+
+export type ConferenciaDoubleCheckDestinada = 'sem_documento' | 'pendente' | 'conferida' | 'nao_aplicada';
+
+export type ConferenciaFisicaDestinada =
+  | 'sem_registro'
+  | 'aguardando_double_check'
+  | 'aguardando_conferente'
+  | 'em_conferencia'
+  | 'divergencia'
+  | 'tratamento_compras'
+  | 'aguardando_devolucao'
+  | 'devolucao_vinculada'
+  | 'aguardando_movimentacao'
+  | 'finalizada'
+  | 'cancelada';
+
+export type LinhaDestinada = {
+  idDestinada: number;
+  numero: string;
+  serie: string | null;
+  nomeFornecedor: string | null;
+  dataEmissao: string | null;
+  valor: number | null;
+  statusNomus: number | null;
+  manifestacao: number | null;
+  finalidade: number | null;
+  idDocumento: number | null;
+  numeroDocumento: string | null;
+  idTipoMovimentacao: number | null;
+  nomeTipo: string | null;
+  dataEntrada: string | null;
+  pedidos: Array<{ idPedido: number; nome: string }>;
+  conferencia: ConferenciaDoubleCheckDestinada;
+  conferidoPor: string | null;
+  fisica: ConferenciaFisicaDestinada;
+  chamados: Array<{
+    numero: number;
+    status: 'in_progress' | 'completed' | 'cancelled' | null;
+    responsavel: string | null;
+    processo: string | null;
+  }>;
+  situacao: SituacaoDestinada;
+};
+
+export type GradeDestinadas = {
+  dataInicio: string;
+  dataFim: string;
+  otimizaIndisponivel: boolean;
+  linhas: LinhaDestinada[];
+};
+
+export async function fetchGestaoEntradasDestinadas(params: {
+  dataInicio: string;
+  dataFim: string;
+}): Promise<{ data?: GradeDestinadas; erro?: string }> {
+  const sp = new URLSearchParams();
+  sp.set('dataInicio', params.dataInicio);
+  sp.set('dataFim', params.dataFim);
+  const res = await apiFetch(`/api/compras/gestao-entradas/destinadas?${sp}`);
+  const body = (await res.json().catch(() => ({}))) as GradeDestinadas & {
+    error?: string;
+    erro?: string;
+  };
+  if (!res.ok) return { erro: body.erro ?? body.error ?? res.statusText };
+  return { data: body };
+}
+
 export async function fetchGestaoEntradasPreEntradas(params: {
   dataInicio?: string | null;
   dataFim?: string | null;

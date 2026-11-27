@@ -14,6 +14,8 @@ import {
   queryGestaoEntradasPreEntradas,
   queryImpressaoPreEntradas,
 } from '../data/gestaoEntradasPreEntradaRepository.js';
+import { queryGestaoEntradasDestinadas } from '../data/gestaoEntradasDestinadasRepository.js';
+import { erroPeriodoDestinadas } from '../data/gestaoEntradasDestinadas.js';
 import type { RecorteConferenciaFisica } from '../data/gestaoEntradasConferenciaFisica.js';
 import type { MundoCompradorGestao } from '../data/gestaoEntradasComprador.js';
 import { normalizarEscopoDivergencia } from '../data/gestaoEntradasClassificacao.js';
@@ -218,6 +220,26 @@ export async function getGestaoEntradasPreEntradasImpressao(req: Request, res: R
   });
   if (erro || !data) {
     res.status(503).json({ error: erro ?? 'Falha ao montar a relação das pré-entradas.', erro });
+    return;
+  }
+  res.json(data);
+}
+
+export async function getGestaoEntradasDestinadas(req: Request, res: Response): Promise<void> {
+  const dataInicio = parseYmd(req.query.dataInicio);
+  const dataFim = parseYmd(req.query.dataFim);
+  if (!dataInicio || !dataFim) {
+    res.status(400).json({ error: 'Informe dataInicio e dataFim (YYYY-MM-DD).' });
+    return;
+  }
+  const erroPeriodo = erroPeriodoDestinadas(dataInicio, dataFim);
+  if (erroPeriodo) {
+    res.status(400).json({ error: erroPeriodo });
+    return;
+  }
+  const { data, erro } = await queryGestaoEntradasDestinadas({ dataInicio, dataFim });
+  if (erro || !data) {
+    res.status(503).json({ error: erro ?? 'Falha ao listar as notas destinadas.', erro });
     return;
   }
   res.json(data);

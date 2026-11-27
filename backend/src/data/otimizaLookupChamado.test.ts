@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpretarLoteLookupOtimiza } from './otimizaLookupChamado.js';
+import { interpretarLoteLookupOtimiza, interpretarLoteLookupOtimizaDetalhe } from './otimizaLookupChamado.js';
 
 describe('lote de chamados abertos no Otimiza', () => {
   it('guarda o número aberto e ignora chamado fechado ou palavra sem resultado', () => {
@@ -23,6 +23,40 @@ describe('lote de chamados abertos no Otimiza', () => {
     expect(mapa.get('DE40369')).toEqual([8752]);
     expect(mapa.get('86110')).toEqual([8746]);
     expect(mapa.get('DE40415')).toEqual([]);
+  });
+
+  it('guarda concluído, responsável e processo', () => {
+    const mapa = interpretarLoteLookupOtimizaDetalhe({
+      items: [
+        {
+          keyword: 'DE40369',
+          results: [
+            {
+              number: 8700,
+              status: 'completed',
+              isOpen: false,
+              processName: 'Confirmação de compra',
+              currentResponsible: null,
+            },
+            { number: 8752, status: 'in_progress', currentResponsible: 'Compras', processName: 'Confirmação de compra' },
+          ],
+        },
+      ],
+    });
+    expect(mapa.get('DE40369')).toEqual([
+      {
+        numero: 8700,
+        status: 'completed',
+        responsavel: null,
+        processo: 'Confirmação de compra',
+      },
+      {
+        numero: 8752,
+        status: 'in_progress',
+        responsavel: 'Compras',
+        processo: 'Confirmação de compra',
+      },
+    ]);
   });
 
   it('ignora corpo sem itens', () => {
