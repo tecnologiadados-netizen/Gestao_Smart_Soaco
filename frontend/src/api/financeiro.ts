@@ -299,6 +299,16 @@ export interface DfcAgendamentoDetalheLinha {
   comentarios?: string | null;
   idPedido?: number | null;
   tipoMovimento?: string | null;
+  /** Nota ou documento de entrada com itens — a linha pode expandir. */
+  temItensDocumento?: boolean;
+}
+
+export interface DreDocumentoEntradaItem {
+  id: number;
+  produto: string | null;
+  grupo: string | null;
+  qtde: number | null;
+  valorTotal: number | null;
 }
 
 export interface DfcKpis {
@@ -1152,6 +1162,30 @@ export async function fetchDreRateioFornecedorTotais(params: {
   return {
     totaisPorPeriodo: body.totaisPorPeriodo ?? {},
     totaisFiltroPorPeriodo: body.totaisFiltroPorPeriodo ?? {},
+    erro: body.erro ?? body.error,
+  };
+}
+
+export async function fetchDreDocumentoEntradaItens(params: {
+  origem: 'Nomus' | 'Shop9';
+  id: number;
+}): Promise<{ itens: DreDocumentoEntradaItem[]; nota: string | null; erro?: string }> {
+  const sp = new URLSearchParams();
+  sp.set('origem', params.origem);
+  sp.set('id', String(params.id));
+  const res = await apiFetch(`/api/financeiro/dre/saidas-documento-itens?${sp.toString()}`);
+  const body = (await res.json().catch(() => ({}))) as {
+    itens?: DreDocumentoEntradaItem[];
+    nota?: string | null;
+    erro?: string;
+    error?: string;
+  };
+  if (!res.ok) {
+    return { itens: [], nota: null, erro: body.error ?? body.erro ?? res.statusText };
+  }
+  return {
+    itens: Array.isArray(body.itens) ? body.itens : [],
+    nota: body.nota ?? null,
     erro: body.erro ?? body.error,
   };
 }

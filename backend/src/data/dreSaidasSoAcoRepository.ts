@@ -21,6 +21,7 @@ import { aplicarLimiteDetalhe, LIMITE_DETALHE_MODAL } from './detalheLimite.js';
 import { labelEmpresaDfc } from './dfcShop9Empresa.js';
 import { linhaPassaFornecedoresRateio } from '../utils/dreRateioFornecedorMatch.js';
 import { aplicarRateioInssNasLinhasSaidas, resolverPathKeyInssPoolAgregacao } from './dreInssRateio.js';
+import { marcarNomusComItensDocumento } from './dreDocumentoEntradaItens.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -385,6 +386,11 @@ export async function queryDreNomusSaidasDetalhe(params: {
 
     detalhes.sort((a, b) => b.valorBaixado - a.valorBaixado);
     const { detalhes: cortados } = aplicarLimiteDetalhe(detalhes, params.limite, MAX_DETALHE_DRE_NOMUS);
+    try {
+      await marcarNomusComItensDocumento(cortados);
+    } catch (errFlag) {
+      console.error('[queryDreNomusSaidasDetalhe] itens documento', errFlag);
+    }
     return { detalhes: cortados };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

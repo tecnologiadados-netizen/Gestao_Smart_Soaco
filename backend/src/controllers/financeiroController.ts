@@ -64,6 +64,7 @@ import { queryDreCpvSoAco } from '../data/dreCpvSoAcoRepository.js';
 import { queryDreCpvMoveisDireto } from '../data/dreCpvMoveisDiretoRepository.js';
 import { queryDreDevolucoes, queryDreDevolucoesDetalhe } from '../data/dreDevolucoesRepository.js';
 import { carregarSaidasSoAcoDre, queryDreNomusSaidasDetalhe, queryDreFornecedorOpcoes, queryDreRateioFornecedorTotais } from '../data/dreSaidasSoAcoRepository.js';
+import { queryDreNomusDocumentoItens, queryDreShop9DocumentoItens } from '../data/dreDocumentoEntradaItens.js';
 import { queryDreShop9SaidasDetalhe } from '../data/dreShop9SaidasRepository.js';
 import { carregarReceitaRefrigeracaoShop9Dre } from '../data/dreShop9ReceitaRefrigeracaoRepository.js';
 import { mapaIdsContaPorPathKeyDre } from '../data/drePlanoContasMap.js';
@@ -1726,6 +1727,28 @@ export async function getDreRateioFornecedorTotais(req: Request, res: Response):
     granularidade,
     erro,
   });
+}
+
+/**
+ * GET /api/financeiro/dre/saidas-documento-itens?origem=Nomus|Shop9&id=
+ * Itens da nota ou do documento de entrada de um lançamento do detalhe.
+ */
+export async function getDreDocumentoEntradaItens(req: Request, res: Response): Promise<void> {
+  const origem = String(req.query.origem ?? 'Nomus').trim();
+  const id = Math.trunc(Number(req.query.id));
+  if (!(id > 0)) {
+    res.status(400).json({ error: 'Informe o id do lançamento.' });
+    return;
+  }
+  const consulta = origem.toLowerCase() === 'shop9'
+    ? queryDreShop9DocumentoItens(id)
+    : queryDreNomusDocumentoItens(id);
+  const { itens, nota, erro } = await consulta;
+  if (erro && itens.length === 0) {
+    res.status(503).json({ itens: [], nota, erro, error: erro });
+    return;
+  }
+  res.json({ itens, nota, erro });
 }
 
 /**

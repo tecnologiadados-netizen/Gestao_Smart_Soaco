@@ -126,6 +126,8 @@ export interface DfcAgendamentoDetalheRow {
   idPedido?: number | null;
   /** Discriminador Nomus (P/R/LP/LR) quando disponível. */
   tipoMovimento?: string | null;
+  /** Há nota/documento de entrada com itens — a linha do modal pode expandir. */
+  temItensDocumento?: boolean;
 }
 
 function formatYmdFromSqlDate(v: unknown): string | null {

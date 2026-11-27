@@ -74,6 +74,7 @@ import {
   getDreFornecedorOpcoes,
   getDreRateioFornecedorTotais,
   getDreSaidasSoAcoDetalhe,
+  getDreDocumentoEntradaItens,
   getDreSaidasNomusDetalhe,
   getDreRelacaoPc,
   putDreRelacaoPc,
@@ -229,6 +230,7 @@ router.get('/dre/saidas-soaco', verFinanceiroDre, getDreSaidasSoAco);
 router.get('/dre/saidas-soaco/fornecedor-opcoes', verFinanceiroDre, getDreFornecedorOpcoes);
 router.get('/dre/saidas-soaco/rateio-fornecedores', verFinanceiroDre, getDreRateioFornecedorTotais);
 router.get('/dre/saidas-soaco/detalhe', verFinanceiroDre, getDreSaidasSoAcoDetalhe);
+router.get('/dre/saidas-documento-itens', verFinanceiroDre, getDreDocumentoEntradaItens);
 router.get('/dre/saidas-soaco/detalhe-nomus', verFinanceiroDre, getDreSaidasNomusDetalhe);
 router.get('/dre/relacao-pc', verFinanceiroDre, getDreRelacaoPc);
 router.put('/dre/relacao-pc', verFinanceiroDre, putDreRelacaoPc);

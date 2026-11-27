@@ -47,7 +47,7 @@ const SECOES: SecaoAjuda[] = [
       {
         titulo: 'Detalhe de lançamentos',
         texto:
-          'O modal de uma despesa lista os lançamentos Nomus e Shop9 daquela conta e daquele mês. O total, sem filtro na grade do modal, deve bater com o valor da célula. O rodapé mostra o valor da grade para conferir.',
+          'O modal de uma despesa lista os lançamentos Nomus e Shop9 daquela conta e daquele mês. O total, sem filtro na grade do modal, deve bater com o valor da célula. O rodapé mostra o valor da grade para conferir. Quando o lançamento tem nota ou documento de entrada com itens, clique na linha para abrir produto, grupo, quantidade e valor logo abaixo.',
       },
       {
         titulo: 'Detalhe de devoluções',
@@ -83,6 +83,11 @@ const SECOES: SecaoAjuda[] = [
         titulo: 'Rateio de fornecedores na mesma conta',
         texto:
           'Em contas sem filial na árvore (como 13.1.1 Salários), o rateio não cria despesa. Com todas as empresas que têm percentual na regra selecionadas, a célula é a soma dos lançamentos da competência. Com só algumas empresas, a célula tira esses fornecedores do físico e recoloca a fatia configurada. O modal usa a mesma conta: sem filtro na grade do modal, o total tem de bater com a célula.',
+      },
+      {
+        titulo: 'INSS e FGTS',
+        texto:
+          'O INSS (conta única no ERP) e o FGTS (Nomus 5.1.6 e Shop9 9076) não ficam numa folha só. Cada mês o valor é dividido entre Operação, Logística e Administrativo na proporção dos salários daquele mês (10.1.1, 11.2.1.1 e 13.1.1). A soma das três linhas é o encargo do período.',
       },
       {
         titulo: 'Conta renegociada no Shop9',

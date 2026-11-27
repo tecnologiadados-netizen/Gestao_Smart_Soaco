@@ -30,6 +30,7 @@ import {
   resolverIdEmpresaShop9SaidasDre,
 } from './dfcShop9Empresa.js';
 import { linhaPassaFornecedoresRateio } from '../utils/dreRateioFornecedorMatch.js';
+import { marcarShop9ComItensDocumento } from './dreDocumentoEntradaItens.js';
 import { listarOrdensShop9PorPathKeyDre } from './dreRelacaoPcRepository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -130,7 +131,7 @@ export function agregarLinhasShop9SaidasDre(
     const periodo = granularidade === 'mes' ? ymd.slice(0, 7) : ymd;
 
     const nomePlano = row.nomePlanoContas.trim();
-    const pathKeyInss = resolverPathKeyInssPoolAgregacao(nomePlano, row.ordemPlanoContas3);
+    const pathKeyInss = resolverPathKeyInssPoolAgregacao(nomePlano, row.ordemPlanoContas3, 'shop9');
     const pathKey = pathKeyInss ?? resolverPathKeyDreSaidasShop9(row.ordemPlanoContas3, nomePlano);
 
     if (!pathKey) {
@@ -280,7 +281,7 @@ export async function queryDreShop9RateioFornecedorTotais(params: {
     for (const row of rows) {
       const nomePlano = row.nomePlanoContas.trim();
       const pk =
-        resolverPathKeyInssPoolAgregacao(nomePlano, row.ordemPlanoContas3) ??
+        resolverPathKeyInssPoolAgregacao(nomePlano, row.ordemPlanoContas3, 'shop9') ??
         resolverPathKeyDreSaidasShop9(row.ordemPlanoContas3, nomePlano);
       if (pk !== pathKey) continue;
 
@@ -463,6 +464,11 @@ export async function queryDreShop9SaidasDetalhe(params: {
 
     detalhes.sort((a, b) => b.valorBaixado - a.valorBaixado);
     const { detalhes: cortados } = aplicarLimiteDetalhe(detalhes, params.limite, MAX_DETALHE_DRE_SHOP9);
+    try {
+      await marcarShop9ComItensDocumento(cortados);
+    } catch (errFlag) {
+      console.error('[queryDreShop9SaidasDetalhe] itens documento', errFlag);
+    }
     return { detalhes: cortados };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

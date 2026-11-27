@@ -1,5 +1,5 @@
 /**
- * Rateio do INSS único do ERP (conta "INSS") entre as três folhas da DRE,
+ * Rateio do INSS e do FGTS únicos do ERP entre as três folhas da DRE,
  * proporcional aos salários de cada período.
  */
 import { pathKeyDrePorCodigo, normalizarNomePlano } from './drePlanoContasMap.js';
@@ -12,28 +12,51 @@ export type DreSaidasInssLinha = {
 
 /** pathKey interno — não existe na árvore exibida; removido após o rateio. */
 export const DRE_INSS_POOL_PATHKEY = '__DRE_INSS_POOL__';
+export const DRE_FGTS_POOL_PATHKEY = '__DRE_FGTS_POOL__';
 
 const RATEIO_INSS_FOLHAS = [
-  { codigoSalarios: '10.1.1', codigoInss: '10.1.7' },
-  { codigoSalarios: '11.2.1.1', codigoInss: '11.2.1.7' },
-  { codigoSalarios: '13.1.1', codigoInss: '13.1.6' },
+  { codigoSalarios: '10.1.1', codigoDestino: '10.1.7' },
+  { codigoSalarios: '11.2.1.1', codigoDestino: '11.2.1.7' },
+  { codigoSalarios: '13.1.1', codigoDestino: '13.1.6' },
 ] as const;
 
-/** Conta Nomus «INSS» (id 308) — única origem do pool. */
-const NOMUS_IDS_CONTA_INSS_POOL = new Set([308]);
+const RATEIO_FGTS_FOLHAS = [
+  { codigoSalarios: '10.1.1', codigoDestino: '10.1.8' },
+  { codigoSalarios: '11.2.1.1', codigoDestino: '11.2.1.8' },
+  { codigoSalarios: '13.1.1', codigoDestino: '13.1.7' },
+] as const;
 
-/** Conta Nomus/Shop9 com nome exatamente "INSS" → pool antes do rateio. */
+/** Conta Nomus «INSS» (id 308, classificação 5.1.7). */
+const NOMUS_ID_INSS = 308;
+/** Conta Nomus «FGTS» (id 43, classificação 5.1.6). */
+const NOMUS_ID_FGTS = 43;
+/** Ordem_Plano_Contas3 do FGTS no Shop9. */
+const SHOP9_ORDEM_FGTS = 9076;
+
+export type OrigemEncargoFolha = 'nomus' | 'shop9';
+
+/**
+ * Conta única de INSS ou FGTS → pool, antes do mapa por nome.
+ * O nome exato evita levar «FGTS Multa Rescisória» ou outro encargo parecido.
+ */
 export function resolverPathKeyInssPoolAgregacao(
   nomePlano: string,
   idContaFinanceiro?: number | null,
+  origem: OrigemEncargoFolha = 'nomus',
 ): string | null {
   const id =
     idContaFinanceiro != null && Number.isFinite(Number(idContaFinanceiro))
       ? Math.trunc(Number(idContaFinanceiro))
       : null;
-  if (id != null && NOMUS_IDS_CONTA_INSS_POOL.has(id)) return DRE_INSS_POOL_PATHKEY;
   const n = normalizarNomePlano(nomePlano);
-  if (n === 'inss') return DRE_INSS_POOL_PATHKEY;
+  if ((origem === 'nomus' && id === NOMUS_ID_INSS) || n === 'inss') return DRE_INSS_POOL_PATHKEY;
+  if (
+    (origem === 'nomus' && id === NOMUS_ID_FGTS) ||
+    (origem === 'shop9' && id === SHOP9_ORDEM_FGTS) ||
+    n === 'fgts'
+  ) {
+    return DRE_FGTS_POOL_PATHKEY;
+  }
   return null;
 }
 
@@ -60,31 +83,57 @@ function rateioProporcional(total: number, pesos: number[]): number[] {
   return rounded.map((v) => sinal * v);
 }
 
-type FolhaInssRateio = {
+type FolhaEncargoRateio = {
   pathKeySalarios: string;
-  pathKeyInss: string;
+  pathKeyDestino: string;
 };
 
-function carregarFolhasInssRateio(): FolhaInssRateio[] | null {
-  const folhas: FolhaInssRateio[] = [];
-  for (const cfg of RATEIO_INSS_FOLHAS) {
+function carregarFolhasEncargo(
+  folhas: readonly { codigoSalarios: string; codigoDestino: string }[],
+): FolhaEncargoRateio[] | null {
+  const out: FolhaEncargoRateio[] = [];
+  for (const cfg of folhas) {
     const pathKeySalarios = pathKeyDrePorCodigo(cfg.codigoSalarios);
-    const pathKeyInss = pathKeyDrePorCodigo(cfg.codigoInss);
-    if (!pathKeySalarios || !pathKeyInss) return null;
-    folhas.push({ pathKeySalarios, pathKeyInss });
+    const pathKeyDestino = pathKeyDrePorCodigo(cfg.codigoDestino);
+    if (!pathKeySalarios || !pathKeyDestino) return null;
+    out.push({ pathKeySalarios, pathKeyDestino });
   }
-  return folhas;
+  return out;
+}
+
+function distribuirPoolEncargo(
+  map: Map<string, number>,
+  periodo: string,
+  poolPathKey: string,
+  folhas: FolhaEncargoRateio[],
+): void {
+  const poolKey = `${poolPathKey}\t${periodo}`;
+  const poolVal = map.get(poolKey) ?? 0;
+  if (poolVal <= 0) return;
+
+  map.delete(poolKey);
+
+  const pesos = folhas.map((f) => map.get(`${f.pathKeySalarios}\t${periodo}`) ?? 0);
+  const partes = rateioProporcional(poolVal, pesos);
+
+  for (let i = 0; i < folhas.length; i++) {
+    const f = folhas[i]!;
+    const destKey = `${f.pathKeyDestino}\t${periodo}`;
+    map.set(destKey, Math.round(((map.get(destKey) ?? 0) + partes[i]!) * 100) / 100);
+  }
 }
 
 /**
- * Redistribui o pool INSS nas linhas 10.1.7 / 11.2.1.7 / 13.1.6
- * conforme salários 10.1.1 / 11.2.1.1 / 13.1.1 do mesmo período.
+ * Redistribui os pools de INSS (10.1.7 / 11.2.1.7 / 13.1.6) e FGTS
+ * (10.1.8 / 11.2.1.8 / 13.1.7) conforme os salários 10.1.1 / 11.2.1.1 / 13.1.1
+ * do mesmo período.
  */
 export function aplicarRateioInssNasLinhasSaidas(
   linhas: DreSaidasInssLinha[],
 ): DreSaidasInssLinha[] {
-  const folhas = carregarFolhasInssRateio();
-  if (!folhas?.length) return linhas;
+  const folhasInss = carregarFolhasEncargo(RATEIO_INSS_FOLHAS);
+  const folhasFgts = carregarFolhasEncargo(RATEIO_FGTS_FOLHAS);
+  if (!folhasInss?.length && !folhasFgts?.length) return linhas;
 
   const map = new Map<string, number>();
   for (const l of linhas) {
@@ -98,27 +147,15 @@ export function aplicarRateioInssNasLinhasSaidas(
   }
 
   for (const periodo of periodos) {
-    const poolKey = `${DRE_INSS_POOL_PATHKEY}\t${periodo}`;
-    const poolVal = map.get(poolKey) ?? 0;
-    if (poolVal <= 0) continue;
-
-    map.delete(poolKey);
-
-    const pesos = folhas.map((f) => map.get(`${f.pathKeySalarios}\t${periodo}`) ?? 0);
-    const partes = rateioProporcional(poolVal, pesos);
-
-    for (let i = 0; i < folhas.length; i++) {
-      const f = folhas[i]!;
-      const inssKey = `${f.pathKeyInss}\t${periodo}`;
-      map.set(inssKey, Math.round(((map.get(inssKey) ?? 0) + partes[i]!) * 100) / 100);
-    }
+    if (folhasInss?.length) distribuirPoolEncargo(map, periodo, DRE_INSS_POOL_PATHKEY, folhasInss);
+    if (folhasFgts?.length) distribuirPoolEncargo(map, periodo, DRE_FGTS_POOL_PATHKEY, folhasFgts);
   }
 
   const out: DreSaidasInssLinha[] = [];
   for (const [k, valor] of map) {
     if (Math.abs(valor) < 0.005) continue;
     const [pathKey, periodo] = k.split('\t');
-    if (pathKey === DRE_INSS_POOL_PATHKEY) continue;
+    if (pathKey === DRE_INSS_POOL_PATHKEY || pathKey === DRE_FGTS_POOL_PATHKEY) continue;
     out.push({ pathKey: pathKey!, periodo: periodo!, valor: Math.round(valor * 100) / 100 });
   }
 

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { fetchDfcAgendamentosDetalhe, fetchDreSaidasNomusDetalhe, fetchDreSaidasSoAcoDetalhe, type DfcAgendamentoDetalheLinha } from '../../../api/financeiro';
+import { fetchDfcAgendamentosDetalhe, fetchDreDocumentoEntradaItens, fetchDreSaidasNomusDetalhe, fetchDreSaidasSoAcoDetalhe, type DfcAgendamentoDetalheLinha, type DreDocumentoEntradaItem } from '../../../api/financeiro';
 import { DFC_PRIORIDADE_LABEL_CURTO, type DfcPrioridade } from '../../../api/dfcPrioridade';
 import { useGradeFiltrosExcel } from '../../../hooks/useGradeFiltrosExcel';
 import { linhaMatchesEmpresasDfc, labelEmpresaDfc } from './dfcEmpresas';
@@ -166,6 +166,45 @@ export default function DfcDetalheLancamentosModal({
     (rateioEmpresasRegras?.length ?? 0) > 0 || rateioPercentuaisPlanoContas != null;
   const abortRef = useRef<AbortController | null>(null);
   const loadId = useRef(0);
+  const itensDocCacheRef = useRef(new Map<string, { itens: DreDocumentoEntradaItem[]; nota: string | null }>());
+  const [abertosDoc, setAbertosDoc] = useState<Set<string>>(new Set());
+  const [itensDoc, setItensDoc] = useState<
+    Record<string, { itens: DreDocumentoEntradaItem[]; nota: string | null } | 'loading' | string>
+  >({});
+
+  const chaveDocumento = (row: DfcAgendamentoDetalheLinha) =>
+    `${row.origem ?? 'Nomus'}#${row.tipoRef}#${row.id}`;
+
+  const alternarDocumento = useCallback((row: DfcAgendamentoDetalheLinha) => {
+    if (!row.temItensDocumento) return;
+    const chave = `${row.origem ?? 'Nomus'}#${row.tipoRef}#${row.id}`;
+    const aberto = abertosDoc.has(chave);
+    setAbertosDoc((prev) => {
+      const next = new Set(prev);
+      if (next.has(chave)) next.delete(chave);
+      else next.add(chave);
+      return next;
+    });
+    if (aberto) return;
+    const cached = itensDocCacheRef.current.get(chave);
+    if (cached) {
+      setItensDoc((prev) => ({ ...prev, [chave]: cached }));
+      return;
+    }
+    setItensDoc((prev) => ({ ...prev, [chave]: 'loading' }));
+    void fetchDreDocumentoEntradaItens({
+      origem: row.origem === 'Shop9' ? 'Shop9' : 'Nomus',
+      id: row.id,
+    }).then((res) => {
+      if (res.erro && res.itens.length === 0) {
+        setItensDoc((prev) => ({ ...prev, [chave]: res.erro || 'Não foi possível carregar os itens.' }));
+        return;
+      }
+      const data = { itens: res.itens, nota: res.nota };
+      itensDocCacheRef.current.set(chave, data);
+      setItensDoc((prev) => ({ ...prev, [chave]: data }));
+    });
+  }, [abertosDoc]);
 
   const idList = useMemo(
     () => [...new Set(ids.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b),
@@ -382,6 +421,9 @@ export default function DfcDetalheLancamentosModal({
 
   useEffect(() => {
     grade.limparFiltrosGrade();
+    itensDocCacheRef.current.clear();
+    setAbertosDoc(new Set());
+    setItensDoc({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resetar grade ao trocar recorte carregado
   }, [idListKey, idShop9ListKey, periodo, idEmpresasKey]);
 
@@ -480,6 +522,7 @@ export default function DfcDetalheLancamentosModal({
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {linhasExibidas.length.toLocaleString('pt-BR')} de {linhas.length.toLocaleString('pt-BR')} lançamento
                 {linhas.length === 1 ? '' : 's'} · use ▾ no cabeçalho para filtrar e classificar
+                {linhas.some((l) => l.temItensDocumento) ? ' · clique no lançamento com nota para ver os itens' : ''}
               </p>
             ) : null}
           </div>
@@ -573,16 +616,39 @@ export default function DfcDetalheLancamentosModal({
                     );
                     const ctxRateio = periodoLinha ? rateioSimplesPorPeriodo?.get(periodoLinha) : undefined;
                     const partsRateio = rateioValoresLinhaSimples(row.valorBaixado, ctxRateio);
+                    const chave = chaveDocumento(row);
+                    const aberto = Boolean(row.temItensDocumento) && abertosDoc.has(chave);
+                    const carga = itensDoc[chave];
                     return (
+                      <Fragment key={`${row.tipoRef}-${row.id}-${dataCompetenciaLinha(row) ?? ''}-${idx}`}>
                       <tr
-                        key={`${row.tipoRef}-${row.id}-${dataCompetenciaLinha(row) ?? ''}-${idx}`}
-                        className="border-t border-slate-100 odd:bg-white even:bg-slate-50/90 dark:border-slate-700/80 dark:odd:bg-slate-800/30 dark:even:bg-slate-800/55"
+                        className={`border-t border-slate-100 odd:bg-white even:bg-slate-50/90 dark:border-slate-700/80 dark:odd:bg-slate-800/30 dark:even:bg-slate-800/55 ${
+                          row.temItensDocumento ? 'cursor-pointer hover:bg-primary-50/70 dark:hover:bg-slate-700/40' : ''
+                        }`}
+                        onClick={row.temItensDocumento ? () => alternarDocumento(row) : undefined}
+                        onKeyDown={
+                          row.temItensDocumento
+                            ? (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  alternarDocumento(row);
+                                }
+                              }
+                            : undefined
+                        }
+                        tabIndex={row.temItensDocumento ? 0 : undefined}
+                        aria-expanded={row.temItensDocumento ? aberto : undefined}
                       >
                         <td className="px-2 py-1.5 align-top tabular-nums text-slate-700 dark:text-slate-300">{row.id}</td>
                         <td className="hyphens-auto min-w-0 break-words px-2 py-1.5 align-top text-slate-700 dark:text-slate-300">
                           {row.empresa?.trim() || '—'}
                         </td>
                         <td className="hyphens-auto min-w-0 break-words px-2 py-1.5 align-top text-slate-800 dark:text-slate-200">
+                          {row.temItensDocumento ? (
+                            <span className="mr-1 text-[10px] text-primary-700 dark:text-primary-300" aria-hidden>
+                              {aberto ? '▼' : '▶'}
+                            </span>
+                          ) : null}
                           {row.descricaoLancamento ?? '—'}
                         </td>
                         <td className="hyphens-auto min-w-0 break-words px-2 py-1.5 align-top text-slate-700 dark:text-slate-300">
@@ -632,6 +698,54 @@ export default function DfcDetalheLancamentosModal({
                           <PrioridadeSomenteLeitura prioridade={exibir} hint={hintPlano} />
                         </td>
                       </tr>
+                      {aberto ? (
+                        <tr className="border-t border-slate-100 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+                          <td colSpan={colCount} className="px-3 py-2">
+                            {carga === 'loading' || carga == null ? (
+                              <p className="text-xs text-slate-500">Carregando itens da nota…</p>
+                            ) : typeof carga === 'string' ? (
+                              <p className="text-xs text-red-700">{carga}</p>
+                            ) : carga.itens.length === 0 ? (
+                              <p className="text-xs text-slate-500">Este documento não tem itens.</p>
+                            ) : (
+                              <div>
+                                {carga.nota ? (
+                                  <p className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                    Nota {carga.nota}
+                                  </p>
+                                ) : null}
+                                <table className="w-full border-collapse text-xs">
+                                  <thead>
+                                    <tr className="text-left text-slate-500">
+                                      <th className="px-2 py-1 font-semibold">Produto</th>
+                                      <th className="px-2 py-1 font-semibold">Grupo</th>
+                                      <th className="px-2 py-1 text-right font-semibold">Qtde</th>
+                                      <th className="px-2 py-1 text-right font-semibold">Valor</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {carga.itens.map((item) => (
+                                      <tr key={`${chave}-${item.id}`} className="border-t border-slate-200/80 dark:border-slate-700">
+                                        <td className="px-2 py-1 text-slate-800 dark:text-slate-100">{item.produto ?? '—'}</td>
+                                        <td className="px-2 py-1 text-slate-600 dark:text-slate-300">{item.grupo ?? '—'}</td>
+                                        <td className="px-2 py-1 text-right tabular-nums">
+                                          {item.qtde == null
+                                            ? '—'
+                                            : item.qtde.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}
+                                        </td>
+                                        <td className="px-2 py-1 text-right tabular-nums font-medium">
+                                          {item.valorTotal == null ? '—' : nf.format(item.valorTotal)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     );
                   })
                 )}
